@@ -1340,9 +1340,9 @@
 <hr />
 <h2 id="diann">diann<a class="headerlink" href="#diann" title="Anchor link to this section">&para;</a></h2>
 <p>Convert DIA-NN report files to quantms.io feature format.</p>
-<h3 id="description">Description<a class="headerlink" href="#description" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-description">Description<a class="headerlink" href="#diann-description" title="Anchor link to this section">&para;</a></h3>
 <p>This command converts DIA-NN (Data-Independent Acquisition by Neural Networks) report files to the standardized quantms.io parquet format. It processes peptide-level quantification data and can optionally partition the output based on specified fields.</p>
-<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-parameters">Parameters<a class="headerlink" href="#diann-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1440,8 +1440,8 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example">Basic Example<a class="headerlink" href="#basic-example" title="Anchor link to this section">&para;</a></h4>
+<h3 id="diann-examples">Usage Examples<a class="headerlink" href="#diann-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="diann-example-basic">Basic Example<a class="headerlink" href="#diann-example-basic" title="Anchor link to this section">&para;</a></h4>
 <p>Convert a DIA-NN report with default settings:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>diann<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>--report-path<span class="w"> </span>tests/examples/diann/small/diann_report.tsv<span class="w"> </span><span class="se">\</span>
@@ -1450,7 +1450,7 @@
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span>--sdrf-path<span class="w"> </span>tests/examples/diann/small/PXD019909-DIA.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="advanced-example-with-partitioning">Advanced Example with Partitioning<a class="headerlink" href="#advanced-example-with-partitioning" title="Anchor link to this section">&para;</a></h4>
+<h4 id="diann-example-advanced">Advanced Example with Partitioning<a class="headerlink" href="#diann-example-advanced" title="Anchor link to this section">&para;</a></h4>
 <p>Convert with file partitioning based on reference_file_name:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>diann<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>--report-path<span class="w"> </span>tests/examples/diann/full/diann_report.tsv.gz<span class="w"> </span><span class="se">\</span>
@@ -1463,13 +1463,13 @@
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span>--duckdb-threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h3 id="output-files">Output Files<a class="headerlink" href="#output-files" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-output">Output Files<a class="headerlink" href="#diann-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.feature.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing feature-level quantification data</li>
 <li><strong>Schema</strong>: Conforms to quantms.io feature specification</li>
 </ul>
-<h3 id="common-issues">Common Issues<a class="headerlink" href="#common-issues" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-issues">Common Issues<a class="headerlink" href="#diann-issues" title="Anchor link to this section">&para;</a></h3>
 <p><strong>Issue</strong>: Out of memory errors with large files</p>
 <ul>
 <li><strong>Solution</strong>: Increase <code>--duckdb-max-memory</code> parameter (e.g., <code>8GB</code>, <code>16GB</code>)</li>
@@ -1482,7 +1482,7 @@
 <ul>
 <li><strong>Solution</strong>: Ensure all mzML info TSV files are in the specified folder with correct naming</li>
 </ul>
-<h3 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-best-practices">Best Practices<a class="headerlink" href="#diann-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Use Q-value threshold of 0.05 or lower for high-confidence results</li>
 <li>Enable partitioning for large datasets to improve memory usage</li>
@@ -1492,9 +1492,9 @@
 <hr />
 <h2 id="diann-pg">diann-pg<a class="headerlink" href="#diann-pg" title="Anchor link to this section">&para;</a></h2>
 <p>Convert DIA-NN report files to quantms.io protein group format.</p>
-<h3 id="description_1">Description<a class="headerlink" href="#description_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-pg-description">Description<a class="headerlink" href="#diann-pg-description" title="Anchor link to this section">&para;</a></h3>
 <p>This command converts DIA-NN protein quantification matrices to the standardized quantms.io protein group format. It combines information from the main report file and the protein group matrix.</p>
-<h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-pg-parameters">Parameters<a class="headerlink" href="#diann-pg-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1571,15 +1571,15 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_1">Usage Examples<a class="headerlink" href="#usage-examples_1" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_1">Basic Example<a class="headerlink" href="#basic-example_1" title="Anchor link to this section">&para;</a></h4>
+<h3 id="diann-pg-examples">Usage Examples<a class="headerlink" href="#diann-pg-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="diann-pg-example-basic">Basic Example<a class="headerlink" href="#diann-pg-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>diann-pg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>--report-path<span class="w"> </span>tests/examples/diann/full/diann_report.tsv.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span>--pg-matrix-path<span class="w"> </span>tests/examples/diann/full/diann_report.pg_matrix.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span>--sdrf-path<span class="w"> </span>tests/examples/diann/full/PXD036609.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="high-performance-example">High-Performance Example<a class="headerlink" href="#high-performance-example" title="Anchor link to this section">&para;</a></h4>
+<h4 id="diann-pg-example-performance">High-Performance Example<a class="headerlink" href="#diann-pg-example-performance" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>diann-pg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--report-path<span class="w"> </span>tests/examples/diann/full/diann_report.tsv.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--pg-matrix-path<span class="w"> </span>tests/examples/diann/full/diann_report.pg_matrix.tsv<span class="w"> </span><span class="se">\</span>
@@ -1590,13 +1590,13 @@
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span>--output-prefix<span class="w"> </span>protein_groups<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h3 id="output-files_1">Output Files<a class="headerlink" href="#output-files_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-pg-output">Output Files<a class="headerlink" href="#diann-pg-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.pg.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing protein group quantification data</li>
 <li><strong>Schema</strong>: Conforms to quantms.io protein group specification</li>
 </ul>
-<h3 id="best-practices_1">Best Practices<a class="headerlink" href="#best-practices_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="diann-pg-best-practices">Best Practices<a class="headerlink" href="#diann-pg-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Ensure both report and pg_matrix files are from the same DIA-NN run</li>
 <li>Use adequate memory allocation for large datasets</li>
@@ -1605,9 +1605,9 @@
 <hr />
 <h2 id="maxquant-psm">maxquant-psm<a class="headerlink" href="#maxquant-psm" title="Anchor link to this section">&para;</a></h2>
 <p>Convert MaxQuant PSM data from <code>msms.txt</code> to quantms.io parquet format.</p>
-<h3 id="description_2">Description<a class="headerlink" href="#description_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-psm-description">Description<a class="headerlink" href="#maxquant-psm-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts MaxQuant Peptide-Spectrum Match (PSM) data to the standardized quantms.io format. This command processes the <code>msms.txt</code> file generated by MaxQuant.</p>
-<h3 id="parameters_2">Parameters<a class="headerlink" href="#parameters_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-psm-parameters">Parameters<a class="headerlink" href="#maxquant-psm-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1663,13 +1663,13 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_2">Usage Examples<a class="headerlink" href="#usage-examples_2" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_2">Basic Example<a class="headerlink" href="#basic-example_2" title="Anchor link to this section">&para;</a></h4>
+<h3 id="maxquant-psm-examples">Usage Examples<a class="headerlink" href="#maxquant-psm-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="maxquant-psm-example-basic">Basic Example<a class="headerlink" href="#maxquant-psm-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>maxquant-psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--msms-file<span class="w"> </span>tests/examples/maxquant/maxquant_simple/msms.txt<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="with-spectral-data">With Spectral Data<a class="headerlink" href="#with-spectral-data" title="Anchor link to this section">&para;</a></h4>
+<h4 id="maxquant-psm-example-spectral">With Spectral Data<a class="headerlink" href="#maxquant-psm-example-spectral" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>maxquant-psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--msms-file<span class="w"> </span>tests/examples/maxquant/maxquant_simple/msms.txt<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
@@ -1678,13 +1678,13 @@
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span>--output-prefix<span class="w"> </span>psm_with_spectra<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h3 id="output-files_2">Output Files<a class="headerlink" href="#output-files_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-psm-output">Output Files<a class="headerlink" href="#maxquant-psm-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.psm.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing PSM-level data</li>
 <li><strong>Schema</strong>: Conforms to quantms.io PSM specification</li>
 </ul>
-<h3 id="best-practices_2">Best Practices<a class="headerlink" href="#best-practices_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-psm-best-practices">Best Practices<a class="headerlink" href="#maxquant-psm-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Adjust <code>--batch-size</code> based on available memory</li>
 <li>Use <code>--spectral-data</code> flag if downstream analysis requires spectral information</li>
@@ -1693,9 +1693,9 @@
 <hr />
 <h2 id="maxquant-feature">maxquant-feature<a class="headerlink" href="#maxquant-feature" title="Anchor link to this section">&para;</a></h2>
 <p>Convert MaxQuant feature data from <code>evidence.txt</code> to quantms.io parquet format.</p>
-<h3 id="description_3">Description<a class="headerlink" href="#description_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-feature-description">Description<a class="headerlink" href="#maxquant-feature-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts MaxQuant feature-level quantification data to the standardized quantms.io format. This command processes the <code>evidence.txt</code> file, which contains peptide feature intensities across samples.</p>
-<h3 id="parameters_3">Parameters<a class="headerlink" href="#parameters_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-feature-parameters">Parameters<a class="headerlink" href="#maxquant-feature-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1772,14 +1772,14 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_3">Usage Examples<a class="headerlink" href="#usage-examples_3" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_3">Basic Example<a class="headerlink" href="#basic-example_3" title="Anchor link to this section">&para;</a></h4>
+<h3 id="maxquant-feature-examples">Usage Examples<a class="headerlink" href="#maxquant-feature-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="maxquant-feature-example-basic">Basic Example<a class="headerlink" href="#maxquant-feature-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>maxquant-feature<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--evidence-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/evidence.txt.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--sdrf-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="with-protein-groups-q-value-mapping">With Protein Groups Q-value Mapping<a class="headerlink" href="#with-protein-groups-q-value-mapping" title="Anchor link to this section">&para;</a></h4>
+<h4 id="maxquant-feature-example-qvalue">With Protein Groups Q-value Mapping<a class="headerlink" href="#maxquant-feature-example-qvalue" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>maxquant-feature<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--evidence-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/evidence.txt.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--sdrf-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv<span class="w"> </span><span class="se">\</span>
@@ -1788,13 +1788,13 @@
 </span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--batch-size<span class="w"> </span><span class="m">500000</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h3 id="output-files_3">Output Files<a class="headerlink" href="#output-files_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-feature-output">Output Files<a class="headerlink" href="#maxquant-feature-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.feature.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing feature-level quantification</li>
 <li><strong>Schema</strong>: Conforms to quantms.io feature specification</li>
 </ul>
-<h3 id="common-issues_1">Common Issues<a class="headerlink" href="#common-issues_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-feature-issues">Common Issues<a class="headerlink" href="#maxquant-feature-issues" title="Anchor link to this section">&para;</a></h3>
 <p><strong>Issue</strong>: Memory errors with compressed evidence files</p>
 <ul>
 <li><strong>Solution</strong>: Reduce <code>--batch-size</code> or increase available RAM</li>
@@ -1803,7 +1803,7 @@
 <ul>
 <li><strong>Solution</strong>: Provide <code>--protein-groups-file</code> for accurate Q-value mapping</li>
 </ul>
-<h3 id="best-practices_3">Best Practices<a class="headerlink" href="#best-practices_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-feature-best-practices">Best Practices<a class="headerlink" href="#maxquant-feature-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Always provide <code>--protein-groups-file</code> when available for better data quality</li>
 <li>Ensure SDRF sample names match MaxQuant experiment names</li>
@@ -1812,9 +1812,9 @@
 <hr />
 <h2 id="maxquant-pg">maxquant-pg<a class="headerlink" href="#maxquant-pg" title="Anchor link to this section">&para;</a></h2>
 <p>Convert MaxQuant protein groups from <code>proteinGroups.txt</code> to quantms.io format.</p>
-<h3 id="description_4">Description<a class="headerlink" href="#description_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-pg-description">Description<a class="headerlink" href="#maxquant-pg-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts MaxQuant protein group quantification to the standardized quantms.io protein group format.</p>
-<h3 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-pg-parameters">Parameters<a class="headerlink" href="#maxquant-pg-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1870,14 +1870,14 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_4">Usage Examples<a class="headerlink" href="#usage-examples_4" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_4">Basic Example<a class="headerlink" href="#basic-example_4" title="Anchor link to this section">&para;</a></h4>
+<h3 id="maxquant-pg-examples">Usage Examples<a class="headerlink" href="#maxquant-pg-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="maxquant-pg-example-basic">Basic Example<a class="headerlink" href="#maxquant-pg-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>maxquant-pg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span>--protein-groups-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/proteinGroups.txt<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>--sdrf-file<span class="w"> </span>tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h3 id="output-files_4">Output Files<a class="headerlink" href="#output-files_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="maxquant-pg-output">Output Files<a class="headerlink" href="#maxquant-pg-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.pg.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing protein group data</li>
@@ -1886,9 +1886,9 @@
 <hr />
 <h2 id="fragpipe">fragpipe<a class="headerlink" href="#fragpipe" title="Anchor link to this section">&para;</a></h2>
 <p>Convert FragPipe PSM data to quantms.io parquet format.</p>
-<h3 id="description_5">Description<a class="headerlink" href="#description_5" title="Anchor link to this section">&para;</a></h3>
+<h3 id="fragpipe-description">Description<a class="headerlink" href="#fragpipe-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts FragPipe PSM (Peptide-Spectrum Match) data from <code>psm.tsv</code> files to the standardized quantms.io format.</p>
-<h3 id="parameters_5">Parameters<a class="headerlink" href="#parameters_5" title="Anchor link to this section">&para;</a></h3>
+<h3 id="fragpipe-parameters">Parameters<a class="headerlink" href="#fragpipe-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1930,20 +1930,20 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_5">Usage Examples<a class="headerlink" href="#usage-examples_5" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_5">Basic Example<a class="headerlink" href="#basic-example_5" title="Anchor link to this section">&para;</a></h4>
+<h3 id="fragpipe-examples">Usage Examples<a class="headerlink" href="#fragpipe-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="fragpipe-example-basic">Basic Example<a class="headerlink" href="#fragpipe-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>fragpipe<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>--msms-file<span class="w"> </span>/path/to/psm.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="with-custom-settings">With Custom Settings<a class="headerlink" href="#with-custom-settings" title="Anchor link to this section">&para;</a></h4>
+<h4 id="fragpipe-example-custom">With Custom Settings<a class="headerlink" href="#fragpipe-example-custom" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>fragpipe<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span>--msms-file<span class="w"> </span>/path/to/psm.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span>--batch-size<span class="w"> </span><span class="m">500000</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span>--output-prefix<span class="w"> </span>fragpipe_psm
 </span></code></pre></div>
-<h3 id="output-files_5">Output Files<a class="headerlink" href="#output-files_5" title="Anchor link to this section">&para;</a></h3>
+<h3 id="fragpipe-output">Output Files<a class="headerlink" href="#fragpipe-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.psm.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing PSM data</li>
@@ -1952,9 +1952,9 @@
 <hr />
 <h2 id="quantms-psm">quantms-psm<a class="headerlink" href="#quantms-psm" title="Anchor link to this section">&para;</a></h2>
 <p>Convert mzTab PSM data to quantms.io parquet format.</p>
-<h3 id="description_6">Description<a class="headerlink" href="#description_6" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-psm-description">Description<a class="headerlink" href="#quantms-psm-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts PSM data from mzTab format to the quantms.io standardized parquet format. Can work with existing DuckDB indexes or create new ones from mzTab files.</p>
-<h3 id="parameters_6">Parameters<a class="headerlink" href="#parameters_6" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-psm-parameters">Parameters<a class="headerlink" href="#quantms-psm-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2010,26 +2010,26 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_6">Usage Examples<a class="headerlink" href="#usage-examples_6" title="Anchor link to this section">&para;</a></h3>
-<h4 id="create-from-mztab">Create from mzTab<a class="headerlink" href="#create-from-mztab" title="Anchor link to this section">&para;</a></h4>
+<h3 id="quantms-psm-examples">Usage Examples<a class="headerlink" href="#quantms-psm-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="quantms-psm-example-create">Create from mzTab<a class="headerlink" href="#quantms-psm-example-create" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>quantms-psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span>--mztab-path<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h4 id="use-existing-database">Use Existing Database<a class="headerlink" href="#use-existing-database" title="Anchor link to this section">&para;</a></h4>
+<h4 id="quantms-psm-example-existing">Use Existing Database<a class="headerlink" href="#quantms-psm-example-existing" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>quantms-psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span>--database-path<span class="w"> </span>./existing_database.duckdb<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span>--spectral-data
 </span></code></pre></div>
-<h3 id="output-files_6">Output Files<a class="headerlink" href="#output-files_6" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-psm-output">Output Files<a class="headerlink" href="#quantms-psm-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.psm.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing PSM data</li>
 <li><strong>Schema</strong>: Conforms to quantms.io PSM specification</li>
 </ul>
-<h3 id="best-practices_4">Best Practices<a class="headerlink" href="#best-practices_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-psm-best-practices">Best Practices<a class="headerlink" href="#quantms-psm-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Reuse database files when processing multiple outputs from the same mzTab</li>
 <li>Use <code>--spectral-data</code> flag when spectral information is needed for downstream analysis</li>
@@ -2037,9 +2037,9 @@
 <hr />
 <h2 id="quantms-feature">quantms-feature<a class="headerlink" href="#quantms-feature" title="Anchor link to this section">&para;</a></h2>
 <p>Convert mzTab feature data to quantms.io parquet format.</p>
-<h3 id="description_7">Description<a class="headerlink" href="#description_7" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-feature-description">Description<a class="headerlink" href="#quantms-feature-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts feature-level quantification data from mzTab format to the quantms.io standardized format, including MSstats quantification data.</p>
-<h3 id="parameters_7">Parameters<a class="headerlink" href="#parameters_7" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-feature-parameters">Parameters<a class="headerlink" href="#quantms-feature-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2102,15 +2102,15 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_7">Usage Examples<a class="headerlink" href="#usage-examples_7" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_6">Basic Example<a class="headerlink" href="#basic-example_6" title="Anchor link to this section">&para;</a></h4>
+<h3 id="quantms-feature-examples">Usage Examples<a class="headerlink" href="#quantms-feature-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="quantms-feature-example-basic">Basic Example<a class="headerlink" href="#quantms-feature-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>quantms-feature<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span>--mztab-path<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>--sdrf-file<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span>--msstats-file<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_msstats_in.csv.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h3 id="output-files_7">Output Files<a class="headerlink" href="#output-files_7" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-feature-output">Output Files<a class="headerlink" href="#quantms-feature-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.feature.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing feature quantification</li>
@@ -2119,9 +2119,9 @@
 <hr />
 <h2 id="quantms-pg">quantms-pg<a class="headerlink" href="#quantms-pg" title="Anchor link to this section">&para;</a></h2>
 <p>Convert mzTab protein group data to quantms.io parquet format.</p>
-<h3 id="description_8">Description<a class="headerlink" href="#description_8" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-pg-description">Description<a class="headerlink" href="#quantms-pg-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts protein group quantification from mzTab format to the quantms.io standardized format. Supports both TMT and LFQ data, with optional TopN and iBAQ intensity calculations.</p>
-<h3 id="parameters_8">Parameters<a class="headerlink" href="#parameters_8" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-pg-parameters">Parameters<a class="headerlink" href="#quantms-pg-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2205,8 +2205,8 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_8">Usage Examples<a class="headerlink" href="#usage-examples_8" title="Anchor link to this section">&para;</a></h3>
-<h4 id="lfq-data-with-all-intensities">LFQ Data with All Intensities<a class="headerlink" href="#lfq-data-with-all-intensities" title="Anchor link to this section">&para;</a></h4>
+<h3 id="quantms-pg-examples">Usage Examples<a class="headerlink" href="#quantms-pg-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="quantms-pg-example-lfq">LFQ Data with All Intensities<a class="headerlink" href="#quantms-pg-example-lfq" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>quantms-pg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span>--mztab-path<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span>--msstats-file<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_msstats_in.csv.gz<span class="w"> </span><span class="se">\</span>
@@ -2216,7 +2216,7 @@
 </span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span>--compute-ibaq<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">    </span>--topn<span class="w"> </span><span class="m">3</span>
 </span></code></pre></div>
-<h4 id="tmt-data-skip-ibaq">TMT Data (Skip iBAQ)<a class="headerlink" href="#tmt-data-skip-ibaq" title="Anchor link to this section">&para;</a></h4>
+<h4 id="quantms-pg-example-tmt">TMT Data (Skip iBAQ)<a class="headerlink" href="#quantms-pg-example-tmt" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>quantms-pg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span>--mztab-path<span class="w"> </span>tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_openms.mzTab.gz<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span>--msstats-file<span class="w"> </span>tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_msstats_in.csv.gz<span class="w"> </span><span class="se">\</span>
@@ -2224,13 +2224,13 @@
 </span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">    </span>--no-compute-ibaq
 </span></code></pre></div>
-<h3 id="output-files_8">Output Files<a class="headerlink" href="#output-files_8" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-pg-output">Output Files<a class="headerlink" href="#quantms-pg-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix}-{uuid}.pg.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing protein group quantification</li>
 <li><strong>Schema</strong>: Conforms to quantms.io protein group specification</li>
 </ul>
-<h3 id="best-practices_5">Best Practices<a class="headerlink" href="#best-practices_5" title="Anchor link to this section">&para;</a></h3>
+<h3 id="quantms-pg-best-practices">Best Practices<a class="headerlink" href="#quantms-pg-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Use <code>--no-compute-ibaq</code> for TMT/iTRAQ labeled data</li>
 <li>Adjust <code>--topn</code> value based on dataset characteristics (typically 3-5)</li>
@@ -2239,9 +2239,9 @@
 <hr />
 <h2 id="idxml">idxml<a class="headerlink" href="#idxml" title="Anchor link to this section">&para;</a></h2>
 <p>Convert a single OpenMS idXML file to quantms.io PSM format.</p>
-<h3 id="description_9">Description<a class="headerlink" href="#description_9" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-description">Description<a class="headerlink" href="#idxml-description" title="Anchor link to this section">&para;</a></h3>
 <p>Converts PSM data from OpenMS idXML format to the quantms.io standardized parquet format. Can optionally attach spectral information from corresponding mzML files.</p>
-<h3 id="parameters_9">Parameters<a class="headerlink" href="#parameters_9" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-parameters">Parameters<a class="headerlink" href="#idxml-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2290,13 +2290,13 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_9">Usage Examples<a class="headerlink" href="#usage-examples_9" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_7">Basic Example<a class="headerlink" href="#basic-example_7" title="Anchor link to this section">&para;</a></h4>
+<h3 id="idxml-examples">Usage Examples<a class="headerlink" href="#idxml-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="idxml-example-basic">Basic Example<a class="headerlink" href="#idxml-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>idxml<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span>--idxml-file<span class="w"> </span>tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep2_consensus_fdr_pep_luciphor.idXML<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output
 </span></code></pre></div>
-<h4 id="with-spectral-data_1">With Spectral Data<a class="headerlink" href="#with-spectral-data_1" title="Anchor link to this section">&para;</a></h4>
+<h4 id="idxml-example-spectral">With Spectral Data<a class="headerlink" href="#idxml-example-spectral" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>idxml<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span>--idxml-file<span class="w"> </span>tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep2_consensus_fdr_pep_luciphor.idXML<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span>--mzml-file<span class="w"> </span>tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep1.mzML<span class="w"> </span><span class="se">\</span>
@@ -2304,7 +2304,7 @@
 </span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span>--spectral-data<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span>--output-prefix-file<span class="w"> </span>idxml_psm_with_spectra
 </span></code></pre></div>
-<h3 id="output-files_9">Output Files<a class="headerlink" href="#output-files_9" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-output">Output Files<a class="headerlink" href="#idxml-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix-file}-{uuid}.psm.parquet</code></li>
 <li><strong>Format</strong>: Parquet file containing PSM data</li>
@@ -2313,9 +2313,9 @@
 <hr />
 <h2 id="idxml-batch">idxml-batch<a class="headerlink" href="#idxml-batch" title="Anchor link to this section">&para;</a></h2>
 <p>Convert multiple OpenMS idXML files to a single merged PSM parquet file.</p>
-<h3 id="description_10">Description<a class="headerlink" href="#description_10" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-batch-description">Description<a class="headerlink" href="#idxml-batch-description" title="Anchor link to this section">&para;</a></h3>
 <p>Batch converts multiple idXML files and merges them into a single quantms.io PSM parquet file. Supports both folder-based and file-list-based input, with flexible mzML matching strategies.</p>
-<h3 id="parameters_10">Parameters<a class="headerlink" href="#parameters_10" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-batch-parameters">Parameters<a class="headerlink" href="#idxml-batch-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2378,21 +2378,21 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_10">Usage Examples<a class="headerlink" href="#usage-examples_10" title="Anchor link to this section">&para;</a></h3>
-<h4 id="folder-based-conversion">Folder-Based Conversion<a class="headerlink" href="#folder-based-conversion" title="Anchor link to this section">&para;</a></h4>
+<h3 id="idxml-batch-examples">Usage Examples<a class="headerlink" href="#idxml-batch-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="idxml-batch-example-folder">Folder-Based Conversion<a class="headerlink" href="#idxml-batch-example-folder" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>idxml-batch<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span>--idxml-folder<span class="w"> </span>./idxml_files<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span>--output-prefix-file<span class="w"> </span>batch_psm
 </span></code></pre></div>
-<h4 id="file-list-with-index-matching">File List with Index Matching<a class="headerlink" href="#file-list-with-index-matching" title="Anchor link to this section">&para;</a></h4>
+<h4 id="idxml-batch-example-list">File List with Index Matching<a class="headerlink" href="#idxml-batch-example-list" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>idxml-batch<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">    </span>--idxml-files<span class="w"> </span>file1.idXML,file2.idXML,file3.idXML<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span>--mzml-files<span class="w"> </span>file1.mzML,file2.mzML,file3.mzML<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span>--output-folder<span class="w"> </span>./output<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h4 id="folder-with-basename-matching">Folder with Basename Matching<a class="headerlink" href="#folder-with-basename-matching" title="Anchor link to this section">&para;</a></h4>
+<h4 id="idxml-batch-example-basename">Folder with Basename Matching<a class="headerlink" href="#idxml-batch-example-basename" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>quantmsioc<span class="w"> </span>convert<span class="w"> </span>idxml-batch<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">    </span>--idxml-folder<span class="w"> </span>./idxml_files<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span>--mzml-folder<span class="w"> </span>./mzml_files<span class="w"> </span><span class="se">\</span>
@@ -2400,20 +2400,20 @@
 </span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span>--output-prefix-file<span class="w"> </span>merged_with_spectra<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">    </span>--verbose
 </span></code></pre></div>
-<h3 id="matching-strategies">Matching Strategies<a class="headerlink" href="#matching-strategies" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-batch-matching">Matching Strategies<a class="headerlink" href="#idxml-batch-matching" title="Anchor link to this section">&para;</a></h3>
 <p>The command supports three mzML matching strategies:</p>
 <ol>
 <li><strong>Folder-Folder</strong>: Matches files by basename (filename without extension)</li>
 <li><strong>List-List</strong>: Matches files by position in the list (index-based)</li>
 <li><strong>Folder-List</strong>: Matches folder files by basename with list files</li>
 </ol>
-<h3 id="output-files_10">Output Files<a class="headerlink" href="#output-files_10" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-batch-output">Output Files<a class="headerlink" href="#idxml-batch-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Output</strong>: <code>{output-prefix-file}-{uuid}.psm.parquet</code></li>
 <li><strong>Format</strong>: Single merged parquet file containing PSM data from all inputs</li>
 <li><strong>Schema</strong>: Conforms to quantms.io PSM specification</li>
 </ul>
-<h3 id="best-practices_6">Best Practices<a class="headerlink" href="#best-practices_6" title="Anchor link to this section">&para;</a></h3>
+<h3 id="idxml-batch-best-practices">Best Practices<a class="headerlink" href="#idxml-batch-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Use verbose mode to monitor matching and conversion progress</li>
 <li>Ensure consistent naming when using basename matching</li>

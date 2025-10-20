@@ -1278,9 +1278,9 @@
 <hr />
 <h2 id="project-ae">project-ae<a class="headerlink" href="#project-ae" title="Anchor link to this section">&para;</a></h2>
 <p>Generate comprehensive statistics for a project's absolute expression data.</p>
-<h3 id="description">Description<a class="headerlink" href="#description" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-description">Description<a class="headerlink" href="#project-ae-description" title="Anchor link to this section">&para;</a></h3>
 <p>Analyzes both absolute expression (AE) and PSM data to generate a complete statistical summary. This command is useful for quality control and generating summary statistics for publications or reports.</p>
-<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-parameters">Parameters<a class="headerlink" href="#project-ae-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1315,19 +1315,19 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Anchor link to this section">&para;</a></h3>
-<h4 id="print-to-console">Print to Console<a class="headerlink" href="#print-to-console" title="Anchor link to this section">&para;</a></h4>
+<h3 id="project-ae-examples">Usage Examples<a class="headerlink" href="#project-ae-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="project-ae-example-console">Print to Console<a class="headerlink" href="#project-ae-example-console" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>quantmsioc<span class="w"> </span>stats<span class="w"> </span>analyze<span class="w"> </span>project-ae<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>--absolute-path<span class="w"> </span>./output/ae.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>--parquet-path<span class="w"> </span>./output/psm.parquet
 </span></code></pre></div>
-<h4 id="save-to-file">Save to File<a class="headerlink" href="#save-to-file" title="Anchor link to this section">&para;</a></h4>
+<h4 id="project-ae-example-file">Save to File<a class="headerlink" href="#project-ae-example-file" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>quantmsioc<span class="w"> </span>stats<span class="w"> </span>analyze<span class="w"> </span>project-ae<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>--absolute-path<span class="w"> </span>./output/ae.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--parquet-path<span class="w"> </span>./output/psm.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>--save-path<span class="w"> </span>./reports/project_statistics.txt
 </span></code></pre></div>
-<h3 id="output-format">Output Format<a class="headerlink" href="#output-format" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-output">Output Format<a class="headerlink" href="#project-ae-output" title="Anchor link to this section">&para;</a></h3>
 <p>The command generates a text report with the following metrics:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Number of proteins: 2,547
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>Number of peptides: 12,384
@@ -1337,7 +1337,7 @@
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>iBAQ Number of proteins: 2,547
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>iBAQ Number of samples: 24
 </span></code></pre></div>
-<h3 id="metrics-explained">Metrics Explained<a class="headerlink" href="#metrics-explained" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-metrics">Metrics Explained<a class="headerlink" href="#project-ae-metrics" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1376,14 +1376,14 @@
 </tr>
 </tbody>
 </table>
-<h3 id="use-cases">Use Cases<a class="headerlink" href="#use-cases" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-use-cases">Use Cases<a class="headerlink" href="#project-ae-use-cases" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Quality Control</strong>: Verify expected number of identifications</li>
 <li><strong>Publication Reporting</strong>: Generate summary statistics for methods sections</li>
 <li><strong>Data Completeness</strong>: Assess coverage across samples</li>
 <li><strong>Comparative Analysis</strong>: Compare statistics across different processing pipelines</li>
 </ul>
-<h3 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Anchor link to this section">&para;</a></h3>
+<h3 id="project-ae-best-practices">Best Practices<a class="headerlink" href="#project-ae-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Run statistics after data processing to verify completeness</li>
 <li>Compare statistics with expected values based on sample type and instrument</li>
@@ -1393,9 +1393,9 @@
 <hr />
 <h2 id="psm">psm<a class="headerlink" href="#psm" title="Anchor link to this section">&para;</a></h2>
 <p>Generate statistics for PSM (Peptide-Spectrum Match) data.</p>
-<h3 id="description_1">Description<a class="headerlink" href="#description_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-description">Description<a class="headerlink" href="#psm-description" title="Anchor link to this section">&para;</a></h3>
 <p>Analyzes PSM data to generate detailed statistics about identifications, including protein, peptide, and PSM counts.</p>
-<h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-parameters">Parameters<a class="headerlink" href="#psm-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1423,24 +1423,24 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_1">Usage Examples<a class="headerlink" href="#usage-examples_1" title="Anchor link to this section">&para;</a></h3>
-<h4 id="print-to-console_1">Print to Console<a class="headerlink" href="#print-to-console_1" title="Anchor link to this section">&para;</a></h4>
+<h3 id="psm-examples">Usage Examples<a class="headerlink" href="#psm-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="psm-example-console">Print to Console<a class="headerlink" href="#psm-example-console" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>quantmsioc<span class="w"> </span>stats<span class="w"> </span>analyze<span class="w"> </span>psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--parquet-path<span class="w"> </span>tests/examples/parquet/psm.parquet
 </span></code></pre></div>
-<h4 id="save-to-file_1">Save to File<a class="headerlink" href="#save-to-file_1" title="Anchor link to this section">&para;</a></h4>
+<h4 id="psm-example-file">Save to File<a class="headerlink" href="#psm-example-file" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>quantmsioc<span class="w"> </span>stats<span class="w"> </span>analyze<span class="w"> </span>psm<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--parquet-path<span class="w"> </span>./output/psm.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./reports/psm_statistics.txt
 </span></code></pre></div>
-<h3 id="output-format_1">Output Format<a class="headerlink" href="#output-format_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-output">Output Format<a class="headerlink" href="#psm-output" title="Anchor link to this section">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Number of proteins: 1,823
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Number of peptides: 8,642
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>Number of peptidoforms: 11,205
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>Number of PSMs: 45,892
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>Number of msruns: 12
 </span></code></pre></div>
-<h3 id="metrics-explained_1">Metrics Explained<a class="headerlink" href="#metrics-explained_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-metrics">Metrics Explained<a class="headerlink" href="#psm-metrics" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1471,7 +1471,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="understanding-the-metrics">Understanding the Metrics<a class="headerlink" href="#understanding-the-metrics" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-understanding">Understanding the Metrics<a class="headerlink" href="#psm-understanding" title="Anchor link to this section">&para;</a></h3>
 <h4 id="peptide-vs-peptidoform">Peptide vs Peptidoform<a class="headerlink" href="#peptide-vs-peptidoform" title="Anchor link to this section">&para;</a></h4>
 <ul>
 <li><strong>Peptide</strong>: Amino acid sequence (e.g., <code>PEPTIDE</code>)</li>
@@ -1484,14 +1484,14 @@
 <li><strong>Peptidoforms per peptide</strong>: 1-3 (depends on PTM analysis)</li>
 <li><strong>Peptides per protein</strong>: 3-20 (depends on protein abundance and coverage)</li>
 </ul>
-<h3 id="use-cases_1">Use Cases<a class="headerlink" href="#use-cases_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-use-cases">Use Cases<a class="headerlink" href="#psm-use-cases" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Quality Assessment</strong>: Verify identification rates</li>
 <li><strong>Method Optimization</strong>: Compare different search parameters</li>
 <li><strong>Replication Analysis</strong>: Assess consistency across runs</li>
 <li><strong>FDR Validation</strong>: Ensure sufficient identifications after filtering</li>
 </ul>
-<h3 id="best-practices_1">Best Practices<a class="headerlink" href="#best-practices_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-best-practices">Best Practices<a class="headerlink" href="#psm-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Compare PSM counts before and after FDR filtering</li>
 <li>Monitor peptidoform counts to assess modification analysis quality</li>

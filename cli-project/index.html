@@ -1259,9 +1259,9 @@
 <hr />
 <h2 id="create">create<a class="headerlink" href="#create" title="Anchor link to this section">&para;</a></h2>
 <p>Generate a project file from a PRIDE project accession and SDRF metadata.</p>
-<h3 id="description">Description<a class="headerlink" href="#description" title="Anchor link to this section">&para;</a></h3>
+<h3 id="create-description">Description<a class="headerlink" href="#create-description" title="Anchor link to this section">&para;</a></h3>
 <p>Creates a comprehensive <code>project.json</code> file by combining metadata from the PRIDE Archive with sample information from an SDRF file. This command automatically fetches project details, publication information, and experimental metadata from PRIDE.</p>
-<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Anchor link to this section">&para;</a></h3>
+<h3 id="create-parameters">Parameters<a class="headerlink" href="#create-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1317,7 +1317,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Anchor link to this section">&para;</a></h3>
+<h3 id="create-examples">Usage Examples<a class="headerlink" href="#create-examples" title="Anchor link to this section">&para;</a></h3>
 <h4 id="basic-example">Basic Example<a class="headerlink" href="#basic-example" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>quantmsioc<span class="w"> </span>project<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>--project-accession<span class="w"> </span>PXD007683<span class="w"> </span><span class="se">\</span>
@@ -1423,7 +1423,7 @@
 <ul>
 <li><strong>Solution</strong>: Ensure SDRF file is correctly formatted and sample names match your data</li>
 </ul>
-<h3 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Anchor link to this section">&para;</a></h3>
+<h3 id="create-best-practices">Best Practices<a class="headerlink" href="#create-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Run this command at the beginning of data processing to establish provenance</li>
 <li>Include software name and version for reproducibility</li>
@@ -1431,7 +1431,7 @@
 <li>Keep the project.json file with your processed data</li>
 <li>Use <code>--delete-existing</code> flag carefully to avoid accidental data loss</li>
 </ul>
-<h3 id="validation">Validation<a class="headerlink" href="#validation" title="Anchor link to this section">&para;</a></h3>
+<h3 id="create-validation">Validation<a class="headerlink" href="#create-validation" title="Anchor link to this section">&para;</a></h3>
 <p>After creating the project file, validate it:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Check the project file was created</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>ls<span class="w"> </span>-lh<span class="w"> </span>./project_metadata/project.json
@@ -1445,9 +1445,9 @@
 <hr />
 <h2 id="attach">attach<a class="headerlink" href="#attach" title="Anchor link to this section">&para;</a></h2>
 <p>Attach additional files to an existing project metadata file.</p>
-<h3 id="description_1">Description<a class="headerlink" href="#description_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="attach-description">Description<a class="headerlink" href="#attach-description" title="Anchor link to this section">&para;</a></h3>
 <p>Adds references to data files in the project.json metadata. This command is useful for tracking all files associated with a project.</p>
-<h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="attach-parameters">Parameters<a class="headerlink" href="#attach-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1503,7 +1503,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_1">Usage Examples<a class="headerlink" href="#usage-examples_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="attach-examples">Usage Examples<a class="headerlink" href="#attach-examples" title="Anchor link to this section">&para;</a></h3>
 <h4 id="attach-psm-file">Attach PSM File<a class="headerlink" href="#attach-psm-file" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>quantmsioc<span class="w"> </span>project<span class="w"> </span>attach<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--project-file<span class="w"> </span>./project/project.json<span class="w"> </span><span class="se">\</span>
@@ -1599,7 +1599,7 @@
 </table>
 <h3 id="output">Output<a class="headerlink" href="#output" title="Anchor link to this section">&para;</a></h3>
 <p>The command updates the project.json file by adding a file entry to the appropriate section based on the category.</p>
-<h3 id="best-practices_1">Best Practices<a class="headerlink" href="#best-practices_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="attach-best-practices">Best Practices<a class="headerlink" href="#attach-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Attach files immediately after creating them to maintain accurate file tracking</li>
 <li>Use correct file categories for proper organization</li>

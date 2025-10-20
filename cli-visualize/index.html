@@ -1290,9 +1290,9 @@
 <hr />
 <h2 id="psm-peptides">psm-peptides<a class="headerlink" href="#psm-peptides" title="Anchor link to this section">&para;</a></h2>
 <p>Plot peptides by condition in label-free quantification (LFQ) experiments.</p>
-<h3 id="description">Description<a class="headerlink" href="#description" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-peptides-description">Description<a class="headerlink" href="#psm-peptides-description" title="Anchor link to this section">&para;</a></h3>
 <p>Creates a visualization showing the distribution of identified peptides across different experimental conditions. This plot helps assess data quality and completeness across samples.</p>
-<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-peptides-parameters">Parameters<a class="headerlink" href="#psm-peptides-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1327,20 +1327,20 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example">Basic Example<a class="headerlink" href="#basic-example" title="Anchor link to this section">&para;</a></h4>
+<h3 id="psm-peptides-examples">Usage Examples<a class="headerlink" href="#psm-peptides-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="psm-peptides-example-basic">Basic Example<a class="headerlink" href="#psm-peptides-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>psm-peptides<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>--psm-parquet-path<span class="w"> </span>tests/examples/parquet/psm.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>--sdrf-path<span class="w"> </span>tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/peptides_by_condition.svg
 </span></code></pre></div>
-<h4 id="generate-pdf-output">Generate PDF Output<a class="headerlink" href="#generate-pdf-output" title="Anchor link to this section">&para;</a></h4>
+<h4 id="psm-peptides-example-pdf">Generate PDF Output<a class="headerlink" href="#psm-peptides-example-pdf" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>psm-peptides<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>--psm-parquet-path<span class="w"> </span>./output/psm.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--sdrf-path<span class="w"> </span>./metadata.sdrf.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/peptides_by_condition.pdf
 </span></code></pre></div>
-<h3 id="output">Output<a class="headerlink" href="#output" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-peptides-output">Output<a class="headerlink" href="#psm-peptides-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Format</strong>: SVG or PDF (based on file extension in <code>--save-path</code>)</li>
 <li><strong>Content</strong>: Bar plot showing peptide counts per condition</li>
@@ -1348,13 +1348,13 @@
 <li>X-axis: Experimental conditions</li>
 <li>Y-axis: Number of identified peptides</li>
 </ul>
-<h3 id="interpretation">Interpretation<a class="headerlink" href="#interpretation" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-peptides-interpretation">Interpretation<a class="headerlink" href="#psm-peptides-interpretation" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>High variation</strong>: May indicate batch effects or quality issues</li>
 <li><strong>Low counts</strong>: May suggest technical problems with specific samples</li>
 <li><strong>Consistent counts</strong>: Indicates good data quality and reproducibility</li>
 </ul>
-<h3 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Anchor link to this section">&para;</a></h3>
+<h3 id="psm-peptides-best-practices">Best Practices<a class="headerlink" href="#psm-peptides-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Use SVG format for publications (scalable vector graphics)</li>
 <li>Verify SDRF metadata correctly defines experimental conditions</li>
@@ -1363,9 +1363,9 @@
 <hr />
 <h2 id="ibaq-distribution">ibaq-distribution<a class="headerlink" href="#ibaq-distribution" title="Anchor link to this section">&para;</a></h2>
 <p>Plot the distribution of iBAQ (intensity-Based Absolute Quantification) values.</p>
-<h3 id="description_1">Description<a class="headerlink" href="#description_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="ibaq-distribution-description">Description<a class="headerlink" href="#ibaq-distribution-description" title="Anchor link to this section">&para;</a></h3>
 <p>Creates a histogram or density plot showing the distribution of iBAQ values across proteins. Useful for quality control and understanding the dynamic range of protein quantification.</p>
-<h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="ibaq-distribution-parameters">Parameters<a class="headerlink" href="#ibaq-distribution-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1400,19 +1400,19 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_1">Usage Examples<a class="headerlink" href="#usage-examples_1" title="Anchor link to this section">&para;</a></h3>
-<h4 id="plot-all-samples">Plot All Samples<a class="headerlink" href="#plot-all-samples" title="Anchor link to this section">&para;</a></h4>
+<h3 id="ibaq-distribution-examples">Usage Examples<a class="headerlink" href="#ibaq-distribution-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="ibaq-distribution-example-all">Plot All Samples<a class="headerlink" href="#ibaq-distribution-example-all" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>ibaq-distribution<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>--ibaq-path<span class="w"> </span>tests/examples/AE/PXD016999.1-ibaq.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/ibaq_distribution.svg
 </span></code></pre></div>
-<h4 id="plot-specific-sample">Plot Specific Sample<a class="headerlink" href="#plot-specific-sample" title="Anchor link to this section">&para;</a></h4>
+<h4 id="ibaq-distribution-example-specific">Plot Specific Sample<a class="headerlink" href="#ibaq-distribution-example-specific" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>ibaq-distribution<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--ibaq-path<span class="w"> </span>tests/examples/AE/PXD016999.1-ibaq.tsv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--select-column<span class="w"> </span>Sample_001<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/ibaq_sample001.svg
 </span></code></pre></div>
-<h3 id="output_1">Output<a class="headerlink" href="#output_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="ibaq-distribution-output">Output<a class="headerlink" href="#ibaq-distribution-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Format</strong>: SVG or PDF</li>
 <li><strong>Content</strong>: Distribution plot (histogram + kernel density estimate)</li>
@@ -1420,13 +1420,13 @@
 <li>X-axis: log10(iBAQ intensity)</li>
 <li>Y-axis: Density or frequency</li>
 </ul>
-<h3 id="interpretation_1">Interpretation<a class="headerlink" href="#interpretation_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="ibaq-distribution-interpretation">Interpretation<a class="headerlink" href="#ibaq-distribution-interpretation" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Bimodal distribution</strong>: May indicate distinct protein abundance classes</li>
 <li><strong>Long tail</strong>: High-abundance proteins (housekeeping, abundant structural proteins)</li>
 <li><strong>Narrow range</strong>: Limited dynamic range, possible detection issues</li>
 </ul>
-<h3 id="best-practices_1">Best Practices<a class="headerlink" href="#best-practices_1" title="Anchor link to this section">&para;</a></h3>
+<h3 id="ibaq-distribution-best-practices">Best Practices<a class="headerlink" href="#ibaq-distribution-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Log-transform intensities for better visualization</li>
 <li>Compare distributions across samples to identify outliers</li>
@@ -1435,9 +1435,9 @@
 <hr />
 <h2 id="kde-intensity">kde-intensity<a class="headerlink" href="#kde-intensity" title="Anchor link to this section">&para;</a></h2>
 <p>Plot Kernel Density Estimation (KDE) of intensity distributions across samples.</p>
-<h3 id="description_2">Description<a class="headerlink" href="#description_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="kde-intensity-description">Description<a class="headerlink" href="#kde-intensity-description" title="Anchor link to this section">&para;</a></h3>
 <p>Creates overlaid KDE plots showing intensity distributions for multiple samples, enabling visual comparison of sample-to-sample variability and batch effects.</p>
-<h3 id="parameters_2">Parameters<a class="headerlink" href="#parameters_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="kde-intensity-parameters">Parameters<a class="headerlink" href="#kde-intensity-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1472,19 +1472,19 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_2">Usage Examples<a class="headerlink" href="#usage-examples_2" title="Anchor link to this section">&para;</a></h3>
-<h4 id="plot-default-samples">Plot Default Samples<a class="headerlink" href="#plot-default-samples" title="Anchor link to this section">&para;</a></h4>
+<h3 id="kde-intensity-examples">Usage Examples<a class="headerlink" href="#kde-intensity-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="kde-intensity-example-default">Plot Default Samples<a class="headerlink" href="#kde-intensity-example-default" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>kde-intensity<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>tests/examples/parquet/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/intensity_kde.svg
 </span></code></pre></div>
-<h4 id="plot-more-samples">Plot More Samples<a class="headerlink" href="#plot-more-samples" title="Anchor link to this section">&para;</a></h4>
+<h4 id="kde-intensity-example-more">Plot More Samples<a class="headerlink" href="#kde-intensity-example-more" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>kde-intensity<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>./output/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/intensity_kde_all.svg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span>--num-samples<span class="w"> </span><span class="m">20</span>
 </span></code></pre></div>
-<h3 id="output_2">Output<a class="headerlink" href="#output_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="kde-intensity-output">Output<a class="headerlink" href="#kde-intensity-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Format</strong>: SVG or PDF</li>
 <li><strong>Content</strong>: Overlaid KDE curves for each sample</li>
@@ -1493,13 +1493,13 @@
 <li>Y-axis: Density</li>
 <li><strong>Legend</strong>: Sample identifiers</li>
 </ul>
-<h3 id="interpretation_2">Interpretation<a class="headerlink" href="#interpretation_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="kde-intensity-interpretation">Interpretation<a class="headerlink" href="#kde-intensity-interpretation" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Overlapping curves</strong>: Good sample-to-sample consistency</li>
 <li><strong>Shifted curves</strong>: Potential batch effects or normalization issues</li>
 <li><strong>Different shapes</strong>: Sample-specific technical issues</li>
 </ul>
-<h3 id="best-practices_2">Best Practices<a class="headerlink" href="#best-practices_2" title="Anchor link to this section">&para;</a></h3>
+<h3 id="kde-intensity-best-practices">Best Practices<a class="headerlink" href="#kde-intensity-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Limit to 10-20 samples for readability</li>
 <li>Use this plot to identify samples requiring normalization</li>
@@ -1508,9 +1508,9 @@
 <hr />
 <h2 id="peptide-distribution">peptide-distribution<a class="headerlink" href="#peptide-distribution" title="Anchor link to this section">&para;</a></h2>
 <p>Plot the distribution of peptides across proteins.</p>
-<h3 id="description_3">Description<a class="headerlink" href="#description_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="peptide-distribution-description">Description<a class="headerlink" href="#peptide-distribution-description" title="Anchor link to this section">&para;</a></h3>
 <p>Visualizes how many peptides are identified for each protein, providing insights into protein coverage and identification confidence.</p>
-<h3 id="parameters_3">Parameters<a class="headerlink" href="#parameters_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="peptide-distribution-parameters">Parameters<a class="headerlink" href="#peptide-distribution-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1545,19 +1545,19 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_3">Usage Examples<a class="headerlink" href="#usage-examples_3" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_1">Basic Example<a class="headerlink" href="#basic-example_1" title="Anchor link to this section">&para;</a></h4>
+<h3 id="peptide-distribution-examples">Usage Examples<a class="headerlink" href="#peptide-distribution-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="peptide-distribution-example-basic">Basic Example<a class="headerlink" href="#peptide-distribution-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>peptide-distribution<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>tests/examples/parquet/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/peptide_per_protein.svg
 </span></code></pre></div>
-<h4 id="show-top-50-proteins">Show Top 50 Proteins<a class="headerlink" href="#show-top-50-proteins" title="Anchor link to this section">&para;</a></h4>
+<h4 id="peptide-distribution-example-top50">Show Top 50 Proteins<a class="headerlink" href="#peptide-distribution-example-top50" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>peptide-distribution<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>./output/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/peptide_per_protein_top50.svg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>--num-samples<span class="w"> </span><span class="m">50</span>
 </span></code></pre></div>
-<h3 id="output_3">Output<a class="headerlink" href="#output_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="peptide-distribution-output">Output<a class="headerlink" href="#peptide-distribution-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Format</strong>: SVG or PDF</li>
 <li><strong>Content</strong>: Bar plot showing peptide counts per protein</li>
@@ -1565,13 +1565,13 @@
 <li>X-axis: Protein identifiers (top N by peptide count)</li>
 <li>Y-axis: Number of identified peptides</li>
 </ul>
-<h3 id="interpretation_3">Interpretation<a class="headerlink" href="#interpretation_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="peptide-distribution-interpretation">Interpretation<a class="headerlink" href="#peptide-distribution-interpretation" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>High peptide counts</strong>: Abundant proteins with good coverage</li>
 <li><strong>Single peptide proteins</strong>: May be less confident identifications</li>
 <li><strong>Distribution shape</strong>: Reflects proteome complexity</li>
 </ul>
-<h3 id="best-practices_3">Best Practices<a class="headerlink" href="#best-practices_3" title="Anchor link to this section">&para;</a></h3>
+<h3 id="peptide-distribution-best-practices">Best Practices<a class="headerlink" href="#peptide-distribution-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Focus on top proteins for initial quality assessment</li>
 <li>Filter single-peptide identifications for high-confidence datasets</li>
@@ -1580,9 +1580,9 @@
 <hr />
 <h2 id="box-intensity">box-intensity<a class="headerlink" href="#box-intensity" title="Anchor link to this section">&para;</a></h2>
 <p>Plot box plots of intensity distributions across samples.</p>
-<h3 id="description_4">Description<a class="headerlink" href="#description_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="box-intensity-description">Description<a class="headerlink" href="#box-intensity-description" title="Anchor link to this section">&para;</a></h3>
 <p>Creates box plots showing the distribution of feature intensities for each sample, ideal for identifying outliers and assessing normalization quality.</p>
-<h3 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="box-intensity-parameters">Parameters<a class="headerlink" href="#box-intensity-parameters" title="Anchor link to this section">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1617,19 +1617,19 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage-examples_4">Usage Examples<a class="headerlink" href="#usage-examples_4" title="Anchor link to this section">&para;</a></h3>
-<h4 id="basic-example_2">Basic Example<a class="headerlink" href="#basic-example_2" title="Anchor link to this section">&para;</a></h4>
+<h3 id="box-intensity-examples">Usage Examples<a class="headerlink" href="#box-intensity-examples" title="Anchor link to this section">&para;</a></h3>
+<h4 id="box-intensity-example-basic">Basic Example<a class="headerlink" href="#box-intensity-example-basic" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>box-intensity<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>tests/examples/parquet/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/intensity_boxplot.svg
 </span></code></pre></div>
-<h4 id="plot-all-samples_1">Plot All Samples<a class="headerlink" href="#plot-all-samples_1" title="Anchor link to this section">&para;</a></h4>
+<h4 id="box-intensity-example-all">Plot All Samples<a class="headerlink" href="#box-intensity-example-all" title="Anchor link to this section">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>quantmsioc<span class="w"> </span>visualize<span class="w"> </span>plot<span class="w"> </span>box-intensity<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>--feature-path<span class="w"> </span>./output/feature.parquet<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--save-path<span class="w"> </span>./plots/intensity_boxplot_all.svg<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span>--num-samples<span class="w"> </span><span class="m">50</span>
 </span></code></pre></div>
-<h3 id="output_4">Output<a class="headerlink" href="#output_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="box-intensity-output">Output<a class="headerlink" href="#box-intensity-output" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Format</strong>: SVG or PDF</li>
 <li><strong>Content</strong>: Box plots for each sample</li>
@@ -1638,14 +1638,14 @@
 <li>Y-axis: log10(intensity)</li>
 <li><strong>Elements</strong>: Box (IQR), whiskers (1.5×IQR), outliers (points)</li>
 </ul>
-<h3 id="interpretation_4">Interpretation<a class="headerlink" href="#interpretation_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="box-intensity-interpretation">Interpretation<a class="headerlink" href="#box-intensity-interpretation" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li><strong>Aligned medians</strong>: Good normalization</li>
 <li><strong>Similar IQR</strong>: Consistent quantification across samples</li>
 <li><strong>Many outliers</strong>: May indicate contamination or technical issues</li>
 <li><strong>Different ranges</strong>: Batch effects or loading differences</li>
 </ul>
-<h3 id="best-practices_4">Best Practices<a class="headerlink" href="#best-practices_4" title="Anchor link to this section">&para;</a></h3>
+<h3 id="box-intensity-best-practices">Best Practices<a class="headerlink" href="#box-intensity-best-practices" title="Anchor link to this section">&para;</a></h3>
 <ul>
 <li>Use this plot to identify samples requiring normalization</li>
 <li>Check for systematic differences between batches or conditions</li>
