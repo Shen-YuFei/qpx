@@ -1460,7 +1460,6 @@ class MaxQuant:
 
             best_match_row = None
             best_similarity = 0.0
-            best_tissue_candidate = None
 
             # Try matching each candidate part against SDRF tissues
             for tissue_candidate in tissue_candidates:
@@ -1468,7 +1467,7 @@ class MaxQuant:
                 if not tissue_normalized or len(tissue_normalized) < 3:
                     continue
 
-                for idx, row in sdrf_df.iterrows():
+                for _, row in sdrf_df.iterrows():
                     sdrf_tissue = row.get("characteristics[organism part]", "")
                     if pd.notna(sdrf_tissue):
                         sdrf_tissue_normalized = self._normalize_tissue_name(
@@ -1481,7 +1480,6 @@ class MaxQuant:
                         if similarity > best_similarity:
                             best_similarity = similarity
                             best_match_row = row
-                            best_tissue_candidate = tissue_candidate
 
             if best_match_row is not None and best_similarity > 0.5:
                 first_sdrf_sample = best_match_row["source name"]
@@ -1497,8 +1495,12 @@ class MaxQuant:
                 }
 
                 return virtual_record
-        except Exception:
-            pass
+        except (KeyError, AttributeError, ValueError) as e:
+            logger.debug(f"Tissue-based matching failed for {maxquant_sample}: {e}")
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error in tissue matching for {maxquant_sample}: {e}"
+            )
 
         return None
 
