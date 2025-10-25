@@ -278,7 +278,7 @@ def test_idxml_batch_command_help():
     result = runner.invoke(convert_idxml_batch, ["--help"])
 
     assert result.exit_code == 0
-    assert "Convert multiple IdXML files" in result.output
+    assert "Convert multiple OpenMS idXML files" in result.output
     assert "--idxml-folder" in result.output
     assert "--idxml-files" in result.output
     assert "--output-folder" in result.output

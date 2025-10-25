@@ -70,7 +70,18 @@ def convert_quantms_feature_cmd(
     msstats_file: Path,
     verbose: bool = False,
 ):
-    """Convert feature data from mzTab to quantms.io format."""
+    """Convert feature data from mzTab to quantms.io format.
+    
+    Converts feature-level quantification data from mzTab format to the quantms.io standardized 
+    format, including MSstats quantification data.
+    
+    Example:
+        quantmsioc convert quantms-feature \\
+            --mztab-path /path/to/data.mzTab \\
+            --sdrf-file /path/to/metadata.sdrf.tsv \\
+            --msstats-file /path/to/msstats_in.csv \\
+            --output-folder ./output
+    """
     logger = logging.getLogger("quantmsio.commands.convert.feature")
     if verbose:
         logger.setLevel(logging.DEBUG)
@@ -173,7 +184,17 @@ def convert_quantms_psm_cmd(
     spectral_data: bool = False,
     verbose: bool = False,
 ):
-    """Convert PSM data from mzTab to quantms.io format."""
+    """Convert PSM data from mzTab to quantms.io format.
+    
+    Converts PSM data from mzTab format to the quantms.io standardized parquet format. 
+    Can work with existing DuckDB indexes or create new ones from mzTab files.
+    
+    Example:
+        quantmsioc convert quantms-psm \\
+            --mztab-path /path/to/data.mzTab \\
+            --output-folder ./output \\
+            --verbose
+    """
     logger = logging.getLogger("quantmsio.commands.convert.psm")
     if verbose:
         logger.setLevel(logging.DEBUG)
@@ -357,14 +378,18 @@ def convert_quantms_pg_cmd(
     """Convert protein groups from mzTab quantms TMT and LFQ data to quantms.io format using msstats for quantification.
 
     This command combines protein group definitions from mzTab with complete quantification
-    data from msstats_in.csv. For LFQ data, it computes:
+    data from msstats_in.csv. Supports both TMT and LFQ data, with optional TopN and iBAQ 
+    intensity calculations.
 
-    - Default intensity: Sum of all peptidoform intensities
-    - Additional intensities (optional):
-      - TopN: Mean of top N peptide intensities (default N=3)
-      - iBAQ: Intensity-based absolute quantification
-
-    The output file will be named as {prefix}-{uuid}.pg.parquet.
+    Example:
+        quantmsioc convert quantms-pg \\
+            --mztab-path /path/to/data.mzTab \\
+            --msstats-file /path/to/msstats_in.csv \\
+            --sdrf-file /path/to/metadata.sdrf.tsv \\
+            --output-folder ./output \\
+            --compute-topn \\
+            --compute-ibaq \\
+            --topn 3
     """
     logger = logging.getLogger("quantmsio.commands.convert.mztab")
     if verbose:

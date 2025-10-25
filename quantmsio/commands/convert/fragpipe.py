@@ -36,12 +36,16 @@ def convert_fragpipe_psm_cmd(
     output_prefix: Optional[str] = None,
 ):
     """Convert FragPipe PSMs to parquet format.
-
-    Args:
-        msms_file: PSM TSV file to extract peptide information
-        output_folder: Output directory for generated files
-        batch_size: Read batch size
-        output_prefix: Optional prefix for output files
+    
+    Transforms FragPipe PSM results from psm.tsv format into the standardized quantms.io 
+    parquet format for downstream analysis and integration.
+    
+    Example:
+        quantmsioc convert fragpipe \\
+            --msms-file psm.tsv \\
+            --output-folder ./output \\
+            --batch-size 1000000 \\
+            --output-prefix fragpipe_psm
     """
     if not output_folder.exists():
         output_folder.mkdir(parents=True, exist_ok=True)

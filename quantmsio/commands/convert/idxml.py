@@ -46,7 +46,16 @@ def convert_idxml_file(
     output_prefix_file: Optional[str],
     spectral_data: bool = False,
 ) -> None:
-
+    """Convert a single OpenMS idXML file to quantms.io PSM format.
+    
+    Converts PSM data from OpenMS idXML format to the quantms.io standardized parquet format. 
+    Can optionally attach spectral information from corresponding mzML files.
+    
+    Example:
+        quantmsioc convert idxml \\
+            --idxml-file /path/to/data.idXML \\
+            --output-folder ./output
+    """
     if idxml_file is None or output_folder is None:
         raise click.UsageError("Please provide all the required parameters")
 
@@ -304,12 +313,16 @@ def convert_idxml_batch(
     mzml_files: Optional[str],
     verbose: bool,
 ) -> None:
-    """
-    Convert multiple IdXML files to a single merged PSM parquet file.
-
-    Input: --idxml-folder (all files) or --idxml-files (specific files)
-    Optional: --mzml-folder or --mzml-files (for spectral data)
-    Matching: Folder mode uses filename, file list mode uses position/index
+    """Convert multiple OpenMS idXML files to a single merged PSM parquet file.
+    
+    Batch converts multiple idXML files and merges them into a single quantms.io PSM parquet file. 
+    Supports both folder-based and file-list-based input, with flexible mzML matching strategies.
+    
+    Example:
+        quantmsioc convert idxml-batch \\
+            --idxml-folder ./idxml_files \\
+            --output-folder ./output \\
+            --output-prefix-file batch_psm
     """
     # Setup logging
     logger = logging.getLogger(__name__)

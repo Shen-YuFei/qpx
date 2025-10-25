@@ -43,14 +43,16 @@ def map_spectrum_message_cmd(
     file_num: int,
     partitions: str = None,
 ):
-    """Map spectrum information from mzML files to parquet format.
-
-    Args:
-        parquet_path: PSM or feature parquet file path
-        mzml_directory: Directory containing mzML files
-        output_folder: Output directory for generated files
-        file_num: Number of rows to read in each batch
-        partitions: Optional fields for splitting files (comma-separated)
+    """Map spectrum information from mzML to parquet format.
+    
+    Enriches PSM or feature data with additional spectral information extracted from mzML files. 
+    This command maps spectrum metadata and peak information to the corresponding peptide-spectrum matches.
+    
+    Example:
+        quantmsioc transform spectra \\
+            --parquet-path ./output/psm.parquet \\
+            --mzml-directory ./mzml_files \\
+            --output-folder ./output
     """
     if partitions:
         partitions = partitions.split(",")

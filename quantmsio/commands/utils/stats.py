@@ -41,12 +41,16 @@ def project_ae_statistics_cmd(
     parquet_path: Path,
     save_path: Optional[Path],
 ) -> None:
-    """Generate statistics for a project's absolute expression data.
-
-    Args:
-        absolute_path: Absolute expression file path
-        parquet_path: PSM parquet file path
-        save_path: Output statistics file path. If not provided, prints to stdout.
+    """Generate comprehensive statistics for a project's absolute expression data.
+    
+    Analyzes both absolute expression (AE) and PSM data to generate a complete statistical summary. 
+    This command is useful for quality control and generating summary statistics for publications or reports.
+    
+    Example:
+        quantmsioc stats analyze project-ae \\
+            --absolute-path ./output/ae.parquet \\
+            --parquet-path ./output/psm.parquet \\
+            --save-path ./reports/project_statistics.txt
     """
     feature_statistics = ParquetStatistics(str(parquet_path))
     absolute_stats = IbaqStatistics(ibaq_path=str(absolute_path))
@@ -90,11 +94,15 @@ def psm_statistics_cmd(
     parquet_path: Path,
     save_path: Optional[Path],
 ) -> None:
-    """Generate statistics for a PSM parquet file.
-
-    Args:
-        parquet_path: PSM parquet file path
-        save_path: Output statistics file path. If not provided, prints to stdout.
+    """Generate statistics for PSM (Peptide-Spectrum Match) data.
+    
+    Analyzes PSM data to generate detailed statistics about identifications, including protein, 
+    peptide, and PSM counts.
+    
+    Example:
+        quantmsioc stats analyze psm \\
+            --parquet-path ./output/psm.parquet \\
+            --save-path ./reports/psm_statistics.txt
     """
 
     def write_stats(file: TextIO, stats: ParquetStatistics) -> None:

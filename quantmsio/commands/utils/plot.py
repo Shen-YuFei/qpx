@@ -47,12 +47,16 @@ def plot_peptides_cmd(
     sdrf_path: Path,
     save_path: Path,
 ) -> None:
-    """Plot peptides by condition in LFQ analysis.
-
-    Args:
-        psm_parquet_path: PSM parquet file path
-        sdrf_path: SDRF file path
-        save_path: Output image path
+    """Plot peptides by condition in label-free quantification (LFQ) experiments.
+    
+    Creates a visualization showing the distribution of identified peptides across different 
+    experimental conditions. This plot helps assess data quality and completeness across samples.
+    
+    Example:
+        quantmsioc visualize plot psm-peptides \\
+            --psm-parquet-path ./output/psm.parquet \\
+            --sdrf-path ./metadata.sdrf.tsv \\
+            --save-path ./plots/peptides_by_condition.svg
     """
     plot_peptides_of_lfq_condition(
         psm_parquet_path=str(psm_parquet_path),
@@ -87,12 +91,15 @@ def plot_ibaq_distribution_cmd(
     save_path: Path,
     select_column: Optional[str],
 ) -> None:
-    """Plot iBAQ value distribution.
-
-    Args:
-        ibaq_path: iBAQ file path
-        save_path: Output image path
-        select_column: Selected column in iBAQ file
+    """Plot the distribution of iBAQ (intensity-Based Absolute Quantification) values.
+    
+    Creates a histogram or density plot showing the distribution of iBAQ values across proteins. 
+    Useful for quality control and understanding the dynamic range of protein quantification.
+    
+    Example:
+        quantmsioc visualize plot ibaq-distribution \\
+            --ibaq-path ibaq_data.tsv \\
+            --save-path ./plots/ibaq_distribution.svg
     """
     plot_distribution_of_ibaq(str(ibaq_path), str(save_path), select_column)
 
@@ -124,12 +131,15 @@ def plot_kde_intensity_distribution_cmd(
     save_path: Path,
     num_samples: int,
 ) -> None:
-    """Plot KDE intensity distribution.
-
-    Args:
-        feature_path: Feature file path
-        save_path: Output image path
-        num_samples: Number of samples to plot
+    """Plot Kernel Density Estimation (KDE) of intensity distributions across samples.
+    
+    Creates overlaid KDE plots showing intensity distributions for multiple samples, enabling 
+    visual comparison of sample-to-sample variability and batch effects.
+    
+    Example:
+        quantmsioc visualize plot kde-intensity \\
+            --feature-path ./output/feature.parquet \\
+            --save-path ./plots/intensity_kde.svg
     """
     plot_intensity_distribution_of_samples(
         str(feature_path), str(save_path), num_samples
@@ -163,12 +173,15 @@ def plot_peptide_distribution_cmd(
     save_path: Path,
     num_samples: int,
 ) -> None:
-    """Plot peptide distribution.
-
-    Args:
-        feature_path: Feature file path
-        save_path: Output image path
-        num_samples: Number of samples to plot
+    """Plot the distribution of peptides across proteins.
+    
+    Visualizes how many peptides are identified for each protein, providing insights into 
+    protein coverage and identification confidence.
+    
+    Example:
+        quantmsioc visualize plot peptide-distribution \\
+            --feature-path ./output/feature.parquet \\
+            --save-path ./plots/peptide_per_protein.svg
     """
     plot_peptide_distribution_of_protein(str(feature_path), str(save_path), num_samples)
 
@@ -200,11 +213,14 @@ def plot_box_intensity_distribution_cmd(
     save_path: Path,
     num_samples: int,
 ) -> None:
-    """Plot intensity box plot.
-
-    Args:
-        feature_path: Feature file path
-        save_path: Output image path
-        num_samples: Number of samples to plot
+    """Plot box plots of intensity distributions across samples.
+    
+    Creates box plots showing the distribution of feature intensities for each sample, ideal 
+    for identifying outliers and assessing normalization quality.
+    
+    Example:
+        quantmsioc visualize plot box-intensity \\
+            --feature-path ./output/feature.parquet \\
+            --save-path ./plots/intensity_boxplot.svg
     """
     plot_intensity_box_of_samples(str(feature_path), str(save_path), num_samples)

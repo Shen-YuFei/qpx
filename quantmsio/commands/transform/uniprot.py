@@ -40,12 +40,15 @@ def map_latest_uniprot_cmd(
     output_prefix: str,
 ):
     """Map feature data to latest UniProt version.
-
-    Args:
-        feature_file: Feature file path
-        fasta: UniProt FASTA file path
-        output_folder: Output directory for generated files
-        output_prefix: Optional prefix for output files
+    
+    Maps peptides and features to the latest UniProt protein database using a FASTA file. 
+    This command updates protein identifications to match current UniProt accessions and annotations.
+    
+    Example:
+        quantmsioc transform uniprot \\
+            --feature-file ./output/feature.parquet \\
+            --fasta uniprot_human.fasta \\
+            --output-folder ./output
     """
     if not all([feature_file, fasta, output_folder]):
         raise click.UsageError("Please provide all required parameters")

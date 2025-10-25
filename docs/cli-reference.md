@@ -22,7 +22,7 @@ Convert various mass spectrometry data formats to the quantms.io standard format
 
 Transform and process data within the quantms.io ecosystem:
 
-- **Absolute Expression (AE)**: Convert iBAQ absolute expression data to quantms.io format
+- **Absolute Expression (AE)**: Convert iBAQ absolute expression data to quantms.io format ([format specification](https://io.quantms.org/format-specification/#absolute))
 - **Differential Expression (DE)**: Convert MSstats differential expression analysis results
 - **Gene Mapping**: Map gene information to protein data
 - **iBAQ Transformation**: Process iBAQ quantification files
@@ -130,4 +130,5 @@ quantmsioc stats analyze psm \
 
 - Each command provides detailed help information using the `--help` parameter
 - See [Format Specification](format-specification.md) for output file formats
+- View the [online format specification](https://io.quantms.org/format-specification/) for detailed schema information
 - Visit the [GitHub Repository](https://github.com/bigbio/quantms.io) to report issues

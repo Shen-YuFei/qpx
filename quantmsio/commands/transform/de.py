@@ -112,18 +112,15 @@ def convert_msstats_differential(
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
 def convert_msstats_differential_cmd(**kwargs):
-    """
-    Convert MSstats differential expression data to quantms.io format.
+    """Convert MSstats differential expression data to quantms.io format.
     
-    This command takes a differential expression file from MSstats and converts it
-    to the quantms.io format, using metadata from an SDRF file. The results can be
-    filtered by FDR threshold and specific proteins.
+    Transforms differential expression analysis results from MSstats into the standardized 
+    quantms.io differential expression format. Supports FDR-based filtering and protein-specific subsetting.
     
     Example:
-        quantmsio convert differential \\
-            --msstats-file data.msstats.txt \\
-            --sdrf-file data.sdrf.tsv \\
-            --output-folder ./output \\
-            --fdr-threshold 0.05
+        quantmsioc transform differential \\
+            --msstats-file msstats_comparisons.csv \\
+            --sdrf-file metadata.sdrf.tsv \\
+            --output-folder ./output
     """
     convert_msstats_differential(**kwargs)

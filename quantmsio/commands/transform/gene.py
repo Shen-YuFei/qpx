@@ -50,15 +50,17 @@ def map_gene_message_cmd(
     partitions: str = None,
     species: str = "human",
 ):
-    """Map gene information from FASTA file to parquet format.
-
-    Args:
-        parquet_path: PSM or feature parquet file path
-        fasta: FASTA file path
-        output_folder: Output directory for generated files
-        file_num: Number of rows to read in each batch
-        partitions: Optional fields for splitting files (comma-separated)
-        species: Species name (default: human)
+    """Map gene information from FASTA to parquet format.
+    
+    Maps gene names and information from a FASTA file to protein identifications in quantms.io 
+    PSM or feature files. This command enriches protein data with gene-level metadata extracted 
+    from FASTA headers.
+    
+    Example:
+        quantmsioc transform gene \\
+            --parquet-path ./output/psm.parquet \\
+            --fasta proteins.fasta \\
+            --output-folder ./output
     """
     if partitions:
         partitions = partitions.split(",")

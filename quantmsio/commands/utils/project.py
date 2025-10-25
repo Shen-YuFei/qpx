@@ -50,20 +50,20 @@ def generate_pride_project_json_cmd(
     output_folder: Path,
     delete_existing: bool,
 ):
-    """Generate a project file from the original PRIDE accession and SDRF file.
-
-    The project file definition is available in the docs folder of this repository:
-    https://github.com/bigbio/quantms.io/blob/main/docs/PROJECT.md
-
-    This command will generate the project file and attach the provided SDRF file.
-
-    Args:
-        project_accession: PRIDE project accession
-        sdrf_file: SDRF file path for metadata extraction
-        software_name: Software name used to generate the data
-        software_version: Software version used to generate the data
-        output_folder: Output directory for generated files
-        delete_existing: Delete existing files in the output folder
+    """Generate a project file from a PRIDE project accession and SDRF metadata.
+    
+    Creates a comprehensive project.json file by combining metadata from the PRIDE Archive with 
+    sample information from an SDRF file. This command automatically fetches project details, 
+    publication information, and experimental metadata from PRIDE.
+    
+    Example:
+        quantmsioc project create \\
+            --project-accession PXD007683 \\
+            --sdrf-file ./metadata.sdrf.tsv \\
+            --output-folder ./project_metadata \\
+            --software-name MaxQuant \\
+            --software-version 2.0.3.0 \\
+            --delete-existing
     """
     if not all([project_accession, sdrf_file, output_folder]):
         raise click.UsageError("Please provide all required parameters")

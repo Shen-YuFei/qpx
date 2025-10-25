@@ -2,6 +2,82 @@
 
 Create various data visualization plots from quantms.io data.
 
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+            if param.default is not None:
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+            description = param.help or ''
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
+
 ## Overview
 
 The `visualize` command group provides tools for creating publication-quality visualizations from quantms.io parquet files. All plots are saved in vector formats (SVG, PDF) for high-resolution output.
@@ -24,25 +100,25 @@ Plot peptides by condition in label-free quantification (LFQ) experiments.
 
 ### Description {#psm-peptides-description}
 
-Creates a visualization showing the distribution of identified peptides across different experimental conditions. This plot helps assess data quality and completeness across samples.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptides_cmd
+print(generate_description(plot_peptides_cmd))
+```
 
 ### Parameters {#psm-peptides-parameters}
 
-| Parameter            | Type | Required | Default | Description                        |
-| -------------------- | ---- | -------- | ------- | ---------------------------------- |
-| `--psm-parquet-path` | Path | Yes      | -       | PSM parquet file path              |
-| `--sdrf-path`        | Path | Yes      | -       | SDRF file path for metadata        |
-| `--save-path`        | Path | Yes      | -       | Output image path (e.g., plot.svg) |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptides_cmd
+print(generate_params_table(plot_peptides_cmd))
+```
 
 ### Usage Examples {#psm-peptides-examples}
 
 #### Basic Example {#psm-peptides-example-basic}
 
-```bash
-quantmsioc visualize plot psm-peptides \
-    --psm-parquet-path tests/examples/parquet/psm.parquet \
-    --sdrf-path tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv \
-    --save-path ./plots/peptides_by_condition.svg
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptides_cmd
+print(generate_example(plot_peptides_cmd, 'Plot peptides by condition:'))
 ```
 
 #### Generate PDF Output {#psm-peptides-example-pdf}
@@ -82,24 +158,25 @@ Plot the distribution of iBAQ (intensity-Based Absolute Quantification) values.
 
 ### Description {#ibaq-distribution-description}
 
-Creates a histogram or density plot showing the distribution of iBAQ values across proteins. Useful for quality control and understanding the dynamic range of protein quantification.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+print(generate_description(plot_ibaq_distribution_cmd))
+```
 
 ### Parameters {#ibaq-distribution-parameters}
 
-| Parameter         | Type   | Required | Default | Description                          |
-| ----------------- | ------ | -------- | ------- | ------------------------------------ |
-| `--ibaq-path`     | Path   | Yes      | -       | iBAQ file path                       |
-| `--save-path`     | Path   | Yes      | -       | Output image path (e.g., plot.svg)   |
-| `--select-column` | String | No       | -       | Specific column in iBAQ file to plot |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+print(generate_params_table(plot_ibaq_distribution_cmd))
+```
 
 ### Usage Examples {#ibaq-distribution-examples}
 
 #### Plot All Samples {#ibaq-distribution-example-all}
 
-```bash
-quantmsioc visualize plot ibaq-distribution \
-    --ibaq-path tests/examples/AE/PXD016999.1-ibaq.tsv \
-    --save-path ./plots/ibaq_distribution.svg
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+print(generate_example(plot_ibaq_distribution_cmd, 'Plot iBAQ distribution:'))
 ```
 
 #### Plot Specific Sample {#ibaq-distribution-example-specific}
@@ -139,24 +216,25 @@ Plot Kernel Density Estimation (KDE) of intensity distributions across samples.
 
 ### Description {#kde-intensity-description}
 
-Creates overlaid KDE plots showing intensity distributions for multiple samples, enabling visual comparison of sample-to-sample variability and batch effects.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+print(generate_description(plot_kde_intensity_distribution_cmd))
+```
 
 ### Parameters {#kde-intensity-parameters}
 
-| Parameter        | Type    | Required | Default | Description                        |
-| ---------------- | ------- | -------- | ------- | ---------------------------------- |
-| `--feature-path` | Path    | Yes      | -       | Feature parquet file path          |
-| `--save-path`    | Path    | Yes      | -       | Output image path (e.g., plot.svg) |
-| `--num-samples`  | Integer | No       | 10      | Number of samples to plot          |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+print(generate_params_table(plot_kde_intensity_distribution_cmd))
+```
 
 ### Usage Examples {#kde-intensity-examples}
 
 #### Plot Default Samples {#kde-intensity-example-default}
 
-```bash
-quantmsioc visualize plot kde-intensity \
-    --feature-path tests/examples/parquet/feature.parquet \
-    --save-path ./plots/intensity_kde.svg
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+print(generate_example(plot_kde_intensity_distribution_cmd, 'Plot KDE intensity distribution:'))
 ```
 
 #### Plot More Samples {#kde-intensity-example-more}
@@ -197,24 +275,25 @@ Plot the distribution of peptides across proteins.
 
 ### Description {#peptide-distribution-description}
 
-Visualizes how many peptides are identified for each protein, providing insights into protein coverage and identification confidence.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+print(generate_description(plot_peptide_distribution_cmd))
+```
 
 ### Parameters {#peptide-distribution-parameters}
 
-| Parameter        | Type    | Required | Default | Description                        |
-| ---------------- | ------- | -------- | ------- | ---------------------------------- |
-| `--feature-path` | Path    | Yes      | -       | Feature parquet file path          |
-| `--save-path`    | Path    | Yes      | -       | Output image path (e.g., plot.svg) |
-| `--num-samples`  | Integer | No       | 20      | Number of top proteins to display  |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+print(generate_params_table(plot_peptide_distribution_cmd))
+```
 
 ### Usage Examples {#peptide-distribution-examples}
 
 #### Basic Example {#peptide-distribution-example-basic}
 
-```bash
-quantmsioc visualize plot peptide-distribution \
-    --feature-path tests/examples/parquet/feature.parquet \
-    --save-path ./plots/peptide_per_protein.svg
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+print(generate_example(plot_peptide_distribution_cmd, 'Plot peptide distribution:'))
 ```
 
 #### Show Top 50 Proteins {#peptide-distribution-example-top50}
@@ -254,24 +333,25 @@ Plot box plots of intensity distributions across samples.
 
 ### Description {#box-intensity-description}
 
-Creates box plots showing the distribution of feature intensities for each sample, ideal for identifying outliers and assessing normalization quality.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+print(generate_description(plot_box_intensity_distribution_cmd))
+```
 
 ### Parameters {#box-intensity-parameters}
 
-| Parameter        | Type    | Required | Default | Description                        |
-| ---------------- | ------- | -------- | ------- | ---------------------------------- |
-| `--feature-path` | Path    | Yes      | -       | Feature parquet file path          |
-| `--save-path`    | Path    | Yes      | -       | Output image path (e.g., plot.svg) |
-| `--num-samples`  | Integer | No       | 10      | Number of samples to plot          |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+print(generate_params_table(plot_box_intensity_distribution_cmd))
+```
 
 ### Usage Examples {#box-intensity-examples}
 
 #### Basic Example {#box-intensity-example-basic}
 
-```bash
-quantmsioc visualize plot box-intensity \
-    --feature-path tests/examples/parquet/feature.parquet \
-    --save-path ./plots/intensity_boxplot.svg
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+print(generate_example(plot_box_intensity_distribution_cmd, 'Plot box intensity distribution:'))
 ```
 
 #### Plot All Samples {#box-intensity-example-all}

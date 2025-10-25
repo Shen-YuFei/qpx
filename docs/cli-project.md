@@ -2,6 +2,82 @@
 
 Manage project metadata and file attachments for quantms.io projects.
 
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+            if param.default is not None:
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+            description = param.help or ''
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
+
 ## Overview
 
 The `project` command group provides tools for creating and managing project-level metadata, including integration with PRIDE Archive, SDRF file handling, and file attachment management.
@@ -19,28 +95,25 @@ Generate a project file from a PRIDE project accession and SDRF metadata.
 
 ### Description {#create-description}
 
-Creates a comprehensive `project.json` file by combining metadata from the PRIDE Archive with sample information from an SDRF file. This command automatically fetches project details, publication information, and experimental metadata from PRIDE.
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+print(generate_description(generate_pride_project_json_cmd))
+```
 
 ### Parameters {#create-parameters}
 
-| Parameter             | Type   | Required | Default | Description                                |
-| --------------------- | ------ | -------- | ------- | ------------------------------------------ |
-| `--project-accession` | String | Yes      | -       | PRIDE project accession (e.g., PXD001234)  |
-| `--sdrf-file`         | Path   | Yes      | -       | SDRF file path for metadata extraction     |
-| `--output-folder`     | Path   | Yes      | -       | Output directory for generated files       |
-| `--software-name`     | String | No       | -       | Software name used to generate the data    |
-| `--software-version`  | String | No       | -       | Software version used to generate the data |
-| `--delete-existing`   | Flag   | No       | False   | Delete existing files in the output folder |
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+print(generate_params_table(generate_pride_project_json_cmd))
+```
 
 ### Usage Examples {#create-examples}
 
 #### Basic Example
 
-```bash
-quantmsioc project create \
-    --project-accession PXD007683 \
-    --sdrf-file ./PXD007683-LFQ.sdrf.tsv \
-    --output-folder ./project_metadata
+```python exec="1" html="1" session="doc_utils"
+from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+print(generate_example(generate_pride_project_json_cmd, 'Create project metadata with full parameters:'))
 ```
 
 #### With Software Information

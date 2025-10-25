@@ -39,13 +39,17 @@ def convert_ibaq_file_cmd(
     output_folder: Path,
     output_prefix: str,
 ):
-    """Convert feature data to IBAQ format.
-
-    Args:
-        feature_file: Feature file path
-        sdrf_file: SDRF file for metadata extraction
-        output_folder: Output directory for generated files
-        output_prefix: Optional prefix for output files
+    """Convert feature data to iBAQ format.
+    
+    Transforms feature-level quantification data into iBAQ (intensity-Based Absolute Quantification) 
+    format. This command integrates feature quantification with sample metadata from SDRF files to 
+    generate iBAQ values.
+    
+    Example:
+        quantmsioc transform ibaq \\
+            --feature-file ./output/feature.parquet \\
+            --sdrf-file ./metadata.sdrf.tsv \\
+            --output-folder ./output
     """
     if not all([feature_file, sdrf_file, output_folder]):
         raise click.UsageError("Please provide all required parameters")

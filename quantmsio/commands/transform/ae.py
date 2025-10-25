@@ -57,16 +57,17 @@ def convert_ibaq_absolute_cmd(
     output_prefix: str,
     delete_existing: bool = True,
 ):
-    """Convert IBAQ absolute file into quantms.io format.
-
-    Args:
-        ibaq_file: IBAQ file path
-        sdrf_file: SDRF file path
-        project_file: Optional quantms.io project file
-        protein_file: Optional protein file with requirements
-        output_folder: Output directory for generated files
-        output_prefix: Optional prefix for output files
-        delete_existing: Whether to delete existing files
+    """Convert iBAQ absolute expression data to quantms.io format.
+    
+    Transforms iBAQ (intensity-Based Absolute Quantification) data into the standardized 
+    quantms.io absolute expression format. It integrates protein quantification with sample 
+    metadata from SDRF files.
+    
+    Example:
+        quantmsioc transform ae \\
+            --ibaq-file ibaq_data.tsv \\
+            --sdrf-file metadata.sdrf.tsv \\
+            --output-folder ./output
     """
     protein_list = extract_protein_list(protein_file) if protein_file else None
     protein_str = "|".join(protein_list) if protein_list else None
