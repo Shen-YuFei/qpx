@@ -435,7 +435,7 @@ class SDRFHandler:
         # Keep condition order consistent with factor numeric order
         def get_condition_index(col_name):
             match = re.search(r"\.(\d+)$", col_name)
-            return int(match.group(1)) if match else 0
+            return (int(match.group(1)) if match else 0, col_name)
         sorted_factor = sorted(factor, key=get_condition_index)
         sdrf.loc[:, "condition"] = sdrf[sorted_factor].astype(str).agg("|".join, axis=1)
 
