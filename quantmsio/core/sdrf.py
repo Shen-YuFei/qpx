@@ -431,9 +431,14 @@ class SDRFHandler:
         )
         samples = sdrf["source name"].unique()
         mixed_map = dict(zip(samples, range(1, len(samples) + 1)))
-        sdrf.loc[:, "condition"] = sdrf[factor].apply(
-            lambda row: "|".join([str(row[col]) for col in factor]), axis=1
-        )
+
+        # Keep condition order consistent with factor numeric order
+        def get_condition_index(col_name):
+            match = re.search(r"\.(\d+)$", col_name)
+            return int(match.group(1)) if match else 0
+        sorted_factor = sorted(factor, key=get_condition_index)
+        sdrf.loc[:, "condition"] = sdrf[sorted_factor].astype(str).agg("|".join, axis=1)
+
         sdrf.loc[:, "run"] = sdrf[
             [
                 "source name",
