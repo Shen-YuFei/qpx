@@ -1,6 +1,6 @@
 # Project Management Commands
 
-Manage project metadata and file attachments for quantms.io projects.
+Manage project metadata and file attachments for QPX projects.
 
 ```python exec="1" session="doc_utils" result="ansi"
 import click
@@ -109,14 +109,14 @@ Generate a project file from a PRIDE project accession and SDRF metadata.
 ### Description {#create-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+from qpx.commands.utils.project import generate_pride_project_json_cmd
 print(generate_description(generate_pride_project_json_cmd))
 ```
 
 ### Parameters {#create-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+from qpx.commands.utils.project import generate_pride_project_json_cmd
 print(generate_params_table(generate_pride_project_json_cmd))
 ```
 
@@ -125,14 +125,14 @@ print(generate_params_table(generate_pride_project_json_cmd))
 #### Basic Example
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.project import generate_pride_project_json_cmd
+from qpx.commands.utils.project import generate_pride_project_json_cmd
 print(generate_example(generate_pride_project_json_cmd, 'Create project metadata with full parameters:'))
 ```
 
 #### With Software Information
 
 ```bash
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD016999 \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --output-folder ./project_metadata \
@@ -145,7 +145,7 @@ quantmsioc project create \
 
 ```bash
 # Create project metadata
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD033169 \
     --sdrf-file ./PXD033169.sdrf.tsv \
     --output-folder ./project \
@@ -191,7 +191,7 @@ The generated `project.json` file contains:
     "name": "MaxQuant",
     "version": "2.0.3.0"
   },
-  "quantmsio_version": "1.0.0",
+  "qpx_version": "1.0.0",
   "files": [
     {
       "name": "PXD001234.sdrf.tsv",
@@ -210,7 +210,7 @@ The command integrates metadata from multiple sources:
 | ---------------------- | -------------------------------------------------------------------------- |
 | **PRIDE Archive**      | Project title, description, organism, publication info, instrument details |
 | **SDRF File**          | Sample metadata, experimental design, conditions, replicates               |
-| **Command Parameters** | Software information, quantmsio version                                    |
+| **Command Parameters** | Software information, qpx version                                    |
 
 ### Common Issues
 
@@ -275,7 +275,7 @@ Adds references to data files in the project.json metadata. This command is usef
 #### Attach PSM File
 
 ```bash
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/psm-abc123.psm.parquet \
     --category psm-file
@@ -285,19 +285,19 @@ quantmsioc project attach \
 
 ```bash
 # Attach PSM file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/psm.parquet \
     --category psm-file
 
 # Attach feature file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/feature.parquet \
     --category feature-file
 
 # Attach absolute expression file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/ae.parquet \
     --category absolute-file
@@ -311,7 +311,7 @@ quantmsioc project attach \
 PROJECT_FILE="./project/project.json"
 
 # Create project metadata
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD001234 \
     --sdrf-file ./metadata.sdrf.tsv \
     --output-folder ./project \
@@ -333,7 +333,7 @@ for file in ./output/*.parquet; do
         continue
     fi
 
-    quantmsioc project attach \
+    qpxc project attach \
         --project-file "$PROJECT_FILE" \
         --attach-file "$file" \
         --category "$category"
@@ -381,7 +381,7 @@ PROJECT_DIR="./project"
 
 # Step 1: Create project metadata
 echo "Creating project metadata..."
-quantmsioc project create \
+qpxc project create \
     --project-accession "$PROJECT_ID" \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$PROJECT_DIR" \
@@ -390,16 +390,16 @@ quantmsioc project create \
 
 # Step 2: Process data (example with MaxQuant)
 echo "Processing data..."
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file ./raw/msms.txt \
     --output-folder "$OUTPUT_DIR"
 
-quantmsioc convert maxquant-feature \
+qpxc convert maxquant-feature \
     --evidence-file ./raw/evidence.txt \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$OUTPUT_DIR"
 
-quantmsioc convert maxquant-pg \
+qpxc convert maxquant-pg \
     --protein-groups-file ./raw/proteinGroups.txt \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$OUTPUT_DIR"
@@ -416,7 +416,7 @@ for file in "$OUTPUT_DIR"/*.parquet; do
         category="feature-file"
     fi
 
-    quantmsioc project attach \
+    qpxc project attach \
         --project-file "$PROJECT_DIR/project.json" \
         --attach-file "$file" \
         --category "$category"
@@ -472,3 +472,4 @@ echo "SHA256: $(sha256sum $ARCHIVE_NAME)"
 - [Convert Commands](cli-convert.md) - Generate data files to attach to projects
 - [Transform Commands](cli-transform.md) - Process data for project workflows
 - [Statistics Commands](cli-stats.md) - Generate project statistics
+

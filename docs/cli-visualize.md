@@ -1,6 +1,6 @@
 # Visualization Commands
 
-Create various data visualization plots from quantms.io data.
+Create various data visualization plots from QPX data.
 
 ```python exec="1" session="doc_utils" result="ansi"
 import click
@@ -93,7 +93,7 @@ def generate_example(command, default_text=''):
 
 ## Overview
 
-The `visualize` command group provides tools for creating publication-quality visualizations from quantms.io parquet files. All plots are saved in vector formats (SVG, PDF) for high-resolution output.
+The `visualize` command group provides tools for creating publication-quality visualizations from QPX parquet files. All plots are saved in vector formats (SVG, PDF) for high-resolution output.
 
 ## Available Commands
 
@@ -114,14 +114,14 @@ Plot peptides by condition in label-free quantification (LFQ) experiments.
 ### Description {#psm-peptides-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptides_cmd
+from qpx.commands.utils.plot import plot_peptides_cmd
 print(generate_description(plot_peptides_cmd))
 ```
 
 ### Parameters {#psm-peptides-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptides_cmd
+from qpx.commands.utils.plot import plot_peptides_cmd
 print(generate_params_table(plot_peptides_cmd))
 ```
 
@@ -130,14 +130,14 @@ print(generate_params_table(plot_peptides_cmd))
 #### Basic Example {#psm-peptides-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptides_cmd
+from qpx.commands.utils.plot import plot_peptides_cmd
 print(generate_example(plot_peptides_cmd, 'Plot peptides by condition:'))
 ```
 
 #### Generate PDF Output {#psm-peptides-example-pdf}
 
 ```bash
-quantmsioc visualize plot psm-peptides \
+qpxc visualize plot psm-peptides \
     --psm-parquet-path ./output/psm.parquet \
     --sdrf-path ./metadata.sdrf.tsv \
     --save-path ./plots/peptides_by_condition.pdf
@@ -172,14 +172,14 @@ Plot the distribution of iBAQ (intensity-Based Absolute Quantification) values.
 ### Description {#ibaq-distribution-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+from qpx.commands.utils.plot import plot_ibaq_distribution_cmd
 print(generate_description(plot_ibaq_distribution_cmd))
 ```
 
 ### Parameters {#ibaq-distribution-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+from qpx.commands.utils.plot import plot_ibaq_distribution_cmd
 print(generate_params_table(plot_ibaq_distribution_cmd))
 ```
 
@@ -188,14 +188,14 @@ print(generate_params_table(plot_ibaq_distribution_cmd))
 #### Plot All Samples {#ibaq-distribution-example-all}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_ibaq_distribution_cmd
+from qpx.commands.utils.plot import plot_ibaq_distribution_cmd
 print(generate_example(plot_ibaq_distribution_cmd, 'Plot iBAQ distribution:'))
 ```
 
 #### Plot Specific Sample {#ibaq-distribution-example-specific}
 
 ```bash
-quantmsioc visualize plot ibaq-distribution \
+qpxc visualize plot ibaq-distribution \
     --ibaq-path tests/examples/AE/PXD016999.1-ibaq.tsv \
     --select-column Sample_001 \
     --save-path ./plots/ibaq_sample001.svg
@@ -230,14 +230,14 @@ Plot Kernel Density Estimation (KDE) of intensity distributions across samples.
 ### Description {#kde-intensity-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_kde_intensity_distribution_cmd
 print(generate_description(plot_kde_intensity_distribution_cmd))
 ```
 
 ### Parameters {#kde-intensity-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_kde_intensity_distribution_cmd
 print(generate_params_table(plot_kde_intensity_distribution_cmd))
 ```
 
@@ -246,14 +246,14 @@ print(generate_params_table(plot_kde_intensity_distribution_cmd))
 #### Plot Default Samples {#kde-intensity-example-default}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_kde_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_kde_intensity_distribution_cmd
 print(generate_example(plot_kde_intensity_distribution_cmd, 'Plot KDE intensity distribution:'))
 ```
 
 #### Plot More Samples {#kde-intensity-example-more}
 
 ```bash
-quantmsioc visualize plot kde-intensity \
+qpxc visualize plot kde-intensity \
     --feature-path ./output/feature.parquet \
     --save-path ./plots/intensity_kde_all.svg \
     --num-samples 20
@@ -289,14 +289,14 @@ Plot the distribution of peptides across proteins.
 ### Description {#peptide-distribution-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+from qpx.commands.utils.plot import plot_peptide_distribution_cmd
 print(generate_description(plot_peptide_distribution_cmd))
 ```
 
 ### Parameters {#peptide-distribution-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+from qpx.commands.utils.plot import plot_peptide_distribution_cmd
 print(generate_params_table(plot_peptide_distribution_cmd))
 ```
 
@@ -305,14 +305,14 @@ print(generate_params_table(plot_peptide_distribution_cmd))
 #### Basic Example {#peptide-distribution-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_peptide_distribution_cmd
+from qpx.commands.utils.plot import plot_peptide_distribution_cmd
 print(generate_example(plot_peptide_distribution_cmd, 'Plot peptide distribution:'))
 ```
 
 #### Show Top 50 Proteins {#peptide-distribution-example-top50}
 
 ```bash
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path ./output/feature.parquet \
     --save-path ./plots/peptide_per_protein_top50.svg \
     --num-samples 50
@@ -347,14 +347,14 @@ Plot box plots of intensity distributions across samples.
 ### Description {#box-intensity-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_box_intensity_distribution_cmd
 print(generate_description(plot_box_intensity_distribution_cmd))
 ```
 
 ### Parameters {#box-intensity-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_box_intensity_distribution_cmd
 print(generate_params_table(plot_box_intensity_distribution_cmd))
 ```
 
@@ -363,14 +363,14 @@ print(generate_params_table(plot_box_intensity_distribution_cmd))
 #### Basic Example {#box-intensity-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.plot import plot_box_intensity_distribution_cmd
+from qpx.commands.utils.plot import plot_box_intensity_distribution_cmd
 print(generate_example(plot_box_intensity_distribution_cmd, 'Plot box intensity distribution:'))
 ```
 
 #### Plot All Samples {#box-intensity-example-all}
 
 ```bash
-quantmsioc visualize plot box-intensity \
+qpxc visualize plot box-intensity \
     --feature-path ./output/feature.parquet \
     --save-path ./plots/intensity_boxplot_all.svg \
     --num-samples 50
@@ -424,7 +424,7 @@ quantmsioc visualize plot box-intensity \
 For advanced customization beyond these commands, consider:
 
 1. Exporting data to CSV and using custom plotting scripts
-2. Using the quantmsio Python API for programmatic access
+2. Using the qpx Python API for programmatic access
 3. Importing SVG files into vector graphics editors
 
 ---
@@ -434,3 +434,4 @@ For advanced customization beyond these commands, consider:
 - [Convert Commands](cli-convert.md) - Prepare data for visualization
 - [Transform Commands](cli-transform.md) - Process data before plotting
 - [Statistics Commands](cli-stats.md) - Generate numeric summaries
+

@@ -4,35 +4,36 @@
 
 ![Quick Start Flow](images/workflow2.png)
 
-Get started with quantmsio in a few simple steps: from installation to data conversion, transformation, and visualization.
+Get started with qpx in a few simple steps: from installation to data conversion, transformation, and visualization.
 
 ## Installation
 
 ```bash
-pip install quantmsio
+pip install qpx
 ```
 
 ## Basic Usage
 
 ```bash
 # View available commands
-quantmsioc --help
+qpxc --help
 
 # Convert MaxQuant data
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file msms.txt \
     --output-folder ./output
 
 # Transform to absolute expression
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file ibaq.tsv \
     --sdrf-file metadata.sdrf.tsv \
     --output-folder ./output
 
 # Generate visualizations
-quantmsioc visualize plot ibaq-distribution \
+qpxc visualize plot ibaq-distribution \
     --ibaq-path ./output/ae.parquet \
     --save-path ./plots/distribution.svg
 ```
 
 [View complete CLI documentation →](cli-reference.md)
+

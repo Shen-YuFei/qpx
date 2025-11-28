@@ -1,6 +1,6 @@
 # Convert Commands
 
-Convert various mass spectrometry data formats to the quantms.io standard format.
+Convert various mass spectrometry data formats to the QPX standard format.
 
 ```python exec="1" session="doc_utils" result="ansi"
 import click
@@ -93,7 +93,7 @@ def generate_example(command, default_text=''):
 
 ## Overview
 
-The `convert` command group provides converters for multiple proteomics software outputs, enabling standardization of data formats for downstream analysis. All commands generate parquet-format output files following the quantms.io specification.
+The `convert` command group provides converters for multiple proteomics software outputs, enabling standardization of data formats for downstream analysis. All commands generate parquet-format output files following the QPX specification.
 
 ## Available Commands
 
@@ -113,19 +113,19 @@ The `convert` command group provides converters for multiple proteomics software
 
 ## diann
 
-Convert DIA-NN report files to quantms.io feature format.
+Convert DIA-NN report files to QPX feature format.
 
 ### Description {#diann-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.diann import convert_diann_cmd
+from qpx.commands.convert.diann import convert_diann_cmd
 print(generate_description(convert_diann_cmd))
 ```
 
 ### Parameters {#diann-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.diann import convert_diann_cmd
+from qpx.commands.convert.diann import convert_diann_cmd
 print(generate_params_table(convert_diann_cmd))
 ```
 
@@ -134,7 +134,7 @@ print(generate_params_table(convert_diann_cmd))
 #### Basic Example {#diann-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.diann import convert_diann_cmd
+from qpx.commands.convert.diann import convert_diann_cmd
 print(generate_example(convert_diann_cmd, 'Convert a DIA-NN report with default settings:'))
 ```
 
@@ -143,7 +143,7 @@ print(generate_example(convert_diann_cmd, 'Convert a DIA-NN report with default 
 Convert with file partitioning based on reference_file_name:
 
 ```bash
-quantmsioc convert diann \
+qpxc convert diann \
     --report-path tests/examples/diann/small/diann_report.tsv \
     --qvalue-threshold 0.05 \
     --mzml-info-folder tests/examples/diann/small/mzml \
@@ -156,7 +156,7 @@ quantmsioc convert diann \
 Convert with file partitioning based on reference_file_name:
 
 ```bash
-quantmsioc convert diann \
+qpxc convert diann \
     --report-path tests/examples/diann/full/diann_report.tsv.gz \
     --qvalue-threshold 0.01 \
     --mzml-info-folder tests/examples/diann/full/mzml \
@@ -172,7 +172,7 @@ quantmsioc convert diann \
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature-level quantification data
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ### Common Issues {#diann-issues}
 
@@ -199,19 +199,19 @@ quantmsioc convert diann \
 
 ## diann-pg
 
-Convert DIA-NN report files to quantms.io protein group format.
+Convert DIA-NN report files to QPX protein group format.
 
 ### Description {#diann-pg-description}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.diann import convert_diann_pg_cmd
+from qpx.commands.convert.diann import convert_diann_pg_cmd
 print(generate_description(convert_diann_pg_cmd))
 ```
 
 ### Parameters {#diann-pg-parameters}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.diann import convert_diann_pg_cmd
+from qpx.commands.convert.diann import convert_diann_pg_cmd
 print(generate_params_table(convert_diann_pg_cmd))
 ```
 
@@ -220,14 +220,14 @@ print(generate_params_table(convert_diann_pg_cmd))
 #### Basic Example {#diann-pg-example-basic}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.diann import convert_diann_pg_cmd
+from qpx.commands.convert.diann import convert_diann_pg_cmd
 print(generate_example(convert_diann_pg_cmd, 'Convert DIA-NN protein groups with default settings:'))
 ```
 
 #### High-Performance Example {#diann-pg-example-performance}
 
 ```bash
-quantmsioc convert diann-pg \
+qpxc convert diann-pg \
     --report-path tests/examples/diann/full/diann_report.tsv.gz \
     --pg-matrix-path tests/examples/diann/full/diann_report.pg_matrix.tsv \
     --sdrf-path tests/examples/diann/full/PXD036609.sdrf.tsv \
@@ -242,7 +242,7 @@ quantmsioc convert diann-pg \
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group quantification data
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ### Best Practices {#diann-pg-best-practices}
 
@@ -254,19 +254,19 @@ quantmsioc convert diann-pg \
 
 ## maxquant-psm
 
-Convert MaxQuant PSM data from `msms.txt` to quantms.io parquet format.
+Convert MaxQuant PSM data from `msms.txt` to QPX parquet format.
 
 ### Description {#maxquant-psm-description}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_psm_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
 print(generate_description(convert_maxquant_psm_cmd))
 ```
 
 ### Parameters {#maxquant-psm-parameters}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_psm_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
 print(generate_params_table(convert_maxquant_psm_cmd))
 ```
 
@@ -275,14 +275,14 @@ print(generate_params_table(convert_maxquant_psm_cmd))
 #### Basic Example {#maxquant-psm-example-basic}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_psm_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
 print(generate_example(convert_maxquant_psm_cmd, 'Convert MaxQuant PSM data with default settings:'))
 ```
 
 #### With Spectral Data {#maxquant-psm-example-spectral}
 
 ```bash
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file tests/examples/maxquant/maxquant_simple/msms.txt \
     --output-folder ./output \
     --spectral-data \
@@ -295,7 +295,7 @@ quantmsioc convert maxquant-psm \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM-level data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#maxquant-psm-best-practices}
 
@@ -307,19 +307,19 @@ quantmsioc convert maxquant-psm \
 
 ## maxquant-feature
 
-Convert MaxQuant feature data from `evidence.txt` to quantms.io parquet format.
+Convert MaxQuant feature data from `evidence.txt` to QPX parquet format.
 
 ### Description {#maxquant-feature-description}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_feature_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
 print(generate_description(convert_maxquant_feature_cmd))
 ```
 
 ### Parameters {#maxquant-feature-parameters}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_feature_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
 print(generate_params_table(convert_maxquant_feature_cmd))
 ```
 
@@ -328,14 +328,14 @@ print(generate_params_table(convert_maxquant_feature_cmd))
 #### Basic Example {#maxquant-feature-example-basic}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_feature_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
 print(generate_example(convert_maxquant_feature_cmd, 'Convert MaxQuant feature data with default settings:'))
 ```
 
 #### With Protein Groups Q-value Mapping {#maxquant-feature-example-qvalue}
 
 ```bash
-quantmsioc convert maxquant-feature \
+qpxc convert maxquant-feature \
     --evidence-file tests/examples/maxquant/maxquant_full/evidence.txt.gz \
     --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
     --protein-groups-file tests/examples/maxquant/maxquant_full/proteinGroups.txt \
@@ -348,7 +348,7 @@ quantmsioc convert maxquant-feature \
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature-level quantification
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ### Common Issues {#maxquant-feature-issues}
 
@@ -370,19 +370,19 @@ quantmsioc convert maxquant-feature \
 
 ## maxquant-pg
 
-Convert MaxQuant protein groups from `proteinGroups.txt` to quantms.io format.
+Convert MaxQuant protein groups from `proteinGroups.txt` to QPX format.
 
 ### Description {#maxquant-pg-description}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_pg_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
 print(generate_description(convert_maxquant_pg_cmd))
 ```
 
 ### Parameters {#maxquant-pg-parameters}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_pg_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
 print(generate_params_table(convert_maxquant_pg_cmd))
 ```
 
@@ -391,7 +391,7 @@ print(generate_params_table(convert_maxquant_pg_cmd))
 #### Basic Example {#maxquant-pg-example-basic}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.maxquant import convert_maxquant_pg_cmd
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
 print(generate_example(convert_maxquant_pg_cmd, 'Convert MaxQuant protein groups with default settings:'))
 ```
 
@@ -399,25 +399,25 @@ print(generate_example(convert_maxquant_pg_cmd, 'Convert MaxQuant protein groups
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group data
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ---
 
 ## fragpipe
 
-Convert FragPipe PSM data to quantms.io parquet format.
+Convert FragPipe PSM data to QPX parquet format.
 
 ### Description {#fragpipe-description}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
 print(generate_description(convert_fragpipe_psm_cmd))
 ```
 
 ### Parameters {#fragpipe-parameters}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
 print(generate_params_table(convert_fragpipe_psm_cmd))
 ```
 
@@ -426,14 +426,14 @@ print(generate_params_table(convert_fragpipe_psm_cmd))
 #### Basic Example {#fragpipe-example-basic}
 
 ```python exec="1" session="doc_utils" html="1"
-from quantmsio.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
 print(generate_example(convert_fragpipe_psm_cmd, 'Convert FragPipe PSM data with default settings:'))
 ```
 
 #### With Custom Settings {#fragpipe-example-custom}
 
 ```bash
-quantmsioc convert fragpipe \
+qpxc convert fragpipe \
     --msms-file /path/to/psm.tsv \
     --output-folder ./output \
     --batch-size 500000 \
@@ -444,25 +444,25 @@ quantmsioc convert fragpipe \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ---
 
 ## quantms-psm
 
-Convert mzTab PSM data to quantms.io parquet format.
+Convert mzTab PSM data to QPX parquet format.
 
 ### Description {#quantms-psm-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_psm_cmd
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
 print(generate_description(convert_quantms_psm_cmd))
 ```
 
 ### Parameters {#quantms-psm-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_psm_cmd
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
 print(generate_params_table(convert_quantms_psm_cmd))
 ```
 
@@ -471,14 +471,14 @@ print(generate_params_table(convert_quantms_psm_cmd))
 #### Basic Example {#quantms-psm-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_psm_cmd
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
 print(generate_example(convert_quantms_psm_cmd, 'Convert PSM data with default settings:'))
 ```
 
 #### Use Existing Database {#quantms-psm-example-existing}
 
 ```bash
-quantmsioc convert quantms-psm \
+qpxc convert quantms-psm \
     --database-path ./existing_database.duckdb \
     --output-folder ./output \
     --spectral-data
@@ -488,7 +488,7 @@ quantmsioc convert quantms-psm \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#quantms-psm-best-practices}
 
@@ -499,19 +499,19 @@ quantmsioc convert quantms-psm \
 
 ## quantms-feature
 
-Convert mzTab feature data to quantms.io parquet format.
+Convert mzTab feature data to QPX parquet format.
 
 ### Description {#quantms-feature-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_feature_cmd
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
 print(generate_description(convert_quantms_feature_cmd))
 ```
 
 ### Parameters {#quantms-feature-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_feature_cmd
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
 print(generate_params_table(convert_quantms_feature_cmd))
 ```
 
@@ -520,7 +520,7 @@ print(generate_params_table(convert_quantms_feature_cmd))
 #### Basic Example {#quantms-feature-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_feature_cmd
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
 print(generate_example(convert_quantms_feature_cmd, 'Convert feature data with default settings:'))
 ```
 
@@ -528,25 +528,25 @@ print(generate_example(convert_quantms_feature_cmd, 'Convert feature data with d
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature quantification
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ---
 
 ## quantms-pg
 
-Convert mzTab protein group data to quantms.io parquet format.
+Convert mzTab protein group data to QPX parquet format.
 
 ### Description {#quantms-pg-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_pg_cmd
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
 print(generate_description(convert_quantms_pg_cmd))
 ```
 
 ### Parameters {#quantms-pg-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_pg_cmd
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
 print(generate_params_table(convert_quantms_pg_cmd))
 ```
 
@@ -555,14 +555,14 @@ print(generate_params_table(convert_quantms_pg_cmd))
 #### Basic Example {#quantms-pg-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.quantms import convert_quantms_pg_cmd
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
 print(generate_example(convert_quantms_pg_cmd, 'Convert protein groups with default settings:'))
 ```
 
 #### LFQ Data with All Intensities {#quantms-pg-example-lfq}
 
 ```bash
-quantmsioc convert quantms-pg \
+qpxc convert quantms-pg \
     --mztab-path tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz \
     --msstats-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_msstats_in.csv.gz \
     --sdrf-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv \
@@ -575,7 +575,7 @@ quantmsioc convert quantms-pg \
 #### TMT Data (Skip iBAQ) {#quantms-pg-example-tmt}
 
 ```bash
-quantmsioc convert quantms-pg \
+qpxc convert quantms-pg \
     --mztab-path tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_openms.mzTab.gz \
     --msstats-file tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_msstats_in.csv.gz \
     --sdrf-file tests/examples/quantms/dda-plex-full/PXD007683-TMT.sdrf.tsv \
@@ -587,7 +587,7 @@ quantmsioc convert quantms-pg \
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group quantification
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ### Best Practices {#quantms-pg-best-practices}
 
@@ -599,19 +599,19 @@ quantmsioc convert quantms-pg \
 
 ## idxml
 
-Convert a single OpenMS idXML file to quantms.io PSM format.
+Convert a single OpenMS idXML file to QPX PSM format.
 
 ### Description {#idxml-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_file
+from qpx.commands.convert.idxml import convert_idxml_file
 print(generate_description(convert_idxml_file))
 ```
 
 ### Parameters {#idxml-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_file
+from qpx.commands.convert.idxml import convert_idxml_file
 print(generate_params_table(convert_idxml_file))
 ```
 
@@ -620,14 +620,14 @@ print(generate_params_table(convert_idxml_file))
 #### Basic Example {#idxml-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_file
+from qpx.commands.convert.idxml import convert_idxml_file
 print(generate_example(convert_idxml_file, 'Convert a single idXML file:'))
 ```
 
 #### With Spectral Data {#idxml-example-spectral}
 
 ```bash
-quantmsioc convert idxml \
+qpxc convert idxml \
     --idxml-file tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep2_consensus_fdr_pep_luciphor.idXML \
     --mzml-file tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep1.mzML \
     --output-folder ./output \
@@ -639,7 +639,7 @@ quantmsioc convert idxml \
 
 - **Output**: `{output-prefix-file}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ---
 
@@ -650,14 +650,14 @@ Convert multiple OpenMS idXML files to a single merged PSM parquet file.
 ### Description {#idxml-batch-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_batch
+from qpx.commands.convert.idxml import convert_idxml_batch
 print(generate_description(convert_idxml_batch))
 ```
 
 ### Parameters {#idxml-batch-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_batch
+from qpx.commands.convert.idxml import convert_idxml_batch
 print(generate_params_table(convert_idxml_batch))
 ```
 
@@ -666,14 +666,14 @@ print(generate_params_table(convert_idxml_batch))
 #### Basic Example {#idxml-batch-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.convert.idxml import convert_idxml_batch
+from qpx.commands.convert.idxml import convert_idxml_batch
 print(generate_example(convert_idxml_batch, 'Convert multiple idXML files:'))
 ```
 
 #### Folder-Based Conversion {#idxml-batch-example-folder}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-folder ./idxml_files \
     --output-folder ./output \
     --output-prefix-file batch_psm
@@ -682,7 +682,7 @@ quantmsioc convert idxml-batch \
 #### File List with Index Matching {#idxml-batch-example-list}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-files file1.idXML,file2.idXML,file3.idXML \
     --mzml-files file1.mzML,file2.mzML,file3.mzML \
     --output-folder ./output \
@@ -692,7 +692,7 @@ quantmsioc convert idxml-batch \
 #### Folder with Basename Matching {#idxml-batch-example-basename}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-folder ./idxml_files \
     --mzml-folder ./mzml_files \
     --output-folder ./output \
@@ -712,7 +712,7 @@ The command supports three mzML matching strategies:
 
 - **Output**: `{output-prefix-file}-{uuid}.psm.parquet`
 - **Format**: Single merged parquet file containing PSM data from all inputs
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#idxml-batch-best-practices}
 
@@ -728,3 +728,4 @@ The command supports three mzML matching strategies:
 - [Transform Commands](cli-transform.md) - Further process converted data
 - [Visualization Commands](cli-visualize.md) - Create plots from converted data
 - [Statistics Commands](cli-stats.md) - Generate statistics from converted data
+

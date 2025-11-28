@@ -1,15 +1,15 @@
 # Integration Examples
 
-Examples of integrating quantmsio with other tools and frameworks.
+Examples of integrating qpx with other tools and frameworks.
 
 ## Nextflow Pipeline Integration
 
-Real production Nextflow pipeline from the quantms.io project for processing MaxQuant PSM data.
+Real production Nextflow pipeline from the QPX project for processing MaxQuant PSM data.
 
 ### Pipeline Features
 
 - Converts Thermo RAW files to mzML format using ThermoRawFileParser
-- Processes MaxQuant PSM data to quantms.io parquet format
+- Processes MaxQuant PSM data to QPX parquet format
 - Extracts spectral information from mzML files
 - Supports containerization (Docker/Singularity)
 - Configurable resource allocation for HPC environments
@@ -34,24 +34,24 @@ nextflow run nf-mq-psm.nf \
     -profile docker
 ```
 
-**Full pipeline source**: [nextflow/nf-mq-psm/](https://github.com/bigbio/quantms.io/tree/main/nextflow/nf-mq-psm)
+**Full pipeline source**: [nextflow/nf-mq-psm/](https://github.com/bigbio/QPX/tree/main/nextflow/nf-mq-psm)
 
 ## Python API Usage
 
-Use quantmsio programmatically in Python scripts.
+Use qpx programmatically in Python scripts.
 
 ```python
 #!/usr/bin/env python3
 """
-Complete proteomics data processing using quantmsio Python API
+Complete proteomics data processing using qpx Python API
 """
 
 import logging
 from pathlib import Path
-from quantmsio.core.maxquant.maxquant import MaxQuant
-from quantmsio.core.ae import AbsoluteExpressionHander
-from quantmsio.operate.statistics import ParquetStatistics, IbaqStatistics
-from quantmsio.operate.plots import (
+from qpx.core.maxquant.maxquant import MaxQuant
+from qpx.core.ae import AbsoluteExpressionHander
+from qpx.operate.statistics import ParquetStatistics, IbaqStatistics
+from qpx.operate.plots import (
     plot_intensity_box_of_samples,
     plot_peptide_distribution_of_protein
 )
@@ -132,3 +132,4 @@ if __name__ == "__main__":
 ---
 
 [← Back to Examples Overview](examples-overview.md) | [View QC Examples →](examples-qc.md)
+

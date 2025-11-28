@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import pyarrow.parquet as pq
 
-from quantmsio.core.maxquant.maxquant import (
+from qpx.core.maxquant.maxquant import (
     MaxQuant,
     parse_modifications_from_peptidoform,
     read_evidence,

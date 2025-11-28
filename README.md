@@ -1,17 +1,17 @@
-# quantms.io
+# QPX
 
-[![Python application](https://github.com/bigbio/quantms.io/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/bigbio/quantms.io/actions/workflows/python-app.yml)
-[![Upload Python Package](https://github.com/bigbio/quantms.io/actions/workflows/python-publish.yml/badge.svg)](https://github.com/bigbio/quantms.io/actions/workflows/python-publish.yml)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/quantms.io/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/quantms.io/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_Coverage)
-[![PyPI version](https://badge.fury.io/py/quantmsio.svg)](https://badge.fury.io/py/quantmsio)
+[![Python application](https://github.com/bigbio/QPX/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/bigbio/QPX/actions/workflows/python-app.yml)
+[![Upload Python Package](https://github.com/bigbio/QPX/actions/workflows/python-publish.yml/badge.svg)](https://github.com/bigbio/QPX/actions/workflows/python-publish.yml)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/QPX/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/QPX/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_Coverage)
+[![PyPI version](https://badge.fury.io/py/qpx.svg)](https://badge.fury.io/py/qpx)
 
-A Python package for working with mass spectrometry data in the quantms.io format.
+A Python package for working with mass spectrometry data in the QPX format.
 
 ## Features
 
-- Convert data from various mass spectrometry formats to quantms.io format
-- Analyze and process quantms.io data
+- Convert data from various mass spectrometry formats to QPX format
+- Analyze and process QPX data
 - Visualize results
 - Manage project metadata
 - Transform data between different formats
@@ -22,7 +22,7 @@ A Python package for working with mass spectrometry data in the quantms.io forma
 
 ```bash
 # To install the stable release from PyPI:
-pip install quantmsio
+pip install qpx
 ```
 
 ### Install from Source (Without PyPI)
@@ -30,8 +30,8 @@ pip install quantmsio
 ```bash
 # Fork the repository on GitHub
 # Clone the repository
-git clone https://github.com/your-username/quantms.io.git
-cd quantms.io
+git clone https://github.com/your-username/QPX.git
+cd QPX
 
 # Install the package locally
 pip install .
@@ -59,7 +59,7 @@ The package provides a command-line interface (CLI) with several command groups:
 ```bash
 Usage: cli [OPTIONS] COMMAND [ARGS]...
 
-  quantmsio - A tool for converting and analyzing mass spectrometry proteomics
+  qpx - A tool for converting and analyzing mass spectrometry proteomics
   data
 
 Options:
@@ -67,59 +67,59 @@ Options:
   -h, --help  Show this message and exit.
 
 Commands:
-  convert    Convert external formats to quantms.io format.
+  convert    Convert external formats to QPX format.
   project    Project management commands.
-  stats      Statistical analysis of quantms.io data.
-  transform  Transform quantms.io data into different representations.
-  visualize  Visualize quantms.io data.
+  stats      Statistical analysis of QPX data.
+  transform  Transform QPX data into different representations.
+  visualize  Visualize QPX data.
 ```
 
 ### Convert Commands
 
-Convert data from various external formats to quantms.io:
+Convert data from various external formats to QPX:
 
 ```bash
 Usage: convert [OPTIONS] COMMAND [ARGS]...
 
-  Convert external formats to quantms.io format.
+  Convert external formats to QPX format.
 
 Options:
   --help  Show this message and exit.
 
 Commands:
-  diann             Convert DIA-NN report to quantms.io format
+  diann             Convert DIA-NN report to QPX format
   diann-pg          Convert DIA-NN report to protein group format
   fragpipe          Convert FragPipe PSMs from psm.tsv to parquet file in
-                    quantms.io
-  idxml             Convert IdXML to PSM parquet file in quantms io
+                    QPX
+  idxml             Convert IdXML to PSM parquet file in QPX
   idxml-batch       Convert multiple IdXML files to a single merged PSM parquet
                     file
   maxquant-feature  Convert feature data from MaxQuant evidence.txt to parquet
                     format
-  maxquant-pg       Convert MaxQuant proteinGroups.txt to quantms.io protein
+  maxquant-pg       Convert MaxQuant proteinGroups.txt to QPX protein
                     group format
   maxquant-psm      Convert PSM data from MaxQuant msms.txt to parquet format
-  quantms-feature   Convert feature data from mzTab to quantms.io format.
+  quantms-feature   Convert feature data from mzTab to QPX format.
   quantms-pg        Convert protein groups from mzTab quantms TMT and LFQ...
-  quantms-psm       Convert PSM data from mzTab to quantms.io format.
+  quantms-psm       Convert PSM data from mzTab to QPX format.
 ```
 
 ### Transform Commands
 
-Transform data within the quantms.io ecosystem:
+Transform data within the QPX ecosystem:
 
 ```bash
 Usage: transform [OPTIONS] COMMAND [ARGS]...
 
-  Transform quantms.io data into different representations.
+  Transform QPX data into different representations.
 
 Options:
   --help  Show this message and exit.
 
 Commands:
-  ae            Convert IBAQ absolute file into quantms.io format
+  ae            Convert IBAQ absolute file into QPX format
   anndata       Merge multiple AE files into a file in AnnData format.
-  differential  Convert a MSstats differential file into a quantms.io file
+  differential  Convert a MSstats differential file into a QPX file
                 format
   gene          Map gene information from FASTA to parquet format
   ibaq          Convert feature data to IBAQ format
@@ -129,34 +129,34 @@ Commands:
 
 ### Visualization Commands
 
-Visualize quantms.io data:
+Visualize QPX data:
 
 ```bash
 Usage: visualize [OPTIONS] COMMAND [ARGS]...
 
-  Visualize quantms.io data.
+  Visualize QPX data.
 
 Options:
   --help  Show this message and exit.
 
 Commands:
-  plot  Visualization commands for quantms.io data
+  plot  Visualization commands for QPX data
 ```
 
 ### Statistics Commands
 
-Analyze quantms.io data:
+Analyze QPX data:
 
 ```bash
 Usage: stats [OPTIONS] COMMAND [ARGS]...
 
-  Statistical analysis of quantms.io data.
+  Statistical analysis of QPX data.
 
 Options:
   --help  Show this message and exit.
 
 Commands:
-  analyze  Statistical analysis commands for quantms.io data
+  analyze  Statistical analysis commands for QPX data
 ```
 
 ### Project Management Commands
@@ -185,9 +185,9 @@ Most commands support a `--verbose` flag that enables more detailed logging to s
 ### Project Structure
 
 ```
-quantmsio/
+qpx/
 ├── __init__.py
-├── quantmsioc.py           # CLI entry point (poetry script: quantmsioc)
+├── qpxc.py                 # CLI entry point (poetry script: qpxc)
 ├── commands/               # CLI command groups
 │   ├── convert/            # Converters: quantms, maxquant, diann, idxml, fragpipe
 │   ├── transform/          # Transforms: ibaq, ae, gene, spectra, anndata, differential, uniprot

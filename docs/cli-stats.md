@@ -1,6 +1,6 @@
 # Statistics Commands
 
-Perform statistical analysis on quantms.io data.
+Perform statistical analysis on QPX data.
 
 ```python exec="1" session="doc_utils" result="ansi"
 import click
@@ -93,7 +93,7 @@ def generate_example(command, default_text=''):
 
 ## Overview
 
-The `stats` command group provides tools for generating comprehensive statistical summaries of quantms.io data files. These commands help assess data quality, completeness, and provide key metrics for experimental reports.
+The `stats` command group provides tools for generating comprehensive statistical summaries of QPX data files. These commands help assess data quality, completeness, and provide key metrics for experimental reports.
 
 ## Available Commands
 
@@ -111,14 +111,14 @@ Generate comprehensive statistics for a project's absolute expression data.
 ### Description {#project-ae-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import project_ae_statistics_cmd
+from qpx.commands.utils.stats import project_ae_statistics_cmd
 print(generate_description(project_ae_statistics_cmd))
 ```
 
 ### Parameters {#project-ae-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import project_ae_statistics_cmd
+from qpx.commands.utils.stats import project_ae_statistics_cmd
 print(generate_params_table(project_ae_statistics_cmd))
 ```
 
@@ -127,14 +127,14 @@ print(generate_params_table(project_ae_statistics_cmd))
 #### Print to Console {#project-ae-example-console}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import project_ae_statistics_cmd
+from qpx.commands.utils.stats import project_ae_statistics_cmd
 print(generate_example(project_ae_statistics_cmd, 'Generate project statistics:'))
 ```
 
 #### Save to File {#project-ae-example-file}
 
 ```bash
-quantmsioc stats analyze project-ae \
+qpxc stats analyze project-ae \
     --absolute-path ./output/ae.parquet \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/project_statistics.txt
@@ -189,14 +189,14 @@ Generate statistics for PSM (Peptide-Spectrum Match) data.
 ### Description {#psm-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import psm_statistics_cmd
+from qpx.commands.utils.stats import psm_statistics_cmd
 print(generate_description(psm_statistics_cmd))
 ```
 
 ### Parameters {#psm-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import psm_statistics_cmd
+from qpx.commands.utils.stats import psm_statistics_cmd
 print(generate_params_table(psm_statistics_cmd))
 ```
 
@@ -205,14 +205,14 @@ print(generate_params_table(psm_statistics_cmd))
 #### Print to Console {#psm-example-console}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.utils.stats import psm_statistics_cmd
+from qpx.commands.utils.stats import psm_statistics_cmd
 print(generate_example(psm_statistics_cmd, 'Generate PSM statistics:'))
 ```
 
 #### Save to File {#psm-example-file}
 
 ```bash
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/psm_statistics.txt
 ```
@@ -317,7 +317,7 @@ Process multiple files:
 #!/bin/bash
 for file in ./output/*.psm.parquet; do
     filename=$(basename "$file" .parquet)
-    quantmsioc stats analyze psm \
+    qpxc stats analyze psm \
         --parquet-path "$file" \
         --save-path "./reports/${filename}_stats.txt"
 done
@@ -328,7 +328,7 @@ done
 Use output in automated reports:
 
 ```bash
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/stats.txt
 
@@ -342,12 +342,12 @@ Generate both statistics and plots:
 
 ```bash
 # Generate statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/stats.txt
 
 # Generate visualizations
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path ./output/feature.parquet \
     --save-path ./plots/peptide_dist.svg
 ```
@@ -364,24 +364,24 @@ Complete QC workflow example:
 #!/bin/bash
 
 # 1. Generate PSM statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./qc/psm_stats.txt
 
 # 2. Generate AE statistics (if available)
 if [ -f ./output/ae.parquet ]; then
-    quantmsioc stats analyze project-ae \
+    qpxc stats analyze project-ae \
         --absolute-path ./output/ae.parquet \
         --parquet-path ./output/psm.parquet \
         --save-path ./qc/ae_stats.txt
 fi
 
 # 3. Create visualizations
-quantmsioc visualize plot box-intensity \
+qpxc visualize plot box-intensity \
     --feature-path ./output/feature.parquet \
     --save-path ./qc/intensity_boxplot.svg
 
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path ./output/feature.parquet \
     --save-path ./qc/peptide_distribution.svg
 
@@ -396,7 +396,7 @@ Define quality thresholds:
 #!/bin/bash
 
 # Generate statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./stats.txt
 
@@ -420,3 +420,4 @@ fi
 - [Convert Commands](cli-convert.md) - Generate data files for analysis
 - [Transform Commands](cli-transform.md) - Process data before statistics
 - [Visualization Commands](cli-visualize.md) - Create visual representations of statistics
+

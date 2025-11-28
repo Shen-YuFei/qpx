@@ -119,7 +119,7 @@ def test_lfq_psm_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-psm",
             "--mztab-path",
@@ -171,7 +171,7 @@ def test_lfq_feature_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-feature",
             "--mztab-path",
@@ -227,7 +227,7 @@ def test_lfq_protein_groups_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-pg",
             "--mztab-path",
@@ -281,7 +281,7 @@ def test_tmt_psm_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-psm",
             "--mztab-path",
@@ -333,7 +333,7 @@ def test_tmt_feature_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-feature",
             "--mztab-path",
@@ -389,7 +389,7 @@ def test_tmt_protein_groups_conversion():
         cmd = [
             "python",
             "-m",
-            "quantmsio.quantmsioc",
+            "qpx.qpxc",
             "convert",
             "quantms-pg",
             "--mztab-path",

@@ -1,17 +1,17 @@
-# quantms.io
+# QPX
 
 A standardized format and toolkit for mass spectrometry proteomics data
 
-[![Python application](https://github.com/bigbio/quantms.io/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/bigbio/quantms.io/actions/workflows/python-app.yml)
-[![Upload Python Package](https://github.com/bigbio/quantms.io/actions/workflows/python-publish.yml/badge.svg)](https://github.com/bigbio/quantms.io/actions/workflows/python-publish.yml)
-[![PyPI version](https://badge.fury.io/py/quantmsio.svg)](https://badge.fury.io/py/quantmsio)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/quantms.io/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Python application](https://github.com/bigbio/QPX/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/bigbio/QPX/actions/workflows/python-app.yml)
+[![Upload Python Package](https://github.com/bigbio/QPX/actions/workflows/python-publish.yml/badge.svg)](https://github.com/bigbio/QPX/actions/workflows/python-publish.yml)
+[![PyPI version](https://badge.fury.io/py/qpx.svg)](https://badge.fury.io/py/qpx)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e71a662e8d4f483094576c1d8f8888c3)](https://app.codacy.com/gh/bigbio/QPX/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 ---
 
-## What is quantms.io?
+## What is QPX?
 
-quantms.io is a comprehensive ecosystem for proteomics data that provides:
+QPX is a comprehensive ecosystem for proteomics data that provides:
 
 - **Standardized Data Format**: Parquet-based format for efficient storage and processing of proteomics data
 - **Universal Converter**: Convert data from MaxQuant, DIA-NN, FragPipe, OpenMS, and more
@@ -22,9 +22,9 @@ quantms.io is a comprehensive ecosystem for proteomics data that provides:
 
 ## Architecture Overview
 
-![quantmsio Architecture](images/architecture.png)
+![qpx Architecture](images/architecture.png)
 
-quantmsio provides a comprehensive proteomics data processing architecture with core modules for data conversion, transformation, visualization, statistical analysis, and project management.
+qpx provides a comprehensive proteomics data processing architecture with core modules for data conversion, transformation, visualization, statistical analysis, and project management.
 
 ---
 
@@ -49,4 +49,5 @@ quantmsio provides a comprehensive proteomics data processing architecture with 
 
 ---
 
-**Ready to get started?** Install quantmsio and [check out the examples](examples-overview.md)!
+**Ready to get started?** Install qpx and [check out the examples](examples-overview.md)!
+
