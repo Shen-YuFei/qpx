@@ -1,28 +1,28 @@
 # CLI Reference
 
-The quantmsio command-line tool provides a comprehensive set of commands for converting, transforming, visualizing, and analyzing mass spectrometry proteomics data.
+The qpx command-line tool provides a comprehensive set of commands for converting, transforming, visualizing, and analyzing mass spectrometry proteomics data.
 
 ## Overview
 
-The quantmsio CLI is organized into five main command groups:
+The qpx CLI is organized into five main command groups:
 
 ### [Convert Commands](cli-convert.md)
 
-Convert various mass spectrometry data formats to the quantms.io standard format:
+Convert various mass spectrometry data formats to the QPX standard format:
 
 - **DIA-NN Conversion**: Convert DIA-NN reports to feature and protein group formats
 - **MaxQuant Conversion**: Convert MaxQuant PSM, feature, and protein group data
-- **FragPipe Conversion**: Convert FragPipe PSM data to quantms.io format
-- **QuantMS Conversion**: Create quantms.io data files from mzTab format
+- **FragPipe Conversion**: Convert FragPipe PSM data to QPX format
+- **QuantMS Conversion**: Create QPX data files from mzTab format
 - **idXML Conversion**: Convert OpenMS idXML format PSM data
 
 [View detailed documentation →](cli-convert.md)
 
 ### [Transform Commands](cli-transform.md)
 
-Transform and process data within the quantms.io ecosystem:
+Transform and process data within the QPX ecosystem:
 
-- **Absolute Expression (AE)**: Convert iBAQ absolute expression data to quantms.io format ([format specification](https://io.quantms.org/format-specification/#absolute))
+- **Absolute Expression (AE)**: Convert iBAQ absolute expression data to QPX format ([format specification](https://io.quantms.org/format-specification/#absolute))
 - **Differential Expression (DE)**: Convert MSstats differential expression analysis results
 - **Gene Mapping**: Map gene information to protein data
 - **iBAQ Transformation**: Process iBAQ quantification files
@@ -45,7 +45,7 @@ Create various data visualization plots:
 
 ### [Statistics Commands](cli-stats.md)
 
-Perform statistical analysis on quantms.io data:
+Perform statistical analysis on QPX data:
 
 - Project AE data statistics
 - PSM data statistics
@@ -67,7 +67,7 @@ Manage project metadata and files:
 ### Installation
 
 ```bash
-pip install quantmsio
+pip install qpx
 ```
 
 ### Basic Usage
@@ -75,19 +75,19 @@ pip install quantmsio
 View all available commands:
 
 ```bash
-quantmsioc --help
+qpxc --help
 ```
 
 View help for a specific command group:
 
 ```bash
-quantmsioc convert --help
+qpxc convert --help
 ```
 
 View detailed help for a specific command:
 
 ```bash
-quantmsioc convert diann --help
+qpxc convert diann --help
 ```
 
 ## Common Options
@@ -104,23 +104,23 @@ A typical data processing workflow:
 
 ```bash
 # 1. Convert raw data
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file msms.txt \
     --output-folder ./output
 
 # 2. Transform to absolute expression data
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file ibaq.tsv \
     --sdrf-file metadata.sdrf.tsv \
     --output-folder ./output
 
 # 3. Generate visualization
-quantmsioc visualize plot ibaq-distribution \
+qpxc visualize plot ibaq-distribution \
     --ibaq-path ./output/ae.parquet \
     --save-path ./plots/distribution.svg
 
 # 4. Generate statistical report
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./stats/report.txt
 ```
@@ -130,4 +130,5 @@ quantmsioc stats analyze psm \
 - Each command provides detailed help information using the `--help` parameter
 - See [Format Specification](format-specification.md) for output file formats
 - View the [online format specification](https://io.quantms.org/format-specification/) for detailed schema information
-- Visit the [GitHub Repository](https://github.com/bigbio/quantms.io) to report issues
+- Visit the [GitHub Repository](https://github.com/bigbio/QPX) to report issues
+

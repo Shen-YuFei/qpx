@@ -1,6 +1,6 @@
 # Transform Commands
 
-Transform and process data within the quantms.io ecosystem.
+Transform and process data within the QPX ecosystem.
 
 ```python exec="1" session="doc_utils" result="ansi"
 import click
@@ -93,7 +93,7 @@ def generate_example(command, default_text=''):
 
 ## Overview
 
-The `transform` command group provides tools for processing and transforming quantms.io data into various downstream formats. These commands enable absolute and differential expression analysis, metadata mapping, and data format conversions.
+The `transform` command group provides tools for processing and transforming QPX data into various downstream formats. These commands enable absolute and differential expression analysis, metadata mapping, and data format conversions.
 
 ## Available Commands
 
@@ -109,12 +109,12 @@ The `transform` command group provides tools for processing and transforming qua
 
 ## ae
 
-Convert iBAQ absolute expression data to quantms.io format.
+Convert iBAQ absolute expression data to QPX format.
 
 ### Description {#ae-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ae import convert_ibaq_absolute_cmd
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
 print(generate_description(convert_ibaq_absolute_cmd))
 ```
 
@@ -123,7 +123,7 @@ print(generate_description(convert_ibaq_absolute_cmd))
 ### Parameters {#ae-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ae import convert_ibaq_absolute_cmd
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
 print(generate_params_table(convert_ibaq_absolute_cmd))
 ```
 
@@ -132,14 +132,14 @@ print(generate_params_table(convert_ibaq_absolute_cmd))
 #### Basic Example {#ae-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ae import convert_ibaq_absolute_cmd
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
 print(generate_example(convert_ibaq_absolute_cmd, 'Convert iBAQ data with default settings:'))
 ```
 
 #### With Project Metadata {#ae-example-metadata}
 
 ```bash
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file tests/examples/AE/PXD016999.1-ibaq.tsv \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --project-file tests/examples/AE/project.json \
@@ -151,7 +151,7 @@ quantmsioc transform ae \
 #### Filter Specific Proteins {#ae-example-filter}
 
 ```bash
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file tests/examples/AE/PXD016999.1-ibaq.tsv \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --protein-file tests/examples/fasta/Homo-sapiens.fasta \
@@ -174,7 +174,7 @@ Q67890       500000     480000     520000
 
 - **Output**: `{output-prefix}-{uuid}.absolute.parquet`
 - **Format**: Parquet file containing absolute expression quantification
-- **Schema**: Conforms to [quantms.io absolute expression specification](https://io.quantms.org/format-specification/#absolute)
+- **Schema**: Conforms to [QPX absolute expression specification](https://io.quantms.org/format-specification/#absolute)
 
 ### Common Issues {#ae-issues}
 
@@ -197,19 +197,19 @@ Q67890       500000     480000     520000
 
 ## differential
 
-Convert MSstats differential expression data to quantms.io format.
+Convert MSstats differential expression data to QPX format.
 
 ### Description {#differential-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.de import convert_msstats_differential_cmd
+from qpx.commands.transform.de import convert_msstats_differential_cmd
 print(generate_description(convert_msstats_differential_cmd))
 ```
 
 ### Parameters {#differential-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.de import convert_msstats_differential_cmd
+from qpx.commands.transform.de import convert_msstats_differential_cmd
 print(generate_params_table(convert_msstats_differential_cmd))
 ```
 
@@ -218,14 +218,14 @@ print(generate_params_table(convert_msstats_differential_cmd))
 #### Basic Example {#differential-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.de import convert_msstats_differential_cmd
+from qpx.commands.transform.de import convert_msstats_differential_cmd
 print(generate_example(convert_msstats_differential_cmd, 'Convert MSstats differential expression data:'))
 ```
 
 #### With Custom FDR Threshold {#differential-example-fdr}
 
 ```bash
-quantmsioc transform differential \
+qpxc transform differential \
     --msstats-file tests/examples/DE/PXD033169.sdrf_openms_design_msstats_in_comparisons.csv \
     --sdrf-file tests/examples/DE/PXD033169.sdrf.tsv \
     --fdr-threshold 0.01 \
@@ -237,7 +237,7 @@ quantmsioc transform differential \
 #### With Project Metadata {#differential-example-metadata}
 
 ```bash
-quantmsioc transform differential \
+qpxc transform differential \
     --msstats-file tests/examples/DE/PXD033169.sdrf_openms_design_msstats_in_comparisons.csv \
     --sdrf-file tests/examples/DE/PXD033169.sdrf.tsv \
     --project-file tests/examples/DE/project.json \
@@ -260,7 +260,7 @@ Q67890,Condition2-Condition1,-1.8,0.4,-4.5,10,0.002,0.01
 
 - **Output**: `{output-prefix}-{uuid}.differential.parquet`
 - **Format**: Parquet file containing differential expression results
-- **Schema**: Conforms to quantms.io differential expression specification
+- **Schema**: Conforms to QPX differential expression specification
 
 ### Common Issues {#differential-issues}
 
@@ -288,14 +288,14 @@ Map gene information from FASTA to parquet format.
 ### Description {#gene-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.gene import map_gene_message_cmd
+from qpx.commands.transform.gene import map_gene_message_cmd
 print(generate_description(map_gene_message_cmd))
 ```
 
 ### Parameters {#gene-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.gene import map_gene_message_cmd
+from qpx.commands.transform.gene import map_gene_message_cmd
 print(generate_params_table(map_gene_message_cmd))
 ```
 
@@ -304,14 +304,14 @@ print(generate_params_table(map_gene_message_cmd))
 #### Basic Example {#gene-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.gene import map_gene_message_cmd
+from qpx.commands.transform.gene import map_gene_message_cmd
 print(generate_example(map_gene_message_cmd, 'Map gene information to parquet file:'))
 ```
 
 #### With Partitioning {#gene-example-partition}
 
 ```bash
-quantmsioc transform gene \
+qpxc transform gene \
     --parquet-path ./output/feature.parquet \
     --fasta tests/examples/fasta/Homo-sapiens.fasta \
     --output-folder ./output \
@@ -341,14 +341,14 @@ Convert feature data to iBAQ format.
 ### Description {#ibaq-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ibaq import convert_ibaq_file_cmd
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
 print(generate_description(convert_ibaq_file_cmd))
 ```
 
 ### Parameters {#ibaq-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ibaq import convert_ibaq_file_cmd
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
 print(generate_params_table(convert_ibaq_file_cmd))
 ```
 
@@ -357,14 +357,14 @@ print(generate_params_table(convert_ibaq_file_cmd))
 #### Basic Example {#ibaq-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.ibaq import convert_ibaq_file_cmd
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
 print(generate_example(convert_ibaq_file_cmd, 'Convert feature data to iBAQ format:'))
 ```
 
 #### With Custom Prefix {#ibaq-example-prefix}
 
 ```bash
-quantmsioc transform ibaq \
+qpxc transform ibaq \
     --feature-file ./output/feature.parquet \
     --sdrf-file ./metadata.sdrf.tsv \
     --output-folder ./output \
@@ -392,14 +392,14 @@ Map spectrum information from mzML to parquet format.
 ### Description {#spectra-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.spectra import map_spectrum_message_cmd
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
 print(generate_description(map_spectrum_message_cmd))
 ```
 
 ### Parameters {#spectra-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.spectra import map_spectrum_message_cmd
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
 print(generate_params_table(map_spectrum_message_cmd))
 ```
 
@@ -408,14 +408,14 @@ print(generate_params_table(map_spectrum_message_cmd))
 #### Basic Example {#spectra-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.spectra import map_spectrum_message_cmd
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
 print(generate_example(map_spectrum_message_cmd, 'Map spectrum information to parquet:'))
 ```
 
 #### With Batch Processing and Partitioning {#spectra-example-batch}
 
 ```bash
-quantmsioc transform spectra \
+qpxc transform spectra \
     --parquet-path ./output/psm.parquet \
     --mzml-directory ./mzml_files \
     --output-folder ./output \
@@ -444,14 +444,14 @@ Map feature data to latest UniProt version.
 ### Description {#uniprot-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.uniprot import map_latest_uniprot_cmd
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
 print(generate_description(map_latest_uniprot_cmd))
 ```
 
 ### Parameters {#uniprot-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.uniprot import map_latest_uniprot_cmd
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
 print(generate_params_table(map_latest_uniprot_cmd))
 ```
 
@@ -460,14 +460,14 @@ print(generate_params_table(map_latest_uniprot_cmd))
 #### Basic Mapping {#uniprot-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.uniprot import map_latest_uniprot_cmd
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
 print(generate_example(map_latest_uniprot_cmd, 'Map features to latest UniProt:'))
 ```
 
 #### With Custom Prefix {#uniprot-example-prefix}
 
 ```bash
-quantmsioc transform uniprot \
+qpxc transform uniprot \
     --feature-file ./output/feature.parquet \
     --fasta ./uniprot_human_2024.fasta \
     --output-folder ./output \
@@ -495,14 +495,14 @@ Merge multiple AE files into a file in AnnData format.
 ### Description {#anndata-description}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.anndata import merge_ae_files_cmd
+from qpx.commands.transform.anndata import merge_ae_files_cmd
 print(generate_description(merge_ae_files_cmd))
 ```
 
 ### Parameters {#anndata-parameters}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.anndata import merge_ae_files_cmd
+from qpx.commands.transform.anndata import merge_ae_files_cmd
 print(generate_params_table(merge_ae_files_cmd))
 ```
 
@@ -511,14 +511,14 @@ print(generate_params_table(merge_ae_files_cmd))
 #### Basic Example {#anndata-example-basic}
 
 ```python exec="1" html="1" session="doc_utils"
-from quantmsio.commands.transform.anndata import merge_ae_files_cmd
+from qpx.commands.transform.anndata import merge_ae_files_cmd
 print(generate_example(merge_ae_files_cmd, 'Merge AE files into AnnData format:'))
 ```
 
 #### With Custom Prefix {#anndata-example-prefix}
 
 ```bash
-quantmsioc transform anndata \
+qpxc transform anndata \
     --directory ./ae_files \
     --output-folder ./output \
     --output-prefix merged_ae
@@ -551,6 +551,7 @@ quantmsioc transform anndata \
 
 ## Related Commands
 
-- [Convert Commands](cli-convert.md) - Convert raw data to quantms.io format
+- [Convert Commands](cli-convert.md) - Convert raw data to QPX format
 - [Visualization Commands](cli-visualize.md) - Visualize transformed data
 - [Statistics Commands](cli-stats.md) - Analyze transformed data
+

@@ -4,7 +4,7 @@ import tempfile
 import shutil
 import pandas as pd
 
-from quantmsio.core.idxml import IdXML
+from qpx.core.idxml import IdXML
 
 
 class TestIdXML(unittest.TestCase):

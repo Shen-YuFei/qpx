@@ -1,12 +1,12 @@
 # Examples & Tutorials
 
-Learn how to use quantmsio through practical examples and real-world use cases.
+Learn how to use qpx through practical examples and real-world use cases.
 
 ## Available Examples
 
 ### [Quick Start Examples](examples-quickstart.md)
 
-Basic examples for getting started with quantmsio:
+Basic examples for getting started with qpx:
 
 - Convert MaxQuant Data
 - Convert DIA-NN Data
@@ -38,4 +38,5 @@ Generate comprehensive QC reports:
 
 ---
 
-**Need more examples?** Check the [`tests/examples/`](https://github.com/bigbio/quantms.io/tree/main/tests/examples) directory in the repository for real data files you can use for testing.
+**Need more examples?** Check the [`tests/examples/`](https://github.com/bigbio/QPX/tree/main/tests/examples) directory in the repository for real data files you can use for testing.
+

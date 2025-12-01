@@ -3,14 +3,14 @@
 ## Standard Installation
 
 ```bash
-pip install quantmsio
+pip install qpx
 ```
 
 ## From Source
 
 ```bash
-git clone https://github.com/bigbio/quantms.io.git
-cd quantms.io
+git clone https://github.com/bigbio/QPX.git
+cd QPX
 pip install .
 ```
 
@@ -20,11 +20,11 @@ For contributing to the project:
 
 ```bash
 # 1. Fork the repository on GitHub
-# Visit https://github.com/bigbio/quantms.io and click "Fork"
+# Visit https://github.com/bigbio/QPX and click "Fork"
 
 # 2. Clone your fork
-git clone https://github.com/YOUR-USERNAME/quantms.io
-cd quantms.io
+git clone https://github.com/YOUR-USERNAME/QPX
+cd QPX
 
 # 3. Install dependencies
 # Using Poetry (recommended)
@@ -34,3 +34,4 @@ poetry install
 pip install -r requirements.txt
 pip install -e .
 ```
+
