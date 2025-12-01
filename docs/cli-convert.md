@@ -1,10 +1,99 @@
 # Convert Commands
 
-Convert various mass spectrometry data formats to the quantms.io standard format.
+Convert various mass spectrometry data formats to the QPX standard format.
+
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+
+            # Extract default value from help text if it contains "(default: ...)"
+            description = param.help or ''
+            default_from_help = None
+            if '(default:' in description.lower():
+                import re
+                match = re.search(r'\(default:\s*([^)]+)\)', description, re.IGNORECASE)
+                if match:
+                    default_from_help = match.group(1).strip()
+
+            # Determine default value display
+            if default_from_help:
+                default = default_from_help
+            elif param.default is not None and str(param.default) != 'Sentinel.UNSET':
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
 
 ## Overview
 
-The `convert` command group provides converters for multiple proteomics software outputs, enabling standardization of data formats for downstream analysis. All commands generate parquet-format output files following the quantms.io specification.
+The `convert` command group provides converters for multiple proteomics software outputs, enabling standardization of data formats for downstream analysis. All commands generate parquet-format output files following the QPX specification.
 
 ## Available Commands
 
@@ -24,37 +113,37 @@ The `convert` command group provides converters for multiple proteomics software
 
 ## diann
 
-Convert DIA-NN report files to quantms.io feature format.
+Convert DIA-NN report files to QPX feature format.
 
 ### Description {#diann-description}
 
-This command converts DIA-NN (Data-Independent Acquisition by Neural Networks) report files to the standardized quantms.io parquet format. It processes peptide-level quantification data and can optionally partition the output based on specified fields.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.diann import convert_diann_cmd
+print(generate_description(convert_diann_cmd))
+```
 
 ### Parameters {#diann-parameters}
 
-| Parameter             | Type    | Required | Default   | Description                                      |
-| --------------------- | ------- | -------- | --------- | ------------------------------------------------ |
-| `--report-path`       | Path    | Yes      | -         | DIA-NN report file path (typically `report.tsv`) |
-| `--qvalue-threshold`  | Float   | Yes      | 0.05      | Q-value threshold for filtering peptides         |
-| `--mzml-info-folder`  | Path    | Yes      | -         | Folder containing mzML info files                |
-| `--sdrf-path`         | Path    | Yes      | -         | SDRF file path for metadata                      |
-| `--output-folder`     | Path    | Yes      | -         | Output directory for generated files             |
-| `--protein-file`      | Path    | No       | -         | Protein file with specific requirements          |
-| `--output-prefix`     | String  | No       | `feature` | Prefix for output files                          |
-| `--partitions`        | String  | No       | -         | Field(s) for splitting files (comma-separated)   |
-| `--duckdb-max-memory` | String  | No       | -         | Maximum memory for DuckDB (e.g., "4GB")          |
-| `--duckdb-threads`    | Integer | No       | -         | Number of threads for DuckDB                     |
-| `--batch-size`        | Integer | No       | 100       | Number of files to process simultaneously        |
-| `--verbose`           | Flag    | No       | False     | Enable verbose logging                           |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.diann import convert_diann_cmd
+print(generate_params_table(convert_diann_cmd))
+```
 
 ### Usage Examples {#diann-examples}
 
 #### Basic Example {#diann-example-basic}
 
-Convert a DIA-NN report with default settings:
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.diann import convert_diann_cmd
+print(generate_example(convert_diann_cmd, 'Convert a DIA-NN report with default settings:'))
+```
+
+#### Advanced Example {#diann-example-advanced}
+
+Convert with file partitioning based on reference_file_name:
 
 ```bash
-quantmsioc convert diann \
+qpxc convert diann \
     --report-path tests/examples/diann/small/diann_report.tsv \
     --qvalue-threshold 0.05 \
     --mzml-info-folder tests/examples/diann/small/mzml \
@@ -62,12 +151,12 @@ quantmsioc convert diann \
     --output-folder ./output
 ```
 
-#### Advanced Example with Partitioning {#diann-example-advanced}
+#### Advanced Example with Partitioning {#diann-example-partitioning}
 
 Convert with file partitioning based on reference_file_name:
 
 ```bash
-quantmsioc convert diann \
+qpxc convert diann \
     --report-path tests/examples/diann/full/diann_report.tsv.gz \
     --qvalue-threshold 0.01 \
     --mzml-info-folder tests/examples/diann/full/mzml \
@@ -83,7 +172,7 @@ quantmsioc convert diann \
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature-level quantification data
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ### Common Issues {#diann-issues}
 
@@ -110,42 +199,35 @@ quantmsioc convert diann \
 
 ## diann-pg
 
-Convert DIA-NN report files to quantms.io protein group format.
+Convert DIA-NN report files to QPX protein group format.
 
 ### Description {#diann-pg-description}
 
-This command converts DIA-NN protein quantification matrices to the standardized quantms.io protein group format. It combines information from the main report file and the protein group matrix.
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.diann import convert_diann_pg_cmd
+print(generate_description(convert_diann_pg_cmd))
+```
 
 ### Parameters {#diann-pg-parameters}
 
-| Parameter             | Type    | Required | Default | Description                               |
-| --------------------- | ------- | -------- | ------- | ----------------------------------------- |
-| `--report-path`       | Path    | Yes      | -       | DIA-NN report file path                   |
-| `--pg-matrix-path`    | Path    | Yes      | -       | DIA-NN protein quantities table file path |
-| `--sdrf-path`         | Path    | Yes      | -       | SDRF file path for metadata               |
-| `--output-folder`     | Path    | Yes      | -       | Output directory for generated files      |
-| `--output-prefix`     | String  | No       | `pg`    | Prefix for output files                   |
-| `--duckdb-max-memory` | String  | No       | -       | Maximum memory for DuckDB (e.g., "4GB")   |
-| `--duckdb-threads`    | Integer | No       | -       | Number of threads for DuckDB              |
-| `--batch-size`        | Integer | No       | 100     | Number of files to process simultaneously |
-| `--verbose`           | Flag    | No       | False   | Enable verbose logging                    |
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.diann import convert_diann_pg_cmd
+print(generate_params_table(convert_diann_pg_cmd))
+```
 
 ### Usage Examples {#diann-pg-examples}
 
 #### Basic Example {#diann-pg-example-basic}
 
-```bash
-quantmsioc convert diann-pg \
-    --report-path tests/examples/diann/full/diann_report.tsv.gz \
-    --pg-matrix-path tests/examples/diann/full/diann_report.pg_matrix.tsv \
-    --sdrf-path tests/examples/diann/full/PXD036609.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.diann import convert_diann_pg_cmd
+print(generate_example(convert_diann_pg_cmd, 'Convert DIA-NN protein groups with default settings:'))
 ```
 
 #### High-Performance Example {#diann-pg-example-performance}
 
 ```bash
-quantmsioc convert diann-pg \
+qpxc convert diann-pg \
     --report-path tests/examples/diann/full/diann_report.tsv.gz \
     --pg-matrix-path tests/examples/diann/full/diann_report.pg_matrix.tsv \
     --sdrf-path tests/examples/diann/full/PXD036609.sdrf.tsv \
@@ -160,7 +242,7 @@ quantmsioc convert diann-pg \
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group quantification data
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ### Best Practices {#diann-pg-best-practices}
 
@@ -172,37 +254,35 @@ quantmsioc convert diann-pg \
 
 ## maxquant-psm
 
-Convert MaxQuant PSM data from `msms.txt` to quantms.io parquet format.
+Convert MaxQuant PSM data from `msms.txt` to QPX parquet format.
 
 ### Description {#maxquant-psm-description}
 
-Converts MaxQuant Peptide-Spectrum Match (PSM) data to the standardized quantms.io format. This command processes the `msms.txt` file generated by MaxQuant.
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
+print(generate_description(convert_maxquant_psm_cmd))
+```
 
 ### Parameters {#maxquant-psm-parameters}
 
-| Parameter         | Type    | Required | Default | Description                          |
-| ----------------- | ------- | -------- | ------- | ------------------------------------ |
-| `--msms-file`     | Path    | Yes      | -       | MaxQuant msms.txt file path          |
-| `--output-folder` | Path    | Yes      | -       | Output directory for generated files |
-| `--batch-size`    | Integer | No       | 1000000 | Read batch size for processing       |
-| `--output-prefix` | String  | No       | `psm`   | Prefix for output files              |
-| `--spectral-data` | Flag    | No       | False   | Include spectral data fields         |
-| `--verbose`       | Flag    | No       | False   | Enable verbose logging               |
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
+print(generate_params_table(convert_maxquant_psm_cmd))
+```
 
 ### Usage Examples {#maxquant-psm-examples}
 
 #### Basic Example {#maxquant-psm-example-basic}
 
-```bash
-quantmsioc convert maxquant-psm \
-    --msms-file tests/examples/maxquant/maxquant_simple/msms.txt \
-    --output-folder ./output
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_psm_cmd
+print(generate_example(convert_maxquant_psm_cmd, 'Convert MaxQuant PSM data with default settings:'))
 ```
 
 #### With Spectral Data {#maxquant-psm-example-spectral}
 
 ```bash
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file tests/examples/maxquant/maxquant_simple/msms.txt \
     --output-folder ./output \
     --spectral-data \
@@ -215,7 +295,7 @@ quantmsioc convert maxquant-psm \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM-level data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#maxquant-psm-best-practices}
 
@@ -227,41 +307,35 @@ quantmsioc convert maxquant-psm \
 
 ## maxquant-feature
 
-Convert MaxQuant feature data from `evidence.txt` to quantms.io parquet format.
+Convert MaxQuant feature data from `evidence.txt` to QPX parquet format.
 
 ### Description {#maxquant-feature-description}
 
-Converts MaxQuant feature-level quantification data to the standardized quantms.io format. This command processes the `evidence.txt` file, which contains peptide feature intensities across samples.
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
+print(generate_description(convert_maxquant_feature_cmd))
+```
 
 ### Parameters {#maxquant-feature-parameters}
 
-| Parameter               | Type    | Required | Default   | Description                                    |
-| ----------------------- | ------- | -------- | --------- | ---------------------------------------------- |
-| `--evidence-file`       | Path    | Yes      | -         | MaxQuant evidence.txt file path                |
-| `--sdrf-file`           | Path    | Yes      | -         | SDRF file for metadata extraction              |
-| `--output-folder`       | Path    | Yes      | -         | Output directory for generated files           |
-| `--protein-file`        | Path    | No       | -         | Protein file with specific requirements        |
-| `--protein-groups-file` | Path    | No       | -         | MaxQuant proteinGroups.txt for Q-value mapping |
-| `--partitions`          | String  | No       | -         | Field(s) for splitting files (comma-separated) |
-| `--batch-size`          | Integer | No       | 1000000   | Read batch size                                |
-| `--output-prefix`       | String  | No       | `feature` | Prefix for output files                        |
-| `--verbose`             | Flag    | No       | False     | Enable verbose logging                         |
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
+print(generate_params_table(convert_maxquant_feature_cmd))
+```
 
 ### Usage Examples {#maxquant-feature-examples}
 
 #### Basic Example {#maxquant-feature-example-basic}
 
-```bash
-quantmsioc convert maxquant-feature \
-    --evidence-file tests/examples/maxquant/maxquant_full/evidence.txt.gz \
-    --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_feature_cmd
+print(generate_example(convert_maxquant_feature_cmd, 'Convert MaxQuant feature data with default settings:'))
 ```
 
 #### With Protein Groups Q-value Mapping {#maxquant-feature-example-qvalue}
 
 ```bash
-quantmsioc convert maxquant-feature \
+qpxc convert maxquant-feature \
     --evidence-file tests/examples/maxquant/maxquant_full/evidence.txt.gz \
     --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
     --protein-groups-file tests/examples/maxquant/maxquant_full/proteinGroups.txt \
@@ -274,7 +348,7 @@ quantmsioc convert maxquant-feature \
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature-level quantification
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ### Common Issues {#maxquant-feature-issues}
 
@@ -296,73 +370,70 @@ quantmsioc convert maxquant-feature \
 
 ## maxquant-pg
 
-Convert MaxQuant protein groups from `proteinGroups.txt` to quantms.io format.
+Convert MaxQuant protein groups from `proteinGroups.txt` to QPX format.
 
 ### Description {#maxquant-pg-description}
 
-Converts MaxQuant protein group quantification to the standardized quantms.io protein group format.
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
+print(generate_description(convert_maxquant_pg_cmd))
+```
 
 ### Parameters {#maxquant-pg-parameters}
 
-| Parameter               | Type    | Required | Default | Description                          |
-| ----------------------- | ------- | -------- | ------- | ------------------------------------ |
-| `--protein-groups-file` | Path    | Yes      | -       | MaxQuant proteinGroups.txt file      |
-| `--sdrf-file`           | Path    | Yes      | -       | SDRF file for metadata extraction    |
-| `--output-folder`       | Path    | Yes      | -       | Output directory for generated files |
-| `--batch-size`          | Integer | No       | 1000000 | Batch size (for logging purposes)    |
-| `--output-prefix`       | String  | No       | `pg`    | Prefix for output files              |
-| `--verbose`             | Flag    | No       | False   | Enable verbose logging               |
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
+print(generate_params_table(convert_maxquant_pg_cmd))
+```
 
 ### Usage Examples {#maxquant-pg-examples}
 
 #### Basic Example {#maxquant-pg-example-basic}
 
-```bash
-quantmsioc convert maxquant-pg \
-    --protein-groups-file tests/examples/maxquant/maxquant_full/proteinGroups.txt \
-    --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.maxquant import convert_maxquant_pg_cmd
+print(generate_example(convert_maxquant_pg_cmd, 'Convert MaxQuant protein groups with default settings:'))
 ```
 
 ### Output Files {#maxquant-pg-output}
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group data
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ---
 
 ## fragpipe
 
-Convert FragPipe PSM data to quantms.io parquet format.
+Convert FragPipe PSM data to QPX parquet format.
 
 ### Description {#fragpipe-description}
 
-Converts FragPipe PSM (Peptide-Spectrum Match) data from `psm.tsv` files to the standardized quantms.io format.
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+print(generate_description(convert_fragpipe_psm_cmd))
+```
 
 ### Parameters {#fragpipe-parameters}
 
-| Parameter         | Type    | Required | Default | Description                          |
-| ----------------- | ------- | -------- | ------- | ------------------------------------ |
-| `--msms-file`     | Path    | Yes      | -       | FragPipe psm.tsv file path           |
-| `--output-folder` | Path    | Yes      | -       | Output directory for generated files |
-| `--batch-size`    | Integer | No       | 1000000 | Read batch size                      |
-| `--output-prefix` | String  | No       | -       | Prefix for output files              |
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+print(generate_params_table(convert_fragpipe_psm_cmd))
+```
 
 ### Usage Examples {#fragpipe-examples}
 
 #### Basic Example {#fragpipe-example-basic}
 
-```bash
-quantmsioc convert fragpipe \
-    --msms-file /path/to/psm.tsv \
-    --output-folder ./output
+```python exec="1" session="doc_utils" html="1"
+from qpx.commands.convert.fragpipe import convert_fragpipe_psm_cmd
+print(generate_example(convert_fragpipe_psm_cmd, 'Convert FragPipe PSM data with default settings:'))
 ```
 
 #### With Custom Settings {#fragpipe-example-custom}
 
 ```bash
-quantmsioc convert fragpipe \
+qpxc convert fragpipe \
     --msms-file /path/to/psm.tsv \
     --output-folder ./output \
     --batch-size 500000 \
@@ -373,44 +444,41 @@ quantmsioc convert fragpipe \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ---
 
 ## quantms-psm
 
-Convert mzTab PSM data to quantms.io parquet format.
+Convert mzTab PSM data to QPX parquet format.
 
 ### Description {#quantms-psm-description}
 
-Converts PSM data from mzTab format to the quantms.io standardized parquet format. Can work with existing DuckDB indexes or create new ones from mzTab files.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
+print(generate_description(convert_quantms_psm_cmd))
+```
 
 ### Parameters {#quantms-psm-parameters}
 
-| Parameter         | Type   | Required    | Default | Description                                              |
-| ----------------- | ------ | ----------- | ------- | -------------------------------------------------------- |
-| `--mztab-path`    | Path   | Conditional | -       | Input mzTab file path (required if creating new indexer) |
-| `--database-path` | Path   | Conditional | -       | DuckDB database file path (existing or to be created)    |
-| `--output-folder` | Path   | Yes         | -       | Output directory for generated files                     |
-| `--output-prefix` | String | No          | `psm`   | Prefix for output files                                  |
-| `--spectral-data` | Flag   | No          | False   | Include spectral data fields                             |
-| `--verbose`       | Flag   | No          | False   | Enable verbose logging                                   |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
+print(generate_params_table(convert_quantms_psm_cmd))
+```
 
 ### Usage Examples {#quantms-psm-examples}
 
-#### Create from mzTab {#quantms-psm-example-create}
+#### Basic Example {#quantms-psm-example-basic}
 
-```bash
-quantmsioc convert quantms-psm \
-    --mztab-path tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz \
-    --output-folder ./output \
-    --verbose
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_psm_cmd
+print(generate_example(convert_quantms_psm_cmd, 'Convert PSM data with default settings:'))
 ```
 
 #### Use Existing Database {#quantms-psm-example-existing}
 
 ```bash
-quantmsioc convert quantms-psm \
+qpxc convert quantms-psm \
     --database-path ./existing_database.duckdb \
     --output-folder ./output \
     --spectral-data
@@ -420,7 +488,7 @@ quantmsioc convert quantms-psm \
 
 - **Output**: `{output-prefix}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#quantms-psm-best-practices}
 
@@ -431,73 +499,70 @@ quantmsioc convert quantms-psm \
 
 ## quantms-feature
 
-Convert mzTab feature data to quantms.io parquet format.
+Convert mzTab feature data to QPX parquet format.
 
 ### Description {#quantms-feature-description}
 
-Converts feature-level quantification data from mzTab format to the quantms.io standardized format, including MSstats quantification data.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
+print(generate_description(convert_quantms_feature_cmd))
+```
 
 ### Parameters {#quantms-feature-parameters}
 
-| Parameter         | Type   | Required    | Default   | Description                          |
-| ----------------- | ------ | ----------- | --------- | ------------------------------------ |
-| `--mztab-path`    | Path   | Conditional | -         | Input mzTab file path                |
-| `--database-path` | Path   | Conditional | -         | DuckDB database file path            |
-| `--output-folder` | Path   | Yes         | -         | Output directory for generated files |
-| `--output-prefix` | String | No          | `feature` | Prefix for output files              |
-| `--sdrf-file`     | Path   | Yes         | -         | SDRF file path for metadata          |
-| `--msstats-file`  | Path   | Yes         | -         | MSstats input file path              |
-| `--verbose`       | Flag   | No          | False     | Enable verbose logging               |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
+print(generate_params_table(convert_quantms_feature_cmd))
+```
 
 ### Usage Examples {#quantms-feature-examples}
 
 #### Basic Example {#quantms-feature-example-basic}
 
-```bash
-quantmsioc convert quantms-feature \
-    --mztab-path tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz \
-    --sdrf-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv \
-    --msstats-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_msstats_in.csv.gz \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_feature_cmd
+print(generate_example(convert_quantms_feature_cmd, 'Convert feature data with default settings:'))
 ```
 
 ### Output Files {#quantms-feature-output}
 
 - **Output**: `{output-prefix}-{uuid}.feature.parquet`
 - **Format**: Parquet file containing feature quantification
-- **Schema**: Conforms to quantms.io feature specification
+- **Schema**: Conforms to QPX feature specification
 
 ---
 
 ## quantms-pg
 
-Convert mzTab protein group data to quantms.io parquet format.
+Convert mzTab protein group data to QPX parquet format.
 
 ### Description {#quantms-pg-description}
 
-Converts protein group quantification from mzTab format to the quantms.io standardized format. Supports both TMT and LFQ data, with optional TopN and iBAQ intensity calculations.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
+print(generate_description(convert_quantms_pg_cmd))
+```
 
 ### Parameters {#quantms-pg-parameters}
 
-| Parameter         | Type    | Required    | Default | Description                           |
-| ----------------- | ------- | ----------- | ------- | ------------------------------------- |
-| `--mztab-path`    | Path    | Conditional | -       | Input mzTab file path                 |
-| `--database-path` | Path    | Conditional | -       | DuckDB database file path             |
-| `--msstats-file`  | Path    | Yes         | -       | MSstats input file for quantification |
-| `--sdrf-file`     | Path    | Yes         | -       | SDRF file path for metadata           |
-| `--output-folder` | Path    | Yes         | -       | Output directory for generated files  |
-| `--output-prefix` | String  | No          | `pg`    | Prefix for output files               |
-| `--compute-topn`  | Flag    | No          | True    | Compute TopN intensity                |
-| `--compute-ibaq`  | Flag    | No          | True    | Compute iBAQ intensity                |
-| `--topn`          | Integer | No          | 3       | Number of peptides for TopN intensity |
-| `--verbose`       | Flag    | No          | False   | Enable verbose logging                |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
+print(generate_params_table(convert_quantms_pg_cmd))
+```
 
 ### Usage Examples {#quantms-pg-examples}
+
+#### Basic Example {#quantms-pg-example-basic}
+
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.quantms import convert_quantms_pg_cmd
+print(generate_example(convert_quantms_pg_cmd, 'Convert protein groups with default settings:'))
+```
 
 #### LFQ Data with All Intensities {#quantms-pg-example-lfq}
 
 ```bash
-quantmsioc convert quantms-pg \
+qpxc convert quantms-pg \
     --mztab-path tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_openms.mzTab.gz \
     --msstats-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf_openms_design_msstats_in.csv.gz \
     --sdrf-file tests/examples/quantms/dda-lfq-full/PXD007683-LFQ.sdrf.tsv \
@@ -510,7 +575,7 @@ quantmsioc convert quantms-pg \
 #### TMT Data (Skip iBAQ) {#quantms-pg-example-tmt}
 
 ```bash
-quantmsioc convert quantms-pg \
+qpxc convert quantms-pg \
     --mztab-path tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_openms.mzTab.gz \
     --msstats-file tests/examples/quantms/dda-plex-full/PXD007683TMT.sdrf_openms_design_msstats_in.csv.gz \
     --sdrf-file tests/examples/quantms/dda-plex-full/PXD007683-TMT.sdrf.tsv \
@@ -522,7 +587,7 @@ quantmsioc convert quantms-pg \
 
 - **Output**: `{output-prefix}-{uuid}.pg.parquet`
 - **Format**: Parquet file containing protein group quantification
-- **Schema**: Conforms to quantms.io protein group specification
+- **Schema**: Conforms to QPX protein group specification
 
 ### Best Practices {#quantms-pg-best-practices}
 
@@ -534,36 +599,35 @@ quantmsioc convert quantms-pg \
 
 ## idxml
 
-Convert a single OpenMS idXML file to quantms.io PSM format.
+Convert a single OpenMS idXML file to QPX PSM format.
 
 ### Description {#idxml-description}
 
-Converts PSM data from OpenMS idXML format to the quantms.io standardized parquet format. Can optionally attach spectral information from corresponding mzML files.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_file
+print(generate_description(convert_idxml_file))
+```
 
 ### Parameters {#idxml-parameters}
 
-| Parameter              | Type   | Required | Default | Description                                  |
-| ---------------------- | ------ | -------- | ------- | -------------------------------------------- |
-| `--idxml-file`         | Path   | Yes      | -       | idXML file containing identifications        |
-| `--output-folder`      | Path   | Yes      | -       | Output directory for generated files         |
-| `--mzml-file`          | Path   | No       | -       | Optional mzML file to attach spectra by scan |
-| `--output-prefix-file` | String | No       | `psm`   | Prefix for output files                      |
-| `--spectral-data`      | Flag   | No       | False   | Include spectral data fields                 |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_file
+print(generate_params_table(convert_idxml_file))
+```
 
 ### Usage Examples {#idxml-examples}
 
 #### Basic Example {#idxml-example-basic}
 
-```bash
-quantmsioc convert idxml \
-    --idxml-file tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep2_consensus_fdr_pep_luciphor.idXML \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_file
+print(generate_example(convert_idxml_file, 'Convert a single idXML file:'))
 ```
 
 #### With Spectral Data {#idxml-example-spectral}
 
 ```bash
-quantmsioc convert idxml \
+qpxc convert idxml \
     --idxml-file tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep2_consensus_fdr_pep_luciphor.idXML \
     --mzml-file tests/examples/idxml/SF_200217_pPeptideLibrary_pool1_HCDnlETcaD_OT_rep1.mzML \
     --output-folder ./output \
@@ -575,7 +639,7 @@ quantmsioc convert idxml \
 
 - **Output**: `{output-prefix-file}-{uuid}.psm.parquet`
 - **Format**: Parquet file containing PSM data
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ---
 
@@ -585,26 +649,31 @@ Convert multiple OpenMS idXML files to a single merged PSM parquet file.
 
 ### Description {#idxml-batch-description}
 
-Batch converts multiple idXML files and merges them into a single quantms.io PSM parquet file. Supports both folder-based and file-list-based input, with flexible mzML matching strategies.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_batch
+print(generate_description(convert_idxml_batch))
+```
 
 ### Parameters {#idxml-batch-parameters}
 
-| Parameter              | Type   | Required    | Default      | Description                                                           |
-| ---------------------- | ------ | ----------- | ------------ | --------------------------------------------------------------------- |
-| `--idxml-folder`       | Path   | Conditional | -            | Folder containing idXML files (mutually exclusive with --idxml-files) |
-| `--idxml-files`        | String | Conditional | -            | Comma-separated list of idXML file paths                              |
-| `--output-folder`      | Path   | Yes         | -            | Output directory for merged parquet file                              |
-| `--output-prefix-file` | String | No          | `merged-psm` | Prefix for output files                                               |
-| `--mzml-folder`        | Path   | No          | -            | Folder containing mzML files (basename matching)                      |
-| `--mzml-files`         | String | No          | -            | Comma-separated list of mzML file paths                               |
-| `--verbose`            | Flag   | No          | False        | Enable verbose logging                                                |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_batch
+print(generate_params_table(convert_idxml_batch))
+```
 
 ### Usage Examples {#idxml-batch-examples}
+
+#### Basic Example {#idxml-batch-example-basic}
+
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.convert.idxml import convert_idxml_batch
+print(generate_example(convert_idxml_batch, 'Convert multiple idXML files:'))
+```
 
 #### Folder-Based Conversion {#idxml-batch-example-folder}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-folder ./idxml_files \
     --output-folder ./output \
     --output-prefix-file batch_psm
@@ -613,7 +682,7 @@ quantmsioc convert idxml-batch \
 #### File List with Index Matching {#idxml-batch-example-list}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-files file1.idXML,file2.idXML,file3.idXML \
     --mzml-files file1.mzML,file2.mzML,file3.mzML \
     --output-folder ./output \
@@ -623,7 +692,7 @@ quantmsioc convert idxml-batch \
 #### Folder with Basename Matching {#idxml-batch-example-basename}
 
 ```bash
-quantmsioc convert idxml-batch \
+qpxc convert idxml-batch \
     --idxml-folder ./idxml_files \
     --mzml-folder ./mzml_files \
     --output-folder ./output \
@@ -643,7 +712,7 @@ The command supports three mzML matching strategies:
 
 - **Output**: `{output-prefix-file}-{uuid}.psm.parquet`
 - **Format**: Single merged parquet file containing PSM data from all inputs
-- **Schema**: Conforms to quantms.io PSM specification
+- **Schema**: Conforms to QPX PSM specification
 
 ### Best Practices {#idxml-batch-best-practices}
 
@@ -659,3 +728,4 @@ The command supports three mzML matching strategies:
 - [Transform Commands](cli-transform.md) - Further process converted data
 - [Visualization Commands](cli-visualize.md) - Create plots from converted data
 - [Statistics Commands](cli-stats.md) - Generate statistics from converted data
+

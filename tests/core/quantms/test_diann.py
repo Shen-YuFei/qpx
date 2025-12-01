@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from quantmsio.core.diann.diann import DiaNNConvert
-from quantmsio.core.quantms.feature import Feature
+from qpx.core.diann.diann import DiaNNConvert
+from qpx.core.quantms.feature import Feature
 
 TEST_DATA_ROOT = Path(__file__).parents[2] / "examples"
 
@@ -58,8 +58,8 @@ def test_transform_protein_groups():
     try:
         # Get some test data for protein groups using the proper SQL format
         refs = diann_converter.get_unique_references("Run")[:1]  # Just test with 1 file
-        from quantmsio.core.common import DIANN_PG_MAP
-        from quantmsio.core.diann.diann import DIANN_PG_SQL
+        from qpx.core.common import DIANN_PG_MAP
+        from qpx.core.diann.diann import DIANN_PG_SQL
 
         report = diann_converter.get_report_from_database(refs, DIANN_PG_SQL)
 

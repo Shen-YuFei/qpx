@@ -4,7 +4,7 @@
 
 ![Data Conversion Flow](images/data_conversion.png)
 
-Convert data from leading proteomics software to standardized quantms.io format:
+Convert data from leading proteomics software to standardized QPX format:
 
 1. **MaxQuant** result files:
 
@@ -86,3 +86,4 @@ Track and share your work:
 - File registration and tracking
 
 [View project tools →](cli-project.md)
+

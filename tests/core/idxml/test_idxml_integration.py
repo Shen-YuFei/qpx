@@ -5,8 +5,8 @@ import pytest
 from click.testing import CliRunner
 import pyarrow.parquet as pq
 
-from quantmsio.commands.convert.quantms import convert_idxml_psm_cmd
-from quantmsio.commands.convert.idxml import convert_idxml_batch
+from qpx.commands.convert.quantms import convert_idxml_psm_cmd
+from qpx.commands.convert.idxml import convert_idxml_batch
 
 # Test data path
 TEST_DATA_ROOT = Path(__file__).parents[2] / "examples"
@@ -84,7 +84,7 @@ def test_idxml_psm_command_help():
     result = runner.invoke(convert_idxml_psm_cmd, ["--help"])
 
     assert result.exit_code == 0
-    assert "Convert PSM data from idXML to quantms.io format" in result.output
+    assert "Convert PSM data from idXML to QPX format" in result.output
     assert "--idxml-path" in result.output
     assert "--output-folder" in result.output
 
@@ -278,7 +278,7 @@ def test_idxml_batch_command_help():
     result = runner.invoke(convert_idxml_batch, ["--help"])
 
     assert result.exit_code == 0
-    assert "Convert multiple IdXML files" in result.output
+    assert "Convert multiple OpenMS idXML files" in result.output
     assert "--idxml-folder" in result.output
     assert "--idxml-files" in result.output
     assert "--output-folder" in result.output

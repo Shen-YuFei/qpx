@@ -15,31 +15,31 @@ mkdir -p $QC_DIR
 
 # Generate statistics
 echo "=== PSM Statistics ===" > $QC_DIR/report.txt
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path $OUTPUT_DIR/psm.parquet \
     >> $QC_DIR/report.txt
 
 echo "" >> $QC_DIR/report.txt
 echo "=== Project Statistics ===" >> $QC_DIR/report.txt
-quantmsioc stats analyze project-ae \
+qpxc stats analyze project-ae \
     --absolute-path $OUTPUT_DIR/ae.parquet \
     --parquet-path $OUTPUT_DIR/psm.parquet \
     >> $QC_DIR/report.txt
 
 # Generate QC plots
-quantmsioc visualize plot box-intensity \
+qpxc visualize plot box-intensity \
     --feature-path $OUTPUT_DIR/feature.parquet \
     --save-path $QC_DIR/intensity_boxplot.svg
 
-quantmsioc visualize plot kde-intensity \
+qpxc visualize plot kde-intensity \
     --feature-path $OUTPUT_DIR/feature.parquet \
     --save-path $QC_DIR/intensity_kde.svg
 
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path $OUTPUT_DIR/feature.parquet \
     --save-path $QC_DIR/peptide_distribution.svg
 
-quantmsioc visualize plot ibaq-distribution \
+qpxc visualize plot ibaq-distribution \
     --ibaq-path $OUTPUT_DIR/ae.parquet \
     --save-path $QC_DIR/ibaq_distribution.svg
 
@@ -48,7 +48,7 @@ cat > $QC_DIR/index.html << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
-    <title>quantmsio QC Report</title>
+    <title>qpx QC Report</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         h1 { color: #2c3e50; }
@@ -59,7 +59,7 @@ cat > $QC_DIR/index.html << 'EOF'
     </style>
 </head>
 <body>
-    <h1>quantmsio Quality Control Report</h1>
+    <h1>qpx Quality Control Report</h1>
 
     <h2>Statistics</h2>
     <pre>
@@ -96,10 +96,11 @@ echo "QC report generated: $QC_DIR/index.html"
 
 - **[CLI Reference](cli-reference.md)** - Complete command documentation
 - **[Format Specification](format-specification.md)** - Data format details
-- **[GitHub Repository](https://github.com/bigbio/quantms.io)** - Source code and more examples
+- **[GitHub Repository](https://github.com/bigbio/qpx)** - Source code and more examples
 
 ---
 
-**Need more examples?** Check the [`tests/examples/`](https://github.com/bigbio/quantms.io/tree/main/tests/examples) directory in the repository for real data files you can use for testing.
+**Need more examples?** Check the [`tests/examples/`](https://github.com/bigbio/qpx/tree/main/tests/examples) directory in the repository for real data files you can use for testing.
 
 [← Back to Examples Overview](examples-overview.md)
+

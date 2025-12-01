@@ -1,6 +1,4 @@
-"""
-Optimized MaxQuant test module focused on core functionality testing.
-"""
+"""MaxQuant test module for core functionality testing."""
 
 import os
 import tempfile
@@ -10,7 +8,7 @@ import pandas as pd
 import pytest
 import pyarrow.parquet as pq
 
-from quantmsio.core.maxquant.maxquant import (
+from qpx.core.maxquant.maxquant import (
     MaxQuant,
     parse_modifications_from_peptidoform,
     read_evidence,
@@ -18,7 +16,6 @@ from quantmsio.core.maxquant.maxquant import (
     read_protein_groups,
 )
 
-# Test data paths
 TEST_DATA_ROOT = Path(__file__).parents[2] / "examples" / "maxquant"
 TEST_FILES = {
     "msms": TEST_DATA_ROOT / "maxquant_simple/msms.txt",
@@ -28,7 +25,6 @@ TEST_FILES = {
 }
 
 
-# Test data validation
 @pytest.fixture(scope="module")
 def validate_test_data():
     """Validate that all required test files exist."""
@@ -48,41 +44,30 @@ def test_core_functionality(validate_test_data):
     test_files = validate_test_data
     processor = MaxQuant()
 
-    # Test basic file reading
     msms_df = processor.read_msms(str(test_files["msms"]))
     evidence_df = processor.read_evidence(str(test_files["evidence"]))
 
-    assert msms_df is not None and len(msms_df) > 0, "MSMS file should contain data"
-    assert (
-        evidence_df is not None and len(evidence_df) > 0
-    ), "Evidence file should contain data"
+    assert msms_df is not None and len(msms_df) > 0
+    assert evidence_df is not None and len(evidence_df) > 0
 
-    # Test processing functionality
     psm_table = processor.process_msms_to_psm_table(msms_df)
     feature_table = processor.process_evidence_to_feature_table(evidence_df)
 
-    assert psm_table is not None, "PSM table processing should succeed"
-    assert feature_table is not None, "Feature table processing should succeed"
+    assert psm_table is not None
+    assert feature_table is not None
 
 
 def test_backward_compatibility(validate_test_data):
     """Test backward compatibility functions."""
     test_files = validate_test_data
 
-    # Test backward compatibility functions
     msms_df_compat = read_msms(str(test_files["msms"]))
     evidence_df_compat = read_evidence(str(test_files["evidence"]))
     pg_df_compat = read_protein_groups(str(test_files["protein_groups"]))
 
-    assert (
-        msms_df_compat is not None and len(msms_df_compat) > 0
-    ), "Backward compatible MSMS reading should work"
-    assert (
-        evidence_df_compat is not None and len(evidence_df_compat) > 0
-    ), "Backward compatible evidence reading should work"
-    assert (
-        pg_df_compat is not None and len(pg_df_compat) > 0
-    ), "Backward compatible protein groups reading should work"
+    assert msms_df_compat is not None and len(msms_df_compat) > 0
+    assert evidence_df_compat is not None and len(evidence_df_compat) > 0
+    assert pg_df_compat is not None and len(pg_df_compat) > 0
 
 
 def test_batch_processing(validate_test_data):
@@ -90,22 +75,18 @@ def test_batch_processing(validate_test_data):
     test_files = validate_test_data
     processor = MaxQuant()
 
-    # Test batch processing functionality
     chunk_count = 0
     for df_chunk in processor.iter_batch(str(test_files["msms"]), chunksize=100):
-        assert (
-            df_chunk is not None and len(df_chunk) > 0
-        ), f"Batch chunk {chunk_count} should contain data"
+        assert df_chunk is not None and len(df_chunk) > 0
         chunk_count += 1
-        if chunk_count >= 3:  # Limit test to first few batches for performance
+        if chunk_count >= 3:
             break
 
-    assert chunk_count > 0, "Should process at least one batch"
+    assert chunk_count > 0
 
 
 def test_modification_parsing():
     """Test modification parsing functionality."""
-    # Test modification parsing
     test_cases = [
         ("TESTPEPTIDE", None, "Unmodified peptide should return None"),
         ("TEST(Oxidation)PEPTIDE", list, "Modified peptide should return list"),
@@ -121,21 +102,22 @@ def test_modification_parsing():
         else:
             assert isinstance(modifications, expected_type), description
             for mod in modifications:
-                assert "name" in mod, "Modification should have 'name' field"
-                assert "positions" in mod, "Modification should have 'positions' field"
-                assert isinstance(mod["positions"], list), "Positions should be a list"
+                assert "name" in mod
+                assert "positions" in mod
+                assert isinstance(mod["positions"], list)
 
-    # Test edge cases for modification parsing
     edge_cases = [("", None), (None, None)]
     for peptidoform, expected in edge_cases:
         result = parse_modifications_from_peptidoform(peptidoform)
         assert result == expected, f"Edge case failed for {peptidoform}"
 
 
-def test_protein_groups_processing():
-    """Test protein groups processing functionality."""
-    # Test protein groups processing
+def test_protein_groups_processing(validate_test_data):
+    """Test protein groups processing with simple dataset."""
+    test_files = validate_test_data
+
     sample_data = {
+        "id": ["1", "2", "3"],
         "Protein IDs": ["P12345;Q67890", "P11111", "P22222"],
         "Majority protein IDs": ["P12345;Q67890", "P11111", "P22222"],
         "Fasta headers": ["Protein A;Protein B", "Protein C", "Protein D"],
@@ -157,10 +139,11 @@ def test_protein_groups_processing():
 
     df = pd.DataFrame(sample_data)
     processor = MaxQuant()
-    table = processor.process_protein_groups_to_pg_table(df)
+    table = processor.process_protein_groups_to_pg_table(
+        df, sdrf_path=str(test_files["sdrf"]), evidence_path=str(test_files["evidence"])
+    )
     result_df = table.to_pandas()
 
-    # Test basic conversion
     required_columns = [
         "pg_accessions",
         "pg_names",
@@ -171,23 +154,18 @@ def test_protein_groups_processing():
         "additional_scores",
     ]
     for col in required_columns:
-        assert col in result_df.columns, f"Required column '{col}' missing"
+        assert col in result_df.columns
 
-    # Test protein accession splitting and flags
     pg_accessions = result_df.iloc[0]["pg_accessions"]
     if hasattr(pg_accessions, "to_pylist"):
         pg_accessions = pg_accessions.to_pylist()
     elif not isinstance(pg_accessions, list):
         pg_accessions = list(pg_accessions) if pg_accessions is not None else []
 
-    assert (
-        isinstance(pg_accessions, list) and len(pg_accessions) == 2
-    ), "Protein accessions should be correctly split"
-    assert (
-        result_df.iloc[0]["anchor_protein"] == "P12345"
-    ), "Anchor protein should be first from Majority protein IDs"
-    assert result_df.iloc[1]["is_decoy"] == 1, "Reverse protein should be decoy"
-    assert result_df.iloc[2]["contaminant"] == 1, "Contaminant should be flagged"
+    assert isinstance(pg_accessions, list) and len(pg_accessions) == 2
+    assert result_df.iloc[0]["anchor_protein"] == "P12345"
+    assert result_df.iloc[1]["is_decoy"] == 1
+    assert result_df.iloc[2]["contaminant"] == 1
 
     additional_scores = result_df.iloc[0]["additional_scores"]
     if additional_scores is not None:
@@ -198,21 +176,111 @@ def test_protein_groups_processing():
         elif not isinstance(additional_scores, list):
             additional_scores = list(additional_scores)
 
-        assert isinstance(additional_scores, list), "additional_scores should be a list"
+        assert isinstance(additional_scores, list)
         if len(additional_scores) > 0:
             first_score = additional_scores[0]
-            assert "score_name" in first_score, "Score should have score_name field"
-            assert "score_value" in first_score, "Score should have score_value field"
+            assert "score_name" in first_score
+            assert "score_value" in first_score
+            assert isinstance(first_score["score_value"], (int, float))
+
+
+def test_protein_to_samples_mapping(validate_test_data):
+    """Test protein-to-sample mapping."""
+    test_files = validate_test_data
+    processor = MaxQuant()
+
+    processor._init_sdrf(str(test_files["sdrf"]))
+    mapping = processor._build_protein_to_samples_mapping(str(test_files["evidence"]))
+
+    assert isinstance(mapping, dict)
+    assert len(mapping) > 0
+
+    for protein_id, samples in mapping.items():
+        assert isinstance(protein_id, str)
+        assert isinstance(samples, set)
+        assert len(samples) > 0
+        for sample in samples:
+            assert isinstance(sample, str)
+
+
+def test_optimized_evidence_mapping_performance(validate_test_data):
+    """Test optimized evidence mapping method performance and correctness."""
+    test_files = validate_test_data
+    processor = MaxQuant()
+
+    processor._init_sdrf(str(test_files["sdrf"]))
+
+    # Test mapping builds successfully
+    mapping = processor._build_protein_to_samples_mapping(str(test_files["evidence"]))
+
+    # Verify structure
+    assert isinstance(mapping, dict), "Mapping should be a dict"
+    assert len(mapping) > 0, "Mapping should not be empty"
+
+    # Verify all values are sets
+    for protein_id, samples in mapping.items():
+        assert isinstance(
+            protein_id, str
+        ), f"Protein ID should be string, got {type(protein_id)}"
+        assert isinstance(samples, set), f"Samples should be set, got {type(samples)}"
+        assert len(samples) > 0, f"Protein {protein_id} should have at least one sample"
+
+        # Verify all samples are strings
+        for sample in samples:
             assert isinstance(
-                first_score["score_value"], (int, float)
-            ), "score_value should be numeric"
+                sample, str
+            ), f"Sample should be string, got {type(sample)}"
+
+    # Verify mapping is used correctly in PG processing
+    pg_df = read_protein_groups(str(test_files["protein_groups"]))
+    pg_df_small = pg_df.head(3).copy()
+
+    table = processor.process_protein_groups_to_pg_table(
+        pg_df_small,
+        sdrf_path=str(test_files["sdrf"]),
+        evidence_path=str(test_files["evidence"]),
+    )
+
+    result_df = table.to_pandas()
+    assert len(result_df) == len(pg_df_small), "Result should have same number of rows"
+
+
+def test_protein_groups_with_evidence_mapping(validate_test_data):
+    """Test protein groups with precise mapping."""
+    test_files = validate_test_data
+
+    pg_df = read_protein_groups(str(test_files["protein_groups"]))
+    pg_df_small = pg_df.head(5).copy()
+
+    processor = MaxQuant()
+    table = processor.process_protein_groups_to_pg_table(
+        pg_df_small,
+        sdrf_path=str(test_files["sdrf"]),
+        evidence_path=str(test_files["evidence"]),
+    )
+
+    result_df = table.to_pandas()
+
+    assert len(result_df) == len(pg_df_small)
+    assert "intensities" in result_df.columns
+
+    proteins_with_intensities = 0
+    for _, row in result_df.iterrows():
+        intensities = row["intensities"]
+        if intensities is not None and len(intensities) > 0:
+            proteins_with_intensities += 1
+            first_intensity = intensities[0]
+            assert "sample_accession" in first_intensity
+            assert "channel" in first_intensity
+            assert "intensity" in first_intensity
+
+    assert proteins_with_intensities > 0
 
 
 def test_additional_scores_functionality():
-    """Test additional_scores functionality for PSM, Feature, and PG processing."""
+    """Test additional_scores functionality."""
     processor = MaxQuant()
 
-    # Test PSM additional_scores
     psm_data = {
         "Sequence": ["TESTPEPTIDE", "ANOTHERPEPTIDE"],
         "Proteins": ["P12345", "Q67890"],
@@ -232,14 +300,10 @@ def test_additional_scores_functionality():
     psm_table = processor.process_msms_to_psm_table(psm_df)
     psm_result = psm_table.to_pandas()
 
-    # Test additional_scores presence and structure
-    assert (
-        "additional_scores" in psm_result.columns
-    ), "PSM should have additional_scores column"
+    assert "additional_scores" in psm_result.columns
 
     first_scores = psm_result.iloc[0]["additional_scores"]
     if first_scores is not None:
-        # Handle both numpy array and list cases
         if hasattr(first_scores, "to_pylist"):
             first_scores = first_scores.to_pylist()
         elif hasattr(first_scores, "tolist"):
@@ -308,12 +372,14 @@ def test_additional_scores_functionality():
         ), "Feature additional_scores should be a list"
 
 
-def test_anchor_protein_extraction():
+def test_anchor_protein_extraction(validate_test_data):
     """Test anchor_protein extraction logic for different scenarios."""
+    test_files = validate_test_data
     processor = MaxQuant()
 
     # Test PG anchor_protein from Majority protein IDs
     pg_data = {
+        "id": ["1", "2"],
         "Protein IDs": ["P11111;P22222", "P33333"],
         "Majority protein IDs": ["P11111;P22222", "P33333"],
         "Intensity": [1000.0, 2000.0],
@@ -321,7 +387,11 @@ def test_anchor_protein_extraction():
     }
 
     pg_df = pd.DataFrame(pg_data)
-    pg_table = processor.process_protein_groups_to_pg_table(pg_df)
+    pg_table = processor.process_protein_groups_to_pg_table(
+        pg_df,
+        sdrf_path=str(test_files["sdrf"]),
+        evidence_path=str(test_files["evidence"]),
+    )
     pg_result = pg_table.to_pandas()
 
     # Test anchor_protein is first from Majority protein IDs
@@ -409,6 +479,7 @@ def test_nan_handling():
 
 def test_error_handling(validate_test_data):
     """Test error handling and edge cases."""
+    test_files = validate_test_data
     processor = MaxQuant()
 
     # Test invalid file paths
@@ -420,22 +491,21 @@ def test_error_handling(validate_test_data):
 
     # Test empty DataFrame handling
     empty_df = pd.DataFrame()
-    empty_data_tests = [
-        (processor.process_msms_to_psm_table, "PSM processing"),
-        (processor.process_evidence_to_feature_table, "Feature processing"),
-        (processor.process_protein_groups_to_pg_table, "Protein groups processing"),
-    ]
 
-    for process_func, description in empty_data_tests:
-        try:
-            result = process_func(empty_df)
-            assert (
-                result is not None
-            ), f"{description} should return valid result or raise exception"
-        except Exception as e:
-            assert isinstance(
-                e, (ValueError, KeyError, IndexError)
-            ), f"{description} should raise appropriate exception type"
+    # Test PSM and Feature processing with empty DataFrame
+    with pytest.raises((ValueError, KeyError, IndexError)):
+        processor.process_msms_to_psm_table(empty_df)
+
+    with pytest.raises((ValueError, KeyError, IndexError)):
+        processor.process_evidence_to_feature_table(empty_df)
+
+    # Test PG processing with empty DataFrame
+    with pytest.raises((ValueError, KeyError, IndexError)):
+        processor.process_protein_groups_to_pg_table(
+            empty_df,
+            sdrf_path=str(test_files["sdrf"]),
+            evidence_path=str(test_files["evidence"]),
+        )
 
 
 def test_data_validation(validate_test_data):
@@ -511,7 +581,11 @@ def test_file_writing(validate_test_data):
 
             psm_table = processor.process_msms_to_psm_table(msms_df)
             feature_table = processor.process_evidence_to_feature_table(evidence_df)
-            pg_table = processor.process_protein_groups_to_pg_table(pg_df)
+            pg_table = processor.process_protein_groups_to_pg_table(
+                pg_df,
+                sdrf_path=str(test_files["sdrf"]),
+                evidence_path=str(test_files["evidence"]),
+            )
 
             # Write files
             pq.write_table(psm_table, output_files["msms"])
@@ -547,6 +621,7 @@ def test_file_writing(validate_test_data):
                 str(test_files["protein_groups"]),
                 str(test_files["sdrf"]),
                 workflow_files["pg"],
+                evidence_path=str(test_files["evidence"]),
             )
 
             # Validate workflow outputs
@@ -583,7 +658,7 @@ if __name__ == "__main__":
     mock_data = MockTestData()
 
     try:
-        print("Running MaxQuant tests (11 test nodes)...")
+        print("Running MaxQuant tests...")
 
         # Run all test functions
         test_core_functionality(mock_data)
@@ -598,13 +673,19 @@ if __name__ == "__main__":
         test_modification_parsing()
         print("Modification parsing tests passed!")
 
-        test_protein_groups_processing()
+        test_protein_groups_processing(mock_data)
         print("Protein groups processing tests passed!")
+
+        test_protein_to_samples_mapping(mock_data)
+        print("Protein-to-samples mapping tests passed!")
+
+        test_protein_groups_with_evidence_mapping(mock_data)
+        print("Protein groups with evidence mapping tests passed!")
 
         test_additional_scores_functionality()
         print("Additional scores functionality tests passed!")
 
-        test_anchor_protein_extraction()
+        test_anchor_protein_extraction(mock_data)
         print("Anchor protein extraction tests passed!")
 
         test_nan_handling()
@@ -619,8 +700,40 @@ if __name__ == "__main__":
         test_file_writing(mock_data)
         print("File writing tests passed!")
 
-        print("All 11 MaxQuant test nodes passed!")
+        print("\nAll MaxQuant tests passed!")
 
     except Exception as e:
         print(f"Test failed: {str(e)}")
         sys.exit(1)
+
+
+def test_memory_limit_initialization():
+    """Test MaxQuant initialization with memory limit parameter."""
+    # Test with default (None) - should use available memory
+    processor1 = MaxQuant()
+    assert hasattr(processor1, "memory_limit_gb")
+    assert processor1.memory_limit_gb > 0
+
+    # Test with specified memory limit
+    processor2 = MaxQuant(memory_limit_gb=10.0)
+    assert processor2.memory_limit_gb == 10.0
+
+    # Test with spectral_data flag and memory limit
+    processor3 = MaxQuant(spectral_data=True, memory_limit_gb=15.0)
+    assert processor3._spectral_data is True
+    assert processor3.memory_limit_gb == 15.0
+
+    print("Memory limit initialization tests passed!")
+
+
+def test_memory_limit_default():
+    """Test that default memory limit uses available system memory."""
+    import psutil
+
+    processor = MaxQuant()
+    expected_memory = psutil.virtual_memory().available / (1024**3)
+
+    # Allow small variance due to system changes
+    assert abs(processor.memory_limit_gb - expected_memory) < 1.0
+
+    print("Default memory limit test passed!")

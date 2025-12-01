@@ -16,7 +16,7 @@
 
 ## Output Format
 
-All conversions produce standardized **parquet files** following the quantms.io specification:
+All conversions produce standardized **parquet files** following the QPX specification:
 
 - **PSM files**: `*-psm.parquet` - Peptide-spectrum matches
 - **Feature files**: `*-feature.parquet` - Quantified peptide features
@@ -25,3 +25,4 @@ All conversions produce standardized **parquet files** following the quantms.io 
 - **DE files**: `*-differential.parquet` - Differential expression
 
 [View format specification →](format-specification.md)
+

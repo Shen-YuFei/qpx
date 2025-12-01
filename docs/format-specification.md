@@ -1,8 +1,8 @@
-# The quantms.io format specification
+# The QPX format specification
 
 ## 1. Executive Summary {#executive-summary}
 
-The quantms.io format is a modern, scalable data format designed specifically for proteomics data analysis. It addresses the limitations of existing formats like XML-based HUPO-PSI standards (mzML, mzIdentML) and tab-delimited formats like mzTab, which struggle with large-scale datasets and advanced analytical use cases.
+The QPX format is a modern, scalable data format designed specifically for proteomics data analysis. It addresses the limitations of existing formats like XML-based HUPO-PSI standards (mzML, mzIdentML) and tab-delimited formats like mzTab, which struggle with large-scale datasets and advanced analytical use cases.
 
 ### 1.1. Key Benefits
 
@@ -25,7 +25,7 @@ Each view can be serialized in appropriate formats (Parquet for complex data, TS
 
 ### 1.3. Current Status
 
-The quantms.io format is currently at version 1.0 and is primarily implemented in the quantms workflow. It has been successfully applied to various proteomics datasets, demonstrating significant improvements in storage efficiency and analysis capabilities compared to traditional formats.
+The QPX format is currently at version 1.0 and is primarily implemented in the quantms workflow. It has been successfully applied to various proteomics datasets, demonstrating significant improvements in storage efficiency and analysis capabilities compared to traditional formats.
 
 > **NOTE**
 >
@@ -53,9 +53,9 @@ The majority of formats in HUPO-PSI are based on XML format including mzML, mzId
 
 ## 3. General data model and structure {#general-data-model}
 
-The `quantms.io` (.qms) could be seen as a **multiple view** representation of a proteomics data analysis results. Similar to other tools that produce multiple output files for their analysis, like [MaxQuant](https://www.maxquant.org/), [DIA-NN](https://github.com/vdemichev/DiaNN), [FragPipe](https://fragpipe.nesvilab.org/) or [spectronaut](https://biognosys.com/software/spectronaut/). Each view of the format can be serialized in different formats depending on the use case. The **data model** defines two main things, the **view** and how the view is **serialized**. Both views and serialization can be extended, and new views can be added on each [version](#version) of the specification.
+The `QPX` (.qms) could be seen as a **multiple view** representation of a proteomics data analysis results. Similar to other tools that produce multiple output files for their analysis, like [MaxQuant](https://www.maxquant.org/), [DIA-NN](https://github.com/vdemichev/DiaNN), [FragPipe](https://fragpipe.nesvilab.org/) or [spectronaut](https://biognosys.com/software/spectronaut/). Each view of the format can be serialized in different formats depending on the use case. The **data model** defines two main things, the **view** and how the view is **serialized**. Both views and serialization can be extended, and new views can be added on each [version](#version) of the specification.
 
-![Quantms.io file format relationship diagram showing the connections between different data views and serialization formats](images/file-relation.png){: style="width:80%"}
+![QPX file format relationship diagram showing the connections between different data views and serialization formats](images/file-relation.png){: style="width:80%"}
 
 - The **data model view** defines the structure, the fields and properties that will be included in a view for each peptide, psms, feature or protein.
 - The **data serialization** defines the format in which the view will be serialized and what features of serialization will be supported, for example, compression, indexing, or slicing.
@@ -77,7 +77,7 @@ The `quantms.io` (.qms) could be seen as a **multiple view** representation of a
 >
 > Some of these data models fit better for some analytical methods than others, for example, the **psm view** [psm](#psm) is more suitable for data-dependent acquisition (DDA) methods, and may not be present in data-independent acquisition (DIA) methods; while the **feature view** [feature](#feature) could be generated in both DDA and DIA methods. Different expression view [differential](#differential) are only present in those experiments while absolute-expression (based on IBAQ values) is only available on datasets where comparisons are not performed between conditions.
 
-The `.qms` contains all the files of a quantms.io experiment. It will contain metadata files and different views of the experiments; [general-data-model](#general-data-model). {#file-structure}
+The `.qms` contains all the files of a QPX experiment. It will contain metadata files and different views of the experiments; [general-data-model](#general-data-model). {#file-structure}
 
 ## 4. Common data structures and formats {#common-data-structures}
 
@@ -93,7 +93,7 @@ A peptidoform is a peptide sequence with modifications. For example, the peptide
 
 ### 4.2. Modifications {#modifications}
 
-A modification is a chemical change in the peptide sequence. Modifications can be annotated in multiple ways in `quantms.io` format:
+A modification is a chemical change in the peptide sequence. Modifications can be annotated in multiple ways in `QPX` format:
 
 1. As part of the Proforma notation inside the peptide sequence:
 
@@ -184,7 +184,7 @@ The name/key of the controlled vocabulary MUST be provided; the value is optiona
 
 ## 5. Serialization formats {#serialization}
 
-The `quantms.io` format has different serialization formats for each view. The serialization format defines how the view will be serialized and what features of serialization will be supported, for example, compression, indexing, or slicing. The following serialization formats are supported:
+The `QPX` format has different serialization formats for each view. The serialization format defines how the view will be serialized and what features of serialization will be supported, for example, compression, indexing, or slicing. The following serialization formats are supported:
 
 - **tsv**: Tab-separated values format.
 - **parquet**: Apache Parquet format.
@@ -214,7 +214,7 @@ A Parquet table can be distributed across multiple compute nodes, and its key ad
 
 #### Parquet slicing {#parquet-slicing}
 
-`quantms.io` supports slicing parquet files using any field when generating them.Upon storage, the files are organized into distinct folders according to the chosen slicing fields.
+`QPX` supports slicing parquet files using any field when generating them.Upon storage, the files are organized into distinct folders according to the chosen slicing fields.
 
 ```
 PXD004683/
@@ -251,7 +251,7 @@ When registering parquet files to project.json [project](#project), it will be i
 
 ## 6. File extensions {#extensions}
 
-File extensions are used to identify the file type. In `quantms.io` the extensions are constructed as follows: `*.{view}.{format}` where the view is one of the well-defined views in the specification and the format is one of the serialization formats. For example:
+File extensions are used to identify the file type. In `QPX` the extensions are constructed as follows: `*.{view}.{format}` where the view is one of the well-defined views in the specification and the format is one of the serialization formats. For example:
 
 - An absolute expression file: `PXD000000-943a8f02-0527-4528-b1a3-b96de99ebe75.absolute.tsv`
 - A differential expression file: `PXD000000-943a8f02-0527-4528-b1a3-b96de99ebe75.differential.tsv`
@@ -260,18 +260,18 @@ File extensions are used to identify the file type. In `quantms.io` the extensio
 
 > **NOTE**
 >
-> In `quantms.io` we use the UUID to identify the project and the files `{PREFIX}-{UUID}.{view}.{format}`, it is optional, but for most of the code examples we will use it. _uuids_: A Universally Unique Identifier (UUID) URN Namespace, as defined in RFC 4122, provides a standardized method for generating globally unique identifiers across various systems and applications. The UUID URN Namespace ensures that each generated UUID is highly unlikely to collide with any other UUID, even when produced by different entities and systems.
+> In `QPX` we use the UUID to identify the project and the files `{PREFIX}-{UUID}.{view}.{format}`, it is optional, but for most of the code examples we will use it. _uuids_: A Universally Unique Identifier (UUID) URN Namespace, as defined in RFC 4122, provides a standardized method for generating globally unique identifiers across various systems and applications. The UUID URN Namespace ensures that each generated UUID is highly unlikely to collide with any other UUID, even when produced by different entities and systems.
 
 ## 7. Versioning {#version}
 
-The structure of the version is as follows `{major release}.{minor update}`: The current `quantms.io` specification version is: **1.0**
+The structure of the version is as follows `{major release}.{minor update}`: The current `QPX` specification version is: **1.0**
 
-- All views ([psm](#psm), [feature](#feature), [pg](#pg)) and serialization formats will have a version number in the way: `quantmsio_version: {}`. This will help to identify the version of the specification used to generate the file.
+- All views ([psm](#psm), [feature](#feature), [pg](#pg)) and serialization formats will have a version number in the way: `qpx_version: {}`. This will help to identify the version of the specification used to generate the file.
 - Major release changes will be backward incompatible, while minor updates will be backward compatible.
 
 ## 8. Software provider {#software}
 
-The data within quantms.io is mainly generated from [quantms workflow](https://github.com/bigbio/quantms). However, the format is open and can be used by any software provider that wants to generate the data in this format. The software provider and the version of the software used to generate the data will be stored in the project view [project](#project) as:
+The data within QPX is mainly generated from [quantms workflow](https://github.com/bigbio/quantms). However, the format is open and can be used by any software provider that wants to generate the data in this format. The software provider and the version of the software used to generate the data will be stored in the project view [project](#project) as:
 
 ```jsonc
 "software_provider": {
@@ -280,9 +280,9 @@ The data within quantms.io is mainly generated from [quantms workflow](https://g
   }
 ```
 
-## 9. Project quantms.io {#project}
+## 9. Project QPX {#project}
 
-The project view is the file that stores the metadata of the entire `quantms.io` project. The project view is a JSON file that contains the following fields:
+The project view is the file that stores the metadata of the entire `QPX` project. The project view is a JSON file that contains the following fields:
 
 ### 9.1. Project fields
 
@@ -303,7 +303,7 @@ The project view is the file that stores the metadata of the entire `quantms.io`
 | `experiment_type`            | Types of experiments conducted             | list[string]       |
 | `acquisition_properties`     | Properties of the data acquisition methods | list[key/value]    |
 | `quantms_files`              | Files related to quantMS analysis          | list[key/value]    |
-| `quantmsio_version`          | Version of the `quantms.io`                | string             |
+| `qpx_version`          | Version of the `QPX`                | string             |
 | `software_provider`          | The `<software>` used to generate the data | key/value          |
 | `comments`                   | Additional comments or notes               | list[string]       |
 
@@ -458,7 +458,7 @@ Example:
     "name": "quantms",
     "version": "1.3.0"
   },
-  "quantmsio_version": "1.0",
+  "qpx_version": "1.0",
   "comments": []
 }
 ```
@@ -519,7 +519,7 @@ We _RECOMMEND_ including the following properties in the header:
 - `project_accession`: The project accession in PRIDE Archive
 - `project_title`: The project title in PRIDE Archive
 - `project_description`: The project description in PRIDE Archive
-- `quantmsio_version`: The version of the quantmsio used to generate the file
+- `qpx_version`: The version of the qpx used to generate the file
 - `factor_value`: The factor values used in the analysis (e.g.`tissue`)
 
 Please check also the differential expression example for more information: [differential](#differential)
@@ -546,7 +546,7 @@ The differential expression view is a tab-delimited file format that contains th
 
 ### 13.2. Format
 
-The differential expression format by quantms.io is based on the [MSstats](https://msstats.org/wp-content/uploads/2017/01/MSstats_v3.7.3_manual.pdf) output:
+The differential expression format by QPX is based on the [MSstats](https://msstats.org/wp-content/uploads/2017/01/MSstats_v3.7.3_manual.pdf) output:
 
 - `protein` -> Protein Accession
 - `label` -> Label for the contrast on which the fold changes and p-values are based on
@@ -590,13 +590,13 @@ We suggest including the following properties in the header:
 - `project_accession`: The project accession in PRIDE Archive
 - `project_title`: The project title in PRIDE Archive
 - `project_description`: The project description in PRIDE Archive
-- `quantmsio_version`: The version of the quantmsio used to generate the file.
+- `qpx_version`: The version of the qpx used to generate the file.
 - `factor_value`: The factor values used in the analysis (e.g. `phenotype`)
 - `adj_pvalue`: The FDR threshold used to filter the protein lists (e.g. `adj_pvalue < 0.05`)
 
 ## 14. Peptide-based Views: psm, feature and peptide {#peptide-views}
 
-Multiple peptide-level views are available for the `quantms.io` format. The views are the following:
+Multiple peptide-level views are available for the `QPX` format. The views are the following:
 
 - [psm](#psm): Peptide Spectrum Match (psm) View—The psm view aims to cover detail on Peptide spectrum matches (psm) level for AI/ML training and other use-cases, mainly for DDA analytical methods.
 
@@ -696,9 +696,9 @@ The cv_params are stored as a list of key-value pairs, where the key is the name
 
 #### Psm file metadata {#psm-file-metadata}
 
-For parquet psm files, the metadata of the file including quantms.io version and other metadata should be stored in the file. The metadata should be stored in the file as a key/value pair. The metadata should include the following fields:
+For parquet psm files, the metadata of the file including QPX version and other metadata should be stored in the file. The metadata should be stored in the file as a key/value pair. The metadata should include the following fields:
 
-- `quantmsio_version`: The version of the quantms.io format used to generate the file.
+- `qpx_version`: The version of the QPX format used to generate the file.
 - `software_provider`: The software provider and the version of the software used to generate the data.
 - `project_accession`: The project accession in PRIDE Archive if available.
 - `project_title`: The project title in PRIDE Archive if available.
@@ -731,7 +731,7 @@ table = pa.table(data, schema=schema)
 
 # Define the custom metadata as key-value pairs
 file_metadata = {
-    'quantmsio_version': '1.0',
+    'qpx_version': '1.0',
     'software_provider': 'QuantMS 1.3.0',
     'project_accession': 'PXD012345',
     'project_title': 'Proteomics of Disease X',
@@ -777,7 +777,7 @@ The feature file is similar to the [mztab](https://https://github.com/HUPO-PSI/m
 
 #### Feature fields
 
-The following table presents the fields needed to describe each feature in quantms.io. Some of the fields are shared with the psm view ([psm](#psm)).
+The following table presents the fields needed to describe each feature in QPX. Some of the fields are shared with the psm view ([psm](#psm)).
 
 | **Field**                     | **Description**                                                                                                                                                         | **Type**                                             | **DIA-NN**                | **FragPipe**     | **MaxQuant**      | **mzTab**                                     |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------- | ---------------- | ----------------- | --------------------------------------------- |
@@ -1009,3 +1009,4 @@ The mass spectra view is a tabular file that contains the details of the mass sp
 #### Mass Spectra Format Specification {#mz-format}
 
 The mass spectra view can be found in [mz.avsc](mz.avsc).
+

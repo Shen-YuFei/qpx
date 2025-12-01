@@ -1,10 +1,99 @@
 # Statistics Commands
 
-Perform statistical analysis on quantms.io data.
+Perform statistical analysis on QPX data.
+
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+
+            # Extract default value from help text if it contains "(default: ...)"
+            description = param.help or ''
+            default_from_help = None
+            if '(default:' in description.lower():
+                import re
+                match = re.search(r'\(default:\s*([^)]+)\)', description, re.IGNORECASE)
+                if match:
+                    default_from_help = match.group(1).strip()
+
+            # Determine default value display
+            if default_from_help:
+                default = default_from_help
+            elif param.default is not None and str(param.default) != 'Sentinel.UNSET':
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
 
 ## Overview
 
-The `stats` command group provides tools for generating comprehensive statistical summaries of quantms.io data files. These commands help assess data quality, completeness, and provide key metrics for experimental reports.
+The `stats` command group provides tools for generating comprehensive statistical summaries of QPX data files. These commands help assess data quality, completeness, and provide key metrics for experimental reports.
 
 ## Available Commands
 
@@ -21,30 +110,31 @@ Generate comprehensive statistics for a project's absolute expression data.
 
 ### Description {#project-ae-description}
 
-Analyzes both absolute expression (AE) and PSM data to generate a complete statistical summary. This command is useful for quality control and generating summary statistics for publications or reports.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import project_ae_statistics_cmd
+print(generate_description(project_ae_statistics_cmd))
+```
 
 ### Parameters {#project-ae-parameters}
 
-| Parameter         | Type | Required | Default | Description                                                     |
-| ----------------- | ---- | -------- | ------- | --------------------------------------------------------------- |
-| `--absolute-path` | Path | Yes      | -       | Absolute expression parquet file path                           |
-| `--parquet-path`  | Path | Yes      | -       | PSM parquet file path                                           |
-| `--save-path`     | Path | No       | -       | Output statistics file path (if not provided, prints to stdout) |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import project_ae_statistics_cmd
+print(generate_params_table(project_ae_statistics_cmd))
+```
 
 ### Usage Examples {#project-ae-examples}
 
 #### Print to Console {#project-ae-example-console}
 
-```bash
-quantmsioc stats analyze project-ae \
-    --absolute-path ./output/ae.parquet \
-    --parquet-path ./output/psm.parquet
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import project_ae_statistics_cmd
+print(generate_example(project_ae_statistics_cmd, 'Generate project statistics:'))
 ```
 
 #### Save to File {#project-ae-example-file}
 
 ```bash
-quantmsioc stats analyze project-ae \
+qpxc stats analyze project-ae \
     --absolute-path ./output/ae.parquet \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/project_statistics.txt
@@ -98,28 +188,31 @@ Generate statistics for PSM (Peptide-Spectrum Match) data.
 
 ### Description {#psm-description}
 
-Analyzes PSM data to generate detailed statistics about identifications, including protein, peptide, and PSM counts.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import psm_statistics_cmd
+print(generate_description(psm_statistics_cmd))
+```
 
 ### Parameters {#psm-parameters}
 
-| Parameter        | Type | Required | Default | Description                                                     |
-| ---------------- | ---- | -------- | ------- | --------------------------------------------------------------- |
-| `--parquet-path` | Path | Yes      | -       | PSM parquet file path                                           |
-| `--save-path`    | Path | No       | -       | Output statistics file path (if not provided, prints to stdout) |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import psm_statistics_cmd
+print(generate_params_table(psm_statistics_cmd))
+```
 
 ### Usage Examples {#psm-examples}
 
 #### Print to Console {#psm-example-console}
 
-```bash
-quantmsioc stats analyze psm \
-    --parquet-path tests/examples/parquet/psm.parquet
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.stats import psm_statistics_cmd
+print(generate_example(psm_statistics_cmd, 'Generate PSM statistics:'))
 ```
 
 #### Save to File {#psm-example-file}
 
 ```bash
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/psm_statistics.txt
 ```
@@ -224,7 +317,7 @@ Process multiple files:
 #!/bin/bash
 for file in ./output/*.psm.parquet; do
     filename=$(basename "$file" .parquet)
-    quantmsioc stats analyze psm \
+    qpxc stats analyze psm \
         --parquet-path "$file" \
         --save-path "./reports/${filename}_stats.txt"
 done
@@ -235,7 +328,7 @@ done
 Use output in automated reports:
 
 ```bash
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/stats.txt
 
@@ -249,12 +342,12 @@ Generate both statistics and plots:
 
 ```bash
 # Generate statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./reports/stats.txt
 
 # Generate visualizations
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path ./output/feature.parquet \
     --save-path ./plots/peptide_dist.svg
 ```
@@ -271,24 +364,24 @@ Complete QC workflow example:
 #!/bin/bash
 
 # 1. Generate PSM statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./qc/psm_stats.txt
 
 # 2. Generate AE statistics (if available)
 if [ -f ./output/ae.parquet ]; then
-    quantmsioc stats analyze project-ae \
+    qpxc stats analyze project-ae \
         --absolute-path ./output/ae.parquet \
         --parquet-path ./output/psm.parquet \
         --save-path ./qc/ae_stats.txt
 fi
 
 # 3. Create visualizations
-quantmsioc visualize plot box-intensity \
+qpxc visualize plot box-intensity \
     --feature-path ./output/feature.parquet \
     --save-path ./qc/intensity_boxplot.svg
 
-quantmsioc visualize plot peptide-distribution \
+qpxc visualize plot peptide-distribution \
     --feature-path ./output/feature.parquet \
     --save-path ./qc/peptide_distribution.svg
 
@@ -303,7 +396,7 @@ Define quality thresholds:
 #!/bin/bash
 
 # Generate statistics
-quantmsioc stats analyze psm \
+qpxc stats analyze psm \
     --parquet-path ./output/psm.parquet \
     --save-path ./stats.txt
 
@@ -327,3 +420,4 @@ fi
 - [Convert Commands](cli-convert.md) - Generate data files for analysis
 - [Transform Commands](cli-transform.md) - Process data before statistics
 - [Visualization Commands](cli-visualize.md) - Create visual representations of statistics
+

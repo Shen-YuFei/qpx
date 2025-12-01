@@ -1,6 +1,95 @@
 # Project Management Commands
 
-Manage project metadata and file attachments for quantms.io projects.
+Manage project metadata and file attachments for QPX projects.
+
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+
+            # Extract default value from help text if it contains "(default: ...)"
+            description = param.help or ''
+            default_from_help = None
+            if '(default:' in description.lower():
+                import re
+                match = re.search(r'\(default:\s*([^)]+)\)', description, re.IGNORECASE)
+                if match:
+                    default_from_help = match.group(1).strip()
+
+            # Determine default value display
+            if default_from_help:
+                default = default_from_help
+            elif param.default is not None and str(param.default) != 'Sentinel.UNSET':
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
 
 ## Overview
 
@@ -19,34 +108,31 @@ Generate a project file from a PRIDE project accession and SDRF metadata.
 
 ### Description {#create-description}
 
-Creates a comprehensive `project.json` file by combining metadata from the PRIDE Archive with sample information from an SDRF file. This command automatically fetches project details, publication information, and experimental metadata from PRIDE.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.project import generate_pride_project_json_cmd
+print(generate_description(generate_pride_project_json_cmd))
+```
 
 ### Parameters {#create-parameters}
 
-| Parameter             | Type   | Required | Default | Description                                |
-| --------------------- | ------ | -------- | ------- | ------------------------------------------ |
-| `--project-accession` | String | Yes      | -       | PRIDE project accession (e.g., PXD001234)  |
-| `--sdrf-file`         | Path   | Yes      | -       | SDRF file path for metadata extraction     |
-| `--output-folder`     | Path   | Yes      | -       | Output directory for generated files       |
-| `--software-name`     | String | No       | -       | Software name used to generate the data    |
-| `--software-version`  | String | No       | -       | Software version used to generate the data |
-| `--delete-existing`   | Flag   | No       | False   | Delete existing files in the output folder |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.project import generate_pride_project_json_cmd
+print(generate_params_table(generate_pride_project_json_cmd))
+```
 
 ### Usage Examples {#create-examples}
 
 #### Basic Example
 
-```bash
-quantmsioc project create \
-    --project-accession PXD007683 \
-    --sdrf-file ./PXD007683-LFQ.sdrf.tsv \
-    --output-folder ./project_metadata
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.utils.project import generate_pride_project_json_cmd
+print(generate_example(generate_pride_project_json_cmd, 'Create project metadata with full parameters:'))
 ```
 
 #### With Software Information
 
 ```bash
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD016999 \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --output-folder ./project_metadata \
@@ -59,7 +145,7 @@ quantmsioc project create \
 
 ```bash
 # Create project metadata
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD033169 \
     --sdrf-file ./PXD033169.sdrf.tsv \
     --output-folder ./project \
@@ -105,7 +191,7 @@ The generated `project.json` file contains:
     "name": "MaxQuant",
     "version": "2.0.3.0"
   },
-  "quantmsio_version": "1.0.0",
+  "qpx_version": "1.0.0",
   "files": [
     {
       "name": "PXD001234.sdrf.tsv",
@@ -124,7 +210,7 @@ The command integrates metadata from multiple sources:
 | ---------------------- | -------------------------------------------------------------------------- |
 | **PRIDE Archive**      | Project title, description, organism, publication info, instrument details |
 | **SDRF File**          | Sample metadata, experimental design, conditions, replicates               |
-| **Command Parameters** | Software information, quantmsio version                                    |
+| **Command Parameters** | Software information, qpx version                                    |
 
 ### Common Issues
 
@@ -189,7 +275,7 @@ Adds references to data files in the project.json metadata. This command is usef
 #### Attach PSM File
 
 ```bash
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/psm-abc123.psm.parquet \
     --category psm-file
@@ -199,19 +285,19 @@ quantmsioc project attach \
 
 ```bash
 # Attach PSM file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/psm.parquet \
     --category psm-file
 
 # Attach feature file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/feature.parquet \
     --category feature-file
 
 # Attach absolute expression file
-quantmsioc project attach \
+qpxc project attach \
     --project-file ./project/project.json \
     --attach-file ./output/ae.parquet \
     --category absolute-file
@@ -225,7 +311,7 @@ quantmsioc project attach \
 PROJECT_FILE="./project/project.json"
 
 # Create project metadata
-quantmsioc project create \
+qpxc project create \
     --project-accession PXD001234 \
     --sdrf-file ./metadata.sdrf.tsv \
     --output-folder ./project \
@@ -247,7 +333,7 @@ for file in ./output/*.parquet; do
         continue
     fi
 
-    quantmsioc project attach \
+    qpxc project attach \
         --project-file "$PROJECT_FILE" \
         --attach-file "$file" \
         --category "$category"
@@ -295,7 +381,7 @@ PROJECT_DIR="./project"
 
 # Step 1: Create project metadata
 echo "Creating project metadata..."
-quantmsioc project create \
+qpxc project create \
     --project-accession "$PROJECT_ID" \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$PROJECT_DIR" \
@@ -304,16 +390,16 @@ quantmsioc project create \
 
 # Step 2: Process data (example with MaxQuant)
 echo "Processing data..."
-quantmsioc convert maxquant-psm \
+qpxc convert maxquant-psm \
     --msms-file ./raw/msms.txt \
     --output-folder "$OUTPUT_DIR"
 
-quantmsioc convert maxquant-feature \
+qpxc convert maxquant-feature \
     --evidence-file ./raw/evidence.txt \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$OUTPUT_DIR"
 
-quantmsioc convert maxquant-pg \
+qpxc convert maxquant-pg \
     --protein-groups-file ./raw/proteinGroups.txt \
     --sdrf-file "$SDRF_FILE" \
     --output-folder "$OUTPUT_DIR"
@@ -330,7 +416,7 @@ for file in "$OUTPUT_DIR"/*.parquet; do
         category="feature-file"
     fi
 
-    quantmsioc project attach \
+    qpxc project attach \
         --project-file "$PROJECT_DIR/project.json" \
         --attach-file "$file" \
         --category "$category"
@@ -386,3 +472,4 @@ echo "SHA256: $(sha256sum $ARCHIVE_NAME)"
 - [Convert Commands](cli-convert.md) - Generate data files to attach to projects
 - [Transform Commands](cli-transform.md) - Process data for project workflows
 - [Statistics Commands](cli-stats.md) - Generate project statistics
+

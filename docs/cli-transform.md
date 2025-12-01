@@ -1,10 +1,99 @@
 # Transform Commands
 
-Transform and process data within the quantms.io ecosystem.
+Transform and process data within the QPX ecosystem.
+
+```python exec="1" session="doc_utils" result="ansi"
+import click
+import textwrap
+
+def get_click_type_display(param):
+    param_type = param.type
+    type_str = str(param_type)
+    if 'Path' in type_str:
+        if hasattr(param_type, 'dir_okay') and not param_type.dir_okay:
+            return 'FILE'
+        elif hasattr(param_type, 'file_okay') and not param_type.file_okay:
+            return 'DIRECTORY'
+        else:
+            return 'PATH'
+    elif isinstance(param_type, click.types.FloatParamType):
+        return 'FLOAT'
+    elif isinstance(param_type, click.types.IntParamType):
+        return 'INTEGER'
+    elif param.is_flag:
+        return 'FLAG'
+    else:
+        return 'TEXT'
+
+def generate_params_table(command):
+    table = '<table>\n<thead>\n<tr>\n'
+    table += '<th>Parameter</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>\n'
+    table += '</tr>\n</thead>\n<tbody>\n'
+    for param in command.params:
+        if isinstance(param, click.Option) and param.name not in ['help']:
+            param_names = param.opts
+            param_name = param_names[0] if param_names else f"--{param.name}"
+            param_type = get_click_type_display(param)
+            required = 'Yes' if param.required else 'No'
+
+            # Extract default value from help text if it contains "(default: ...)"
+            description = param.help or ''
+            default_from_help = None
+            if '(default:' in description.lower():
+                import re
+                match = re.search(r'\(default:\s*([^)]+)\)', description, re.IGNORECASE)
+                if match:
+                    default_from_help = match.group(1).strip()
+
+            # Determine default value display
+            if default_from_help:
+                default = default_from_help
+            elif param.default is not None and str(param.default) != 'Sentinel.UNSET':
+                if param.is_flag:
+                    default = '-'
+                elif isinstance(param.default, (int, float)):
+                    default = str(param.default)
+                elif isinstance(param.default, str):
+                    default = f'<code>{param.default}</code>'
+                else:
+                    default = str(param.default)
+            else:
+                default = '-'
+
+            table += f'<tr>\n<td><code>{param_name}</code></td>\n<td>{param_type}</td>\n<td>{required}</td>\n<td>{default}</td>\n<td>{description}</td>\n</tr>\n'
+    table += '</tbody>\n</table>'
+    return table
+
+def generate_description(command):
+    if command.help:
+        help_text = command.help
+        if 'Example' in help_text:
+            description = help_text.split('Example')[0].strip()
+        else:
+            description = help_text.strip()
+        lines = description.split('\n')
+        if len(lines) > 1:
+            description = '\n'.join(lines[1:]).strip()
+            return f'<p>{description}</p>'
+    return ''
+
+def generate_example(command, default_text=''):
+    if command.help and 'Example' in command.help:
+        example_section = command.help.split('Example')[1]
+        if ':' in example_section:
+            example_section = example_section.split(':', 1)[1]
+        example_section = textwrap.dedent(example_section).strip()
+        output = ''
+        if default_text:
+            output += f'<p>{default_text}</p>\n'
+        output += f'<pre><code class="language-bash">{example_section}</code></pre>'
+        return output
+    return ''
+```
 
 ## Overview
 
-The `transform` command group provides tools for processing and transforming quantms.io data into various downstream formats. These commands enable absolute and differential expression analysis, metadata mapping, and data format conversions.
+The `transform` command group provides tools for processing and transforming QPX data into various downstream formats. These commands enable absolute and differential expression analysis, metadata mapping, and data format conversions.
 
 ## Available Commands
 
@@ -20,39 +109,37 @@ The `transform` command group provides tools for processing and transforming qua
 
 ## ae
 
-Convert iBAQ absolute expression data to quantms.io format.
+Convert iBAQ absolute expression data to QPX format.
 
 ### Description {#ae-description}
 
-This command transforms iBAQ (intensity-Based Absolute Quantification) data into the standardized quantms.io absolute expression format. It integrates protein quantification with sample metadata from SDRF files.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
+print(generate_description(convert_ibaq_absolute_cmd))
+```
+
+**Format Specification**: For details about the AE format structure and fields, see the [Absolute Expression Format Specification](https://io.quantms.org/format-specification/#absolute).
 
 ### Parameters {#ae-parameters}
 
-| Parameter           | Type   | Required | Default | Description                             |
-| ------------------- | ------ | -------- | ------- | --------------------------------------- |
-| `--ibaq-file`       | Path   | Yes      | -       | iBAQ file path                          |
-| `--sdrf-file`       | Path   | Yes      | -       | SDRF file path for metadata             |
-| `--protein-file`    | Path   | No       | -       | Protein file with specific requirements |
-| `--project-file`    | Path   | No       | -       | quantms.io project file                 |
-| `--output-folder`   | Path   | Yes      | -       | Output directory for generated files    |
-| `--output-prefix`   | String | No       | -       | Prefix for output files                 |
-| `--delete-existing` | Flag   | No       | False   | Delete existing files in output folder  |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
+print(generate_params_table(convert_ibaq_absolute_cmd))
+```
 
 ### Usage Examples {#ae-examples}
 
 #### Basic Example {#ae-example-basic}
 
-```bash
-quantmsioc transform ae \
-    --ibaq-file tests/examples/AE/PXD016999.1-ibaq.tsv \
-    --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ae import convert_ibaq_absolute_cmd
+print(generate_example(convert_ibaq_absolute_cmd, 'Convert iBAQ data with default settings:'))
 ```
 
 #### With Project Metadata {#ae-example-metadata}
 
 ```bash
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file tests/examples/AE/PXD016999.1-ibaq.tsv \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --project-file tests/examples/AE/project.json \
@@ -64,7 +151,7 @@ quantmsioc transform ae \
 #### Filter Specific Proteins {#ae-example-filter}
 
 ```bash
-quantmsioc transform ae \
+qpxc transform ae \
     --ibaq-file tests/examples/AE/PXD016999.1-ibaq.tsv \
     --sdrf-file tests/examples/AE/PXD016999-first-instrument.sdrf.tsv \
     --protein-file tests/examples/fasta/Homo-sapiens.fasta \
@@ -87,7 +174,7 @@ Q67890       500000     480000     520000
 
 - **Output**: `{output-prefix}-{uuid}.absolute.parquet`
 - **Format**: Parquet file containing absolute expression quantification
-- **Schema**: Conforms to quantms.io absolute expression specification
+- **Schema**: Conforms to [QPX absolute expression specification](https://io.quantms.org/format-specification/#absolute)
 
 ### Common Issues {#ae-issues}
 
@@ -110,41 +197,35 @@ Q67890       500000     480000     520000
 
 ## differential
 
-Convert MSstats differential expression data to quantms.io format.
+Convert MSstats differential expression data to QPX format.
 
 ### Description {#differential-description}
 
-Transforms differential expression analysis results from MSstats into the standardized quantms.io differential expression format. Supports FDR-based filtering and protein-specific subsetting.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.de import convert_msstats_differential_cmd
+print(generate_description(convert_msstats_differential_cmd))
+```
 
 ### Parameters {#differential-parameters}
 
-| Parameter           | Type   | Required | Default | Description                             |
-| ------------------- | ------ | -------- | ------- | --------------------------------------- |
-| `--msstats-file`    | Path   | Yes      | -       | MSstats differential expression file    |
-| `--sdrf-file`       | Path   | Yes      | -       | SDRF file for metadata extraction       |
-| `--project-file`    | Path   | No       | -       | quantms.io project file                 |
-| `--protein-file`    | Path   | No       | -       | Protein file with specific requirements |
-| `--fdr-threshold`   | Float  | No       | 0.05    | FDR threshold to filter results         |
-| `--output-folder`   | Path   | Yes      | -       | Output directory for generated files    |
-| `--output-prefix`   | String | No       | -       | Prefix for output files                 |
-| `--delete-existing` | Flag   | No       | False   | Delete existing files in output folder  |
-| `--verbose`         | Flag   | No       | False   | Enable verbose logging                  |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.de import convert_msstats_differential_cmd
+print(generate_params_table(convert_msstats_differential_cmd))
+```
 
 ### Usage Examples {#differential-examples}
 
 #### Basic Example {#differential-example-basic}
 
-```bash
-quantmsioc transform differential \
-    --msstats-file tests/examples/DE/PXD033169.sdrf_openms_design_msstats_in_comparisons.csv \
-    --sdrf-file tests/examples/DE/PXD033169.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.de import convert_msstats_differential_cmd
+print(generate_example(convert_msstats_differential_cmd, 'Convert MSstats differential expression data:'))
 ```
 
 #### With Custom FDR Threshold {#differential-example-fdr}
 
 ```bash
-quantmsioc transform differential \
+qpxc transform differential \
     --msstats-file tests/examples/DE/PXD033169.sdrf_openms_design_msstats_in_comparisons.csv \
     --sdrf-file tests/examples/DE/PXD033169.sdrf.tsv \
     --fdr-threshold 0.01 \
@@ -156,7 +237,7 @@ quantmsioc transform differential \
 #### With Project Metadata {#differential-example-metadata}
 
 ```bash
-quantmsioc transform differential \
+qpxc transform differential \
     --msstats-file tests/examples/DE/PXD033169.sdrf_openms_design_msstats_in_comparisons.csv \
     --sdrf-file tests/examples/DE/PXD033169.sdrf.tsv \
     --project-file tests/examples/DE/project.json \
@@ -179,7 +260,7 @@ Q67890,Condition2-Condition1,-1.8,0.4,-4.5,10,0.002,0.01
 
 - **Output**: `{output-prefix}-{uuid}.differential.parquet`
 - **Format**: Parquet file containing differential expression results
-- **Schema**: Conforms to quantms.io differential expression specification
+- **Schema**: Conforms to QPX differential expression specification
 
 ### Common Issues {#differential-issues}
 
@@ -206,34 +287,31 @@ Map gene information from FASTA to parquet format.
 
 ### Description {#gene-description}
 
-Maps gene names and information from a FASTA file to protein identifications in quantms.io PSM or feature files. This command enriches protein data with gene-level metadata extracted from FASTA headers.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.gene import map_gene_message_cmd
+print(generate_description(map_gene_message_cmd))
+```
 
 ### Parameters {#gene-parameters}
 
-| Parameter         | Type    | Required | Default | Description                                  |
-| ----------------- | ------- | -------- | ------- | -------------------------------------------- |
-| `--parquet-path`  | Path    | Yes      | -       | PSM or feature parquet file path             |
-| `--fasta`         | Path    | Yes      | -       | FASTA file path                              |
-| `--output-folder` | Path    | Yes      | -       | Output directory for generated files         |
-| `--file-num`      | Integer | No       | 10      | Number of rows to read in each batch         |
-| `--partitions`    | String  | No       | -       | Fields for splitting files (comma-separated) |
-| `--species`       | String  | No       | `human` | Species name                                 |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.gene import map_gene_message_cmd
+print(generate_params_table(map_gene_message_cmd))
+```
 
 ### Usage Examples {#gene-examples}
 
 #### Basic Example {#gene-example-basic}
 
-```bash
-quantmsioc transform gene \
-    --parquet-path ./output/psm.parquet \
-    --fasta tests/examples/fasta/Homo-sapiens.fasta \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.gene import map_gene_message_cmd
+print(generate_example(map_gene_message_cmd, 'Map gene information to parquet file:'))
 ```
 
 #### With Partitioning {#gene-example-partition}
 
 ```bash
-quantmsioc transform gene \
+qpxc transform gene \
     --parquet-path ./output/feature.parquet \
     --fasta tests/examples/fasta/Homo-sapiens.fasta \
     --output-folder ./output \
@@ -262,32 +340,31 @@ Convert feature data to iBAQ format.
 
 ### Description {#ibaq-description}
 
-Transforms feature-level quantification data into iBAQ (intensity-Based Absolute Quantification) format. This command integrates feature quantification with sample metadata from SDRF files to generate iBAQ values.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
+print(generate_description(convert_ibaq_file_cmd))
+```
 
 ### Parameters {#ibaq-parameters}
 
-| Parameter         | Type   | Required | Default | Description                          |
-| ----------------- | ------ | -------- | ------- | ------------------------------------ |
-| `--feature-file`  | Path   | Yes      | -       | Feature file path                    |
-| `--sdrf-file`     | Path   | Yes      | -       | SDRF file for metadata extraction    |
-| `--output-folder` | Path   | Yes      | -       | Output directory for generated files |
-| `--output-prefix` | String | No       | `ibaq`  | Prefix for output files              |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
+print(generate_params_table(convert_ibaq_file_cmd))
+```
 
 ### Usage Examples {#ibaq-examples}
 
 #### Basic Example {#ibaq-example-basic}
 
-```bash
-quantmsioc transform ibaq \
-    --feature-file ./output/feature.parquet \
-    --sdrf-file ./metadata.sdrf.tsv \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.ibaq import convert_ibaq_file_cmd
+print(generate_example(convert_ibaq_file_cmd, 'Convert feature data to iBAQ format:'))
 ```
 
 #### With Custom Prefix {#ibaq-example-prefix}
 
 ```bash
-quantmsioc transform ibaq \
+qpxc transform ibaq \
     --feature-file ./output/feature.parquet \
     --sdrf-file ./metadata.sdrf.tsv \
     --output-folder ./output \
@@ -314,33 +391,31 @@ Map spectrum information from mzML to parquet format.
 
 ### Description {#spectra-description}
 
-Enriches PSM or feature data with additional spectral information extracted from mzML files. This command maps spectrum metadata and peak information to the corresponding peptide-spectrum matches.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
+print(generate_description(map_spectrum_message_cmd))
+```
 
 ### Parameters {#spectra-parameters}
 
-| Parameter          | Type    | Required | Default | Description                                  |
-| ------------------ | ------- | -------- | ------- | -------------------------------------------- |
-| `--parquet-path`   | Path    | Yes      | -       | PSM or feature parquet file path             |
-| `--mzml-directory` | Path    | Yes      | -       | Directory containing mzML files              |
-| `--output-folder`  | Path    | Yes      | -       | Output directory for generated files         |
-| `--file-num`       | Integer | No       | 10      | Number of rows to read in each batch         |
-| `--partitions`     | String  | No       | -       | Fields for splitting files (comma-separated) |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
+print(generate_params_table(map_spectrum_message_cmd))
+```
 
 ### Usage Examples {#spectra-examples}
 
 #### Basic Example {#spectra-example-basic}
 
-```bash
-quantmsioc transform spectra \
-    --parquet-path ./output/psm.parquet \
-    --mzml-directory ./mzml_files \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.spectra import map_spectrum_message_cmd
+print(generate_example(map_spectrum_message_cmd, 'Map spectrum information to parquet:'))
 ```
 
 #### With Batch Processing and Partitioning {#spectra-example-batch}
 
 ```bash
-quantmsioc transform spectra \
+qpxc transform spectra \
     --parquet-path ./output/psm.parquet \
     --mzml-directory ./mzml_files \
     --output-folder ./output \
@@ -368,32 +443,31 @@ Map feature data to latest UniProt version.
 
 ### Description {#uniprot-description}
 
-Maps peptides and features to the latest UniProt protein database using a FASTA file. This command updates protein identifications to match current UniProt accessions and annotations.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
+print(generate_description(map_latest_uniprot_cmd))
+```
 
 ### Parameters {#uniprot-parameters}
 
-| Parameter         | Type   | Required | Default | Description                          |
-| ----------------- | ------ | -------- | ------- | ------------------------------------ |
-| `--feature-file`  | Path   | Yes      | -       | Feature file path                    |
-| `--fasta`         | Path   | Yes      | -       | UniProt FASTA file path              |
-| `--output-folder` | Path   | Yes      | -       | Output directory for generated files |
-| `--output-prefix` | String | No       | -       | Prefix for output files              |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
+print(generate_params_table(map_latest_uniprot_cmd))
+```
 
 ### Usage Examples {#uniprot-examples}
 
 #### Basic Mapping {#uniprot-example-basic}
 
-```bash
-quantmsioc transform uniprot \
-    --feature-file ./output/feature.parquet \
-    --fasta tests/examples/fasta/Homo-sapiens.fasta \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.uniprot import map_latest_uniprot_cmd
+print(generate_example(map_latest_uniprot_cmd, 'Map features to latest UniProt:'))
 ```
 
 #### With Custom Prefix {#uniprot-example-prefix}
 
 ```bash
-quantmsioc transform uniprot \
+qpxc transform uniprot \
     --feature-file ./output/feature.parquet \
     --fasta ./uniprot_human_2024.fasta \
     --output-folder ./output \
@@ -420,30 +494,31 @@ Merge multiple AE files into a file in AnnData format.
 
 ### Description {#anndata-description}
 
-Combines multiple absolute expression (AE) files from a directory into a single AnnData object (H5AD format). This command is useful for integrating data from multiple experiments for downstream analysis with scanpy or other Python-based tools.
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.anndata import merge_ae_files_cmd
+print(generate_description(merge_ae_files_cmd))
+```
 
 ### Parameters {#anndata-parameters}
 
-| Parameter         | Type   | Required | Default | Description                          |
-| ----------------- | ------ | -------- | ------- | ------------------------------------ |
-| `--directory`     | Path   | Yes      | -       | Directory for storing AE files       |
-| `--output-folder` | Path   | Yes      | -       | Output directory for generated files |
-| `--output-prefix` | String | No       | -       | Prefix for output files              |
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.anndata import merge_ae_files_cmd
+print(generate_params_table(merge_ae_files_cmd))
+```
 
 ### Usage Examples {#anndata-examples}
 
 #### Basic Example {#anndata-example-basic}
 
-```bash
-quantmsioc transform anndata \
-    --directory ./ae_files \
-    --output-folder ./output
+```python exec="1" html="1" session="doc_utils"
+from qpx.commands.transform.anndata import merge_ae_files_cmd
+print(generate_example(merge_ae_files_cmd, 'Merge AE files into AnnData format:'))
 ```
 
 #### With Custom Prefix {#anndata-example-prefix}
 
 ```bash
-quantmsioc transform anndata \
+qpxc transform anndata \
     --directory ./ae_files \
     --output-folder ./output \
     --output-prefix merged_ae
@@ -476,6 +551,7 @@ quantmsioc transform anndata \
 
 ## Related Commands
 
-- [Convert Commands](cli-convert.md) - Convert raw data to quantms.io format
+- [Convert Commands](cli-convert.md) - Convert raw data to QPX format
 - [Visualization Commands](cli-visualize.md) - Visualize transformed data
 - [Statistics Commands](cli-stats.md) - Analyze transformed data
+
