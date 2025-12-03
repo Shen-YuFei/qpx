@@ -759,9 +759,8 @@ class MaxQuant:
                 return [None, None]
 
         if self._spectral_data:
-            df["ion_mobility"] = None
-
-            # Number of matches -> number_peaks
+            if "ion_mobility" not in df.columns:
+                df["ion_mobility"] = None
 
             df["mz_array"] = (
                 df["mz_array"].apply(parse_array_string)
@@ -784,8 +783,10 @@ class MaxQuant:
 
             df["ion_mobility_array"] = None
         else:
-            spectra_info_cols = [
-                "ion_mobility",
+            if "ion_mobility" not in df.columns:
+                df["ion_mobility"] = None
+
+            spectra_only_cols = [
                 "number_peaks",
                 "mz_array",
                 "intensity_array",
@@ -793,7 +794,7 @@ class MaxQuant:
                 "ion_type_array",
                 "ion_mobility_array",
             ]
-            for col in spectra_info_cols:
+            for col in spectra_only_cols:
                 df[col] = None
 
         return df

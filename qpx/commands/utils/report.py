@@ -1,11 +1,110 @@
+import logging
 import os
 from pathlib import Path
+from typing import Dict, Optional, Set
 
 import click
+import pandas as pd
 
 from qpx.operate.report import ProjectReportGenerator
+from qpx.core.metadata import WorkflowMetadataGenerator
+from qpx.utils.logger import get_logger
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
+
+
+def _detect_workflow_files(
+    input_path: Path, workflow: str, logger: logging.Logger
+) -> Dict[str, Path]:
+    """
+    Detect workflow-specific files in a directory.
+
+    Args:
+        input_path: Path to file or directory
+        workflow: Workflow type (maxquant, diann, etc.)
+        logger: Logger instance
+
+    Returns:
+        Dictionary mapping model types to file paths
+    """
+    file_map = {}
+
+    if input_path.is_file():
+        model_type = _detect_file_model_type(input_path, workflow)
+        if model_type:
+            file_map[model_type] = input_path
+        return file_map
+
+    if workflow == "maxquant":
+        for file_path in input_path.iterdir():
+            if not file_path.is_file():
+                continue
+            filename = file_path.name.lower()
+            if "msms" in filename and filename.endswith(".txt"):
+                file_map["psm"] = file_path
+                logger.debug(f"Found PSM file: {file_path.name}")
+            elif "evidence" in filename and filename.endswith(".txt"):
+                file_map["feature"] = file_path
+                logger.debug(f"Found Feature file: {file_path.name}")
+            elif "proteingroups" in filename and filename.endswith(".txt"):
+                file_map["pg"] = file_path
+                logger.debug(f"Found PG file: {file_path.name}")
+
+    return file_map
+
+
+def _detect_file_model_type(input_file: Path, workflow: str) -> Optional[str]:
+    """
+    Detect the model type based on input file name.
+
+    Args:
+        input_file: Path to input file
+        workflow: Workflow type (maxquant, diann, etc.)
+
+    Returns:
+        Model type ('psm', 'feature', or 'pg'), or None if cannot detect
+    """
+    filename = input_file.name.lower()
+
+    if workflow == "maxquant":
+        if "msms" in filename:
+            return "psm"
+        elif "evidence" in filename:
+            return "feature"
+        elif "proteingroups" in filename or "protein_groups" in filename:
+            return "pg"
+    elif workflow == "diann":
+        if "report" in filename:
+            return "feature"
+
+    return None
+
+
+def _detect_available_columns(
+    input_file: Path, workflow: str, logger: logging.Logger
+) -> Set[str]:
+    """
+    Detect available columns from input file.
+
+    Args:
+        input_file: Path to input file
+        workflow: Workflow type (maxquant, diann, etc.)
+        logger: Logger instance
+
+    Returns:
+        Set of column names found in the file
+    """
+    try:
+        df_header = pd.read_csv(input_file, sep="\t", nrows=0)
+        columns = set(df_header.columns)
+
+        logger.debug(f"Successfully read header from {input_file.name}")
+        return columns
+
+    except Exception as e:
+        logger.warning(f"Could not read columns from {input_file}: {e}")
+        logger.warning("Falling back to generating all possible columns")
+        return None
 
 
 @click.group(name="report", context_settings=CONTEXT_SETTINGS)
@@ -81,7 +180,6 @@ def generate_report_cmd(
             --psm-file ./path/to/*-psm.parquet \\
             --output-folder ./reports
     """
-    # Validate n_workers against CPU count
     max_workers = os.cpu_count()
     if n_workers > max_workers:
         click.echo(
@@ -90,17 +188,13 @@ def generate_report_cmd(
         )
         raise click.Abort()
 
-    # Create output folder if it doesn't exist
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Generate report name from IBAQ file
     base_name = (
         ibaq_file.stem.split("-")[0] if "-" in ibaq_file.stem else ibaq_file.stem
     )
     report_name = f"{base_name}-report"
-
-    # Generate output paths
     output_txt = output_folder / f"{report_name}.txt"
     output_json = output_folder / f"{report_name}.json"
     output_html = output_folder / f"{report_name}.html"
@@ -128,3 +222,141 @@ def generate_report_cmd(
     click.echo(f"HTML report: {output_html}")
 
     click.echo("Report generation completed successfully")
+
+
+@report_cmd.command(
+    "metadata",
+    short_help="Generate metadata configuration file for a workflow",
+)
+@click.option(
+    "--workflow",
+    required=True,
+    type=click.Choice(
+        ["maxquant", "diann", "quantms-lfq", "quantms-tmt", "quantms-psm"],
+        case_sensitive=False,
+    ),
+    help="Workflow name",
+)
+@click.option(
+    "--input",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Input file or folder path (folder mode auto-detects MaxQuant output files)",
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output metadata configuration file path",
+)
+@click.option(
+    "--model",
+    type=click.Choice(["psm", "feature", "pg"], case_sensitive=False),
+    help="Specific model to generate (optional, auto-detects if not specified)",
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose logging",
+)
+def generate_metadata_cmd(
+    workflow: str,
+    input: Path,
+    output: Path,
+    model: Optional[str] = None,
+    verbose: bool = False,
+) -> None:
+    """Generate metadata configuration file documenting column mappings.
+    
+    This command generates a CSV file documenting column mappings between source 
+    proteomics formats (MaxQuant, DIANN, quantms) and QPX format. Only columns 
+    present in the input files will be documented. Supports both single file and 
+    folder input modes for automatic detection of workflow-specific files.
+    
+    Example:
+        qpxc report metadata \\
+            --workflow maxquant \\
+            --input ./maxquant_output \\
+            --output metadata.csv
+    """
+    logger = get_logger("qpx.commands.report")
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+        logger.debug("Verbose logging enabled")
+
+    try:
+        if not all([workflow, output]):
+            raise click.UsageError("ERROR: Please provide all required parameters")
+
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Using output file: {output}")
+
+        input_path = Path(input)
+        file_map = _detect_workflow_files(input_path, workflow, logger)
+
+        if not file_map:
+            raise click.UsageError(
+                f"No workflow files found in: {input}. "
+                "For MaxQuant, expected files: msms.txt, evidence.txt, proteinGroups.txt"
+            )
+
+        logger.info(
+            f"Found {len(file_map)} model file(s): {', '.join(file_map.keys()).upper()}"
+        )
+
+        if model:
+            if model not in file_map:
+                raise click.UsageError(
+                    f"Specified model '{model}' file not found in input. "
+                    f"Available models: {', '.join(file_map.keys())}"
+                )
+            file_map = {model: file_map[model]}
+            logger.info(f"Filtering to specified model: {model.upper()}")
+
+        logger.info(f"Initializing metadata generator for workflow: {workflow}")
+        generator = WorkflowMetadataGenerator(workflow=workflow)
+
+        for model_type, file_path in file_map.items():
+            logger.info(f"Processing {model_type.upper()} from: {file_path.name}")
+
+            available_columns = _detect_available_columns(file_path, workflow, logger)
+            logger.info(f"  Detected {len(available_columns)} columns")
+
+            generator._reset_mappings()
+            generator._init_workflow_mappings()
+
+            generator.available_columns = available_columns
+            generator._filter_mappings_by_available_columns()
+
+            if model_type == "psm":
+                generator.generate_psm_metadata()
+            elif model_type == "feature":
+                generator.generate_feature_metadata()
+            elif model_type == "pg":
+                generator.generate_pg_metadata()
+
+        generator.generate_file(str(output))
+
+        record_count = len(generator.get_records())
+        logger.info(
+            f"Successfully generated metadata configuration with {record_count:,} entries"
+        )
+        logger.info(f"Metadata configuration file saved to: {output}")
+
+        if verbose and record_count > 0:
+            records = generator.get_records()
+            model_counts = {}
+            for record in records:
+                model = record["model_view"]
+                model_counts[model] = model_counts.get(model, 0) + 1
+
+            logger.debug(
+                f"Model breakdown: {', '.join([f'{k.upper()}({v})' for k, v in model_counts.items()])}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error in metadata configuration generation: {str(e)}", exc_info=True
+        )
+        raise click.ClickException(f"Error: {str(e)}\nCheck the logs for more details.")

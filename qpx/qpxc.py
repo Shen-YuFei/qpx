@@ -105,6 +105,12 @@ def report():
     pass
 
 
+@cli.group()
+def utils():
+    """Utility commands for metadata and other operations."""
+    pass
+
+
 # Convert commands
 convert.add_command(convert_diann_cmd, name="diann")
 convert.add_command(convert_diann_pg_cmd, name="diann-pg")

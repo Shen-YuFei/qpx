@@ -139,6 +139,7 @@ MAXQUANT_PSM_MAP = {
     "Masses": "mz_array",
     "Intensities": "intensity_array",
     "Number of matches": "number_peaks",
+    "1/K0": "ion_mobility",
 }
 
 MAXQUANT_FEATURE_MAP = {
@@ -161,6 +162,7 @@ MAXQUANT_FEATURE_MAP = {
     "Calibrated retention time start": "rt_start",
     "Calibrated retention time finish": "rt_stop",
     "Intensity": "intensity",
+    "1/K0": "ion_mobility",
 }
 
 IBAQ_USECOLS = [
@@ -175,7 +177,28 @@ IBAQ_USECOLS = [
 
 MAXQUANT_PSM_USECOLS = list(MAXQUANT_PSM_MAP.keys())
 
+MAXQUANT_PSM_COMPUTED = {
+    "modifications": "parsed from peptidoform using PyOpenMS AASequence",
+    "calculated_mz": "calculated from peptidoform monoisotopic mass and precursor_charge",
+    "additional_scores": "structured from andromeda_score, andromeda_delta_score, parent_ion_fraction fields",
+    "cv_params": "extracted from Fragmentation, Mass analyzer, Type columns as CV parameters",
+    "charge_array": "parsed from Matches column fragment ion charges",
+    "ion_type_array": "parsed from Matches column fragment ion types",
+    "ion_mobility": "reduced ion mobility inverse (1/K0) from timsTOF Pro, in V·s/cm²",
+}
+
 MAXQUANT_FEATURE_USECOLS = list(MAXQUANT_FEATURE_MAP.keys())
+
+MAXQUANT_FEATURE_COMPUTED = {
+    "modifications": "parsed from peptidoform using PyOpenMS AASequence",
+    "calculated_mz": "calculated from peptidoform monoisotopic mass and precursor_charge",
+    "additional_scores": "structured from andromeda_score, andromeda_delta_score, parent_ion_fraction fields",
+    "cv_params": "extracted from Type column as CV parameters",
+    "intensities": "structured from Intensity column or TMT reporter intensity columns with sample and channel information",
+    "additional_intensities": "structured from corrected reporter intensity columns for TMT experiments",
+    "unique": "calculated as 1 if peptide maps to only one protein group (len(pg_accessions)==1), otherwise 0",
+    "ion_mobility": "reduced ion mobility inverse (1/K0) from timsTOF Pro, in V·s/cm²",
+}
 
 MAXQUANT_PG_MAP = {
     "Protein IDs": "pg_accessions",
@@ -198,6 +221,17 @@ MAXQUANT_PG_MAP = {
 }
 
 MAXQUANT_PG_USECOLS = list(MAXQUANT_PG_MAP.keys())
+
+MAXQUANT_PG_COMPUTED = {
+    "additional_scores": "structured from andromeda_score field",
+    "intensities": "structured from sample-specific Intensity columns with sample and channel information from SDRF",
+    "additional_intensities": "structured from LFQ intensity, iBAQ, and other intensity columns with name-value pairs",
+    "reference_file_name": "derived from the sample with maximum intensity value",
+    "peptides": "distributed peptide counts among protein group members from peptide_count_total",
+    "anchor_protein": "first protein from Majority protein IDs column or first element of pg_accessions",
+    "peptide_counts": "structured from peptide_count_unique and peptide_count_total fields",
+    "feature_counts": "structured using peptide_count_unique as unique_features and peptide_count_total as total_features",
+}
 
 # mzTab protein group mapping
 MZTAB_PG_MAP = {
