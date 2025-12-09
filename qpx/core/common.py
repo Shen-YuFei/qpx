@@ -197,7 +197,6 @@ MAXQUANT_FEATURE_COMPUTED = {
     "intensities": "structured from Intensity column or TMT reporter intensity columns with sample and channel information",
     "additional_intensities": "structured from corrected reporter intensity columns for TMT experiments",
     "unique": "calculated as 1 if peptide maps to only one protein group (len(pg_accessions)==1), otherwise 0",
-    "ion_mobility": "reduced ion mobility inverse (1/K0) from timsTOF Pro, in V·s/cm²",
 }
 
 MAXQUANT_PG_MAP = {
