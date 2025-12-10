@@ -326,18 +326,21 @@ def generate_metadata_cmd(
                 available_columns = set()
             logger.info(f"  Detected {len(available_columns)} columns")
 
-            generator._reset_mappings()
-            generator._init_workflow_mappings()
-
-            generator.available_columns = available_columns
-            generator._filter_mappings_by_available_columns()
+            # Create a new generator for each model type to avoid state pollution
+            model_generator = WorkflowMetadataGenerator(
+                workflow=workflow, available_columns=available_columns
+            )
 
             if model_type == "psm":
-                generator.generate_psm_metadata()
+                model_generator.generate_psm_metadata()
             elif model_type == "feature":
-                generator.generate_feature_metadata()
+                model_generator.generate_feature_metadata()
             elif model_type == "pg":
-                generator.generate_pg_metadata()
+                model_generator.generate_pg_metadata()
+
+            # Accumulate records from each model generator
+            for record in model_generator.get_records():
+                generator.metadata_records.append(record)
 
         generator.generate_file(str(output))
 

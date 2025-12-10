@@ -184,7 +184,6 @@ MAXQUANT_PSM_COMPUTED = {
     "cv_params": "extracted from Fragmentation, Mass analyzer, Type columns as CV parameters",
     "charge_array": "parsed from Matches column fragment ion charges",
     "ion_type_array": "parsed from Matches column fragment ion types",
-    "ion_mobility": "reduced ion mobility inverse (1/K0) from timsTOF Pro, in V·s/cm²",
 }
 
 MAXQUANT_FEATURE_USECOLS = list(MAXQUANT_FEATURE_MAP.keys())
@@ -197,7 +196,6 @@ MAXQUANT_FEATURE_COMPUTED = {
     "intensities": "structured from Intensity column or TMT reporter intensity columns with sample and channel information",
     "additional_intensities": "structured from corrected reporter intensity columns for TMT experiments",
     "unique": "calculated as 1 if peptide maps to only one protein group (len(pg_accessions)==1), otherwise 0",
-    "ion_mobility": "reduced ion mobility inverse (1/K0) from timsTOF Pro, in V·s/cm²",
 }
 
 MAXQUANT_PG_MAP = {

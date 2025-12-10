@@ -1,6 +1,7 @@
 """MaxQuant data processing module"""
 
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -1681,8 +1682,12 @@ class MaxQuant:
                         )
                     )
 
-            # Append standardized intensities if calculated
-            if total_intensity is not None and top3_intensity is not None:
+            # Append standardized intensities if calculated (exclude if both are NaN)
+            if (
+                total_intensity is not None
+                and top3_intensity is not None
+                and not (math.isnan(total_intensity) and math.isnan(top3_intensity))
+            ):
                 # Get sample accession and channel for the standardized intensities
                 sample_accession = reference_file_name
                 channel = "label free sample"

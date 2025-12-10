@@ -208,7 +208,6 @@ def test_workflow_metadata_with_available_columns():
         "Retention time",
         "PEP",
         "Reverse",
-        "1/K0",
         "Raw file",
     }
 
@@ -221,19 +220,13 @@ def test_workflow_metadata_with_available_columns():
     records = generator.get_records()
     assert len(records) > 0
 
-    ion_mobility_records = [r for r in records if r["column_name"] == "ion_mobility"]
-    assert len(ion_mobility_records) == 1
-    assert "1/K0" in ion_mobility_records[0]["settings"]
-    assert "reduced ion mobility inverse" in ion_mobility_records[0]["settings"]
-
     column_names = {r["column_name"] for r in records}
     assert "sequence" in column_names
     assert "peptidoform" in column_names
-    assert "ion_mobility" in column_names
 
 
-def test_workflow_metadata_without_ion_mobility():
-    """Test metadata generation when ion mobility column is not available."""
+def test_workflow_metadata_without_optional_columns():
+    """Test metadata generation when optional columns are not available."""
     available_columns = {
         "Sequence",
         "Modified sequence",
@@ -249,9 +242,10 @@ def test_workflow_metadata_without_ion_mobility():
     generator.generate_feature_metadata()
 
     records = generator.get_records()
-
-    ion_mobility_records = [r for r in records if r["column_name"] == "ion_mobility"]
-    assert len(ion_mobility_records) == 0
+    # Verify basic columns are present
+    column_names = {r["column_name"] for r in records}
+    assert "sequence" in column_names
+    assert "peptidoform" in column_names
 
 
 def test_reset_and_reinitialize_mappings():
@@ -262,8 +256,8 @@ def test_reset_and_reinitialize_mappings():
     initial_records = len(generator.get_records())
     assert initial_records > 0
 
-    generator._reset_mappings()
-    generator._init_workflow_mappings()
+    generator.reset_mappings()
+    generator.init_workflow_mappings()
 
     generator.clear()
     generator.generate_psm_metadata()
@@ -272,15 +266,13 @@ def test_reset_and_reinitialize_mappings():
     assert new_records == initial_records
 
 
-def test_ion_mobility_description():
-    """Test that ion mobility has correct description with units."""
+def test_metadata_settings_format():
+    """Test that metadata settings have correct format."""
     generator = WorkflowMetadataGenerator(workflow="maxquant")
 
     generator.generate_psm_metadata()
 
     records = generator.get_records()
-    ion_mobility_records = [r for r in records if r["column_name"] == "ion_mobility"]
-
-    if len(ion_mobility_records) > 0:
-        settings = ion_mobility_records[0]["settings"]
-        assert "1/K0" in settings or "reduced ion mobility inverse" in settings
+    # Verify that records with source columns have proper settings format
+    records_with_settings = [r for r in records if r.get("settings", "").strip() != ""]
+    assert len(records_with_settings) > 0

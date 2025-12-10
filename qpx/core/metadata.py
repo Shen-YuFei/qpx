@@ -283,13 +283,13 @@ class WorkflowMetadataGenerator(MetadataSchemaGenerator):
 
         self.workflow = workflow.lower()
         self.available_columns = available_columns
-        self._reset_mappings()
-        self._init_workflow_mappings()
+        self.reset_mappings()
+        self.init_workflow_mappings()
 
         if self.available_columns is not None:
             self._filter_mappings_by_available_columns()
 
-    def _reset_mappings(self):
+    def reset_mappings(self):
         """Reset all mappings to empty state."""
         self.psm_source_map = {}
         self.feature_source_map = {}
@@ -323,7 +323,7 @@ class WorkflowMetadataGenerator(MetadataSchemaGenerator):
             self.psm_computed.pop("ion_mobility", None)
             self.feature_computed.pop("ion_mobility", None)
 
-    def _init_workflow_mappings(self):
+    def init_workflow_mappings(self):
         """Initialize workflow-specific column mappings."""
         if self.workflow == "maxquant":
             self._init_maxquant_mappings()

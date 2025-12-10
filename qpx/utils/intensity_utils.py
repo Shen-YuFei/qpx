@@ -96,7 +96,12 @@ def calculate_top3_peptide_intensity(
     # Aggregate intensities by peptide sequence
     peptide_totals: dict = {}
     for seq, intensity in zip(peptide_sequences, intensities):
-        if seq is None or (isinstance(intensity, float) and math.isnan(intensity)):
+        if seq is None:
+            continue
+        try:
+            if math.isnan(float(intensity)):
+                continue
+        except (TypeError, ValueError):
             continue
         if intensity < 0:
             continue
@@ -109,7 +114,6 @@ def calculate_top3_peptide_intensity(
     if not peptide_totals:
         return float("nan")
 
-    # Sort peptides by total intensity and take top 3
     sorted_peptides = sorted(peptide_totals.values(), reverse=True)
     top3 = sorted_peptides[:3]
 
