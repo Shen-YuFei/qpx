@@ -22,7 +22,7 @@ import pandas as pd
 from qpx.converters.base import resolve_columns
 from qpx.converters.diann.base_adapter import DiaNNBaseAdapter
 from qpx.converters.mappings import get_field_mappings
-from qpx.converters.utils import safe_float
+from qpx.converters.utils import is_contaminant_accession, safe_float
 from qpx.core.sql import sql_build, validate_identifier
 from qpx.writers.pg import PgWriter
 
@@ -429,6 +429,9 @@ class DiannPgAdapter(DiaNNBaseAdapter):
 
         intensities = []
         additional_intensities = []
+        # Which DIA-NN quantity became pg.intensity, recorded like the OpenMS path's
+        # quantification_method so a consumer can tell the two apart (#300).
+        quant_methods: set[str] = set()
         for label, channel_group in quant_groups:
             raw_quantity = deterministic_quantity(channel_group, "pg_quantity_raw")
             maxlfq_val = deterministic_quantity(channel_group, "lfq")
@@ -439,6 +442,7 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             if primary_quantity is None:
                 primary_quantity = maxlfq_val
             if primary_quantity is not None:
+                quant_methods.add("PG.Quantity" if raw_quantity is not None else "PG.MaxLFQ")
                 intensities.append(
                     {
                         "label": str(label),
@@ -482,7 +486,7 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             "intensities": intensities or None,
             "additional_intensities": additional_intensities or None,
             "is_decoy": is_decoy,
-            "contaminant": None,
+            "contaminant": any(is_contaminant_accession(a) for a in pg_accessions) if pg_accessions else None,
             "peptides": peptides,
             "peptide_counts": {
                 "unique_sequences": unique_sequences,
@@ -495,5 +499,5 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             "sequence_coverage": None,
             "molecular_weight": None,
             "additional_scores": additional_scores or None,
-            "cv_params": None,
+            "cv_params": [{"cv_name": "quantification_method", "cv_value": m} for m in sorted(quant_methods)] or None,
         }

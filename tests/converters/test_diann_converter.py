@@ -1300,3 +1300,65 @@ def test_feature_pg_softlink_real_small_dataset(tmp_path_factory):
     with open_converted(out, prefix="d") as ds:
         _feat, _pg, link = assert_softlink_valid(ds)
     assert link, "expected at least some computed feature->pg softlink edges"
+
+
+def _diann_row(**overrides) -> dict:
+    row = {
+        "Run": "run_A",
+        "Protein.Group": "P1",
+        "Protein.Names": "N1",
+        "Genes": "G1",
+        "Stripped.Sequence": "PEPTIDEK",
+        "Precursor.Id": "PEPTIDEK2",
+        "Precursor.Charge": 2,
+        "Proteotypic": 1,
+        "Precursor.Quantity": 100.0,
+        "PG.Quantity": 1000.0,
+        "Q.Value": 0.002,
+        "PG.Q.Value": 0.002,
+        "Global.PG.Q.Value": 0.003,
+        "GG.Q.Value": 0.004,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_diann_pg_flags_contaminants_like_the_openms_path(tmp_path):
+    """pg.contaminant was hard-coded None for DIA-NN (bigbio/qpx#300).
+
+    PXD017199 carries 176 CONTAM_ protein groups, all unflagged, while the
+    OpenMS converter flags the same accessions. Both now share one rule.
+    """
+    group = "sp|CONTAM_P19001|CONTAM_K1C19_MOUSE"
+    rows = [_diann_row(**{"Protein.Group": group, "Protein.Names": "CONTAM_K1C19_MOUSE"})]
+    matrix = [{"Protein.Group": group, "Protein.Names": "CONTAM_K1C19_MOUSE", "Genes": "G1", "run_A": 900.0}]
+
+    out = _pg_rows_single_run(tmp_path, rows, matrix_rows=matrix)
+
+    assert out[0]["contaminant"] is True
+
+
+def test_diann_pg_target_protein_is_not_a_contaminant(tmp_path):
+    out = _pg_rows_single_run(tmp_path, [_diann_row()])
+
+    assert out[0]["contaminant"] is False
+
+
+def test_diann_pg_records_which_quantity_became_the_intensity(tmp_path):
+    """pg.cv_params was hard-coded None; OpenMS stamps quantification_method (#300)."""
+    out = _pg_rows_single_run(tmp_path, [_diann_row()])
+
+    assert out[0]["intensity"] == 1000.0
+    assert out[0]["cv_params"] == [{"cv_name": "quantification_method", "cv_value": "PG.Quantity"}]
+
+
+def test_diann_pg_quantification_method_names_the_maxlfq_fallback(tmp_path):
+    """Reports without PG.Quantity fall back to MaxLFQ, and must say so."""
+    row = _diann_row(**{"PG.MaxLFQ": 700.0})
+    del row["PG.Quantity"]
+    matrix = [{"Protein.Group": "P1", "Protein.Names": "N1", "Genes": "G1", "run_A": 700.0}]
+
+    out = _pg_rows_single_run(tmp_path, [row], matrix_rows=matrix)
+
+    assert out[0]["intensity"] == 700.0
+    assert out[0]["cv_params"] == [{"cv_name": "quantification_method", "cv_value": "PG.MaxLFQ"}]

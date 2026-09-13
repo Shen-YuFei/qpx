@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cross-converter pg fields (bigbio/qpx#300)** — three fields one converter filled and another left null:
+  DIA-NN `pg.contaminant` was hard-coded null (PXD017199 has 176 `CONTAM_` groups, all unflagged) and now uses the
+  same accession rule as OpenMS, shared in `converters/utils.py`; DIA-NN `pg.cv_params` records which quantity became
+  `pg.intensity` (`quantification_method` = `PG.Quantity`, or `PG.MaxLFQ` for the fallback), as OpenMS already did;
+  OpenMS `pg.pg_names` carries the UniProt entry names from `sp|ACC|NAME` accessions, and stays null for a group with
+  any bare accession so names never misalign with `pg_accessions`.
 - **OpenMS feature view left `pg_global_qvalue`, `gg_names` and `gg_accessions` null** — the consensusXML converter computed each protein group's q-value and gene names for the pg view and then discarded them, so every feature carried none while its group in pg had both (PXD000612: pg 100%, feature 0%). Features now carry their own group's values from the same derivation as pg, in both the streaming and in-memory paths, including when two groups share a leading protein. Matching uses full membership and the originating identification, independently of protein evidence order; ambiguous groups and runs with conflicting peptide sequences keep protein-group fields null while feature intensities are retained.
 - **`verify_integrity` read whole files into memory** — it hashed each file with `read_bytes()` while `compute_integrity` streamed the same files in 64 KiB chunks, so verifying a multi-gigabyte feature or PSM view allocated the entire file. Both paths now share one chunked hasher.
 - **`verify_integrity` ignored `file_row_counts` and `file_sizes_bytes`** — both were computed and stored but never read back, so only checksums were ever verified. Row counts and sizes are now compared, the `-1` "could not be read" sentinel warns instead of silently counting as verified, and `compute_integrity` logs when it stores it.
