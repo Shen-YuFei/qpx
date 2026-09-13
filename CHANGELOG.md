@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **OpenMS feature protein attribution for shared peptides** — releases up to 1.1.3 assigned every feature to the protein group of its *first* protein evidence, an order that carries no meaning, and set `unique` from that group's size. A peptide shared by two groups was therefore attributed to one of them arbitrarily and often reported `unique = true`. Features now resolve their group from the full evidence set and the originating identification; when the evidence spans more than one inferred group, `anchor_protein`, `pg_accessions`, `unique`, `pg_global_qvalue` and `gg_*` are null and the feature's intensities are kept. `pg` is unaffected, since protein intensities are built from unique peptides only. On PXD000612 (DDA LFQ, 231 runs) this nulls the group on 255,416 of 3,956,057 features (6.5%, 9,331 peptidoforms, 15% of feature intensity), 8,829 of which 1.1.3 had marked unique. **OpenMS datasets converted with earlier releases over-report `unique` and carry arbitrary groups on shared peptides; reconvert before relying on feature-level protein attribution.**
 - **MuData stack is core**: `mudata`, `anndata`, and `scipy` are required dependencies (no longer an optional extra). Use bare `pip install qpx`.
 - **`quantify` extra**: now `mokume[directlfq]>=0.1.0` (DirectLFQ via mokume's optional extra).
 
