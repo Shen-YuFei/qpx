@@ -1,6 +1,8 @@
 """Confidence and feature-metadata regressions for the consensusXML converter."""
 
+from copy import deepcopy
 from unittest.mock import Mock
+from xml.etree import ElementTree as ET
 
 import pyarrow.parquet as pq
 import pytest
@@ -175,7 +177,9 @@ def _annotated_shared_leader_consensusxml():
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming):
+@pytest.mark.parametrize("reverse_evidence", [False, True])
+@pytest.mark.parametrize("reverse_groups", [False, True])
+def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming, reverse_evidence, reverse_groups):
     """feature.pg_global_qvalue / gg_names were null on every OpenMS dataset.
 
     The converter computed both for the pg view and discarded them, so on
@@ -186,7 +190,17 @@ def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming
     import duckdb
 
     cx = tmp_path / "annotated_shared_leader.consensusXML"
-    cx.write_text(_annotated_shared_leader_consensusxml())
+    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    if reverse_evidence:
+        for hit in root.findall(".//PeptideHit"):
+            hit.set("protein_refs", " ".join(reversed(hit.get("protein_refs").split())))
+    if reverse_groups:
+        groups = root.findall(".//ProteinIdentification/UserParam")
+        first, second = groups
+        first_value, second_value = first.get("value"), second.get("value")
+        first.set("value", second_value)
+        second.set("value", first_value)
+    cx.write_text(ET.tostring(root, encoding="unicode"))
     written = OpenMSConsensusConverter().convert(
         str(cx),
         str(tmp_path / ("stream" if streaming else "mem")),
@@ -218,3 +232,82 @@ def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming
         [str(written["feature"]), str(written["pg"])],
     ).fetchone()[0]
     assert disagreements == 0
+    con.close()
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("references", ["PH_0", "PH_1 PH_2", "PH_2 PH_1", ""])
+def test_ambiguous_feature_group_keeps_quantification(tmp_path, streaming, references):
+    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    for hit in root.findall(".//PeptideHit"):
+        hit.set("protein_refs", references)
+    cx = tmp_path / "ambiguous.consensusXML"
+    cx.write_text(ET.tostring(root, encoding="unicode"))
+    written = OpenMSConsensusConverter().convert(
+        str(cx), str(tmp_path / "out"), output_prefix="t", structures=("feature", "pg"), streaming=streaming
+    )
+    features = pq.read_table(written["feature"]).to_pylist()
+    assert len(features) == 2
+    assert sorted(row["intensities"][0]["intensity"] for row in features) == [1000.0, 3000.0]
+    for row in features:
+        for field in ("pg_accessions", "pg_global_qvalue", "gg_accessions", "gg_names", "unique"):
+            assert row[field] is None, field
+        assert row["anchor_protein"] == ("A" if references == "PH_0" else None)
+
+
+def _separate_identification_groups_xml(reverse_identifications=False):
+    """One consensus feature, two runs, shared A assigned to different source groups."""
+    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    first = root.find("IdentificationRun")
+    second = deepcopy(first)
+    first.set("date", "2026-09-13T00:00:00")
+    second.set("date", "2026-09-14T00:00:00")
+    second.set("id", "PI_1")
+    root.insert(1, second)
+    for run, excluded, group_number in [(first, "C", "1"), (second, "B", "0")]:
+        proteins = run.find("ProteinIdentification")
+        proteins.remove(proteins.find(f"ProteinHit[@accession='{excluded}']"))
+        proteins.remove(proteins.find(f"UserParam[@name='indistinguishable_proteins_{group_number}']"))
+    for hit in second.findall(".//ProteinHit"):
+        hit.set("id", hit.get("id").replace("PH_", "SECOND_"))
+    group = second.find(".//ProteinIdentification/UserParam")
+    group.set("name", "indistinguishable_proteins_0")
+    group.set("value", group.get("value").replace("PH_", "SECOND_"))
+    maps = root.find("mapList")
+    maps.set("count", "2")
+    ET.SubElement(maps, "map", id="1", name="run_02.mzML", unique_id="2", label="label-free", size="1")
+    elements = root.find("consensusElementList")
+    cf, other = list(elements)
+    for number, element in enumerate((cf, other)):
+        pid = element.find("PeptideIdentification")
+        pid.set("identification_run_ref", f"PI_{number}")
+        pid.find("PeptideHit").set("protein_refs", "PH_0" if number == 0 else "SECOND_0")
+        pid.find("PeptideHit").set("sequence", "PEPTIDEK")
+        ET.SubElement(pid, "UserParam", type="int", name="map_index", value=str(number))
+    sub = other.find("groupedElementList/element")
+    sub.set("map", "1")
+    cf.find("groupedElementList").append(sub)
+    cf.append(other.find("PeptideIdentification"))
+    elements.remove(other)
+    if reverse_identifications:
+        root.remove(second)
+        root.insert(0, second)
+    return ET.tostring(root, encoding="unicode")
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("reverse_identifications", [False, True])
+def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse_identifications):
+    cx = tmp_path / "separate_identifications.consensusXML"
+    cx.write_text(_separate_identification_groups_xml(reverse_identifications))
+    written = OpenMSConsensusConverter().convert(
+        str(cx), str(tmp_path / "out"), output_prefix="t", structures=("feature", "pg"), streaming=streaming
+    )
+    features = {row["run_file_name"]: row for row in pq.read_table(written["feature"]).to_pylist()}
+    assert set(features) == {"run_01", "run_02"}
+    for run, member, qvalue, intensity in [("run_01", "B", 0.001, 1000.0), ("run_02", "C", 0.004, 3000.0)]:
+        row = features[run]
+        assert [acc["accession"] for acc in row["pg_accessions"]] == ["A", member]
+        assert row["pg_global_qvalue"] == pytest.approx(qvalue)
+        assert row["gg_names"] == row["gg_accessions"] == ["GENEA", f"GENE{member}"]
+        assert row["intensities"][0]["intensity"] == intensity

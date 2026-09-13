@@ -29,6 +29,7 @@ from qpx.converters.openms_consensus.feature_adapter import (
     load_consensus_map,
     to_proforma,
 )
+from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 
 _GENE_RE = re.compile(r"GN=([^\s]+)")
@@ -200,8 +201,8 @@ def _group_qvalue_and_genes(
     return (min(qvals) if qvals else None), genes
 
 
-def protein_group_maps(cm) -> tuple[dict[str, list[str]], dict[tuple[str, ...], tuple[float | None, list[str] | None]]]:
-    """Accession -> full group membership, plus group -> (global q-value, genes).
+def protein_group_maps(cm) -> tuple[ProteinGroupIndex, dict[tuple[str, ...], tuple[float | None, list[str] | None]]]:
+    """Group lookup by membership/source, plus group -> (global q-value, genes).
 
     Both come from one ``_merge_protein_ids`` pass. The second map lets the
     feature view carry the group's confidence and gene names: they were computed
@@ -210,20 +211,27 @@ def protein_group_maps(cm) -> tuple[dict[str, list[str]], dict[tuple[str, ...], 
     group (the DIA-NN converter fills both).
     """
     _, acc_qvalue, acc_gene, groups = _merge_protein_ids(cm)
-    group_map = {acc: list(grp) for grp in groups for acc in grp}
+    group_map = ProteinGroupIndex.from_groups(groups)
+    groups_by_identification: dict[str, list[list[str]]] = defaultdict(list)
+    for prot in cm.getProteinIdentifications():
+        identifier = identification_identifier(prot)
+        if identifier:
+            groups_by_identification[identifier].extend(_build_groups(prot))
+    group_map.by_identification = {
+        identifier: ProteinGroupIndex.from_groups(source_groups) for identifier, source_groups in groups_by_identification.items()
+    }
     group_meta = {tuple(grp): _group_qvalue_and_genes(grp, acc_qvalue, acc_gene) for grp in groups}
     return group_map, group_meta
 
 
 def accession_to_group(cm) -> dict[str, list[str]]:
-    """Map each accession to its full protein-group membership (feature.pg_accessions).
+    """Map unambiguous accessions to their full protein-group membership.
 
-    group[0] is still the leader (feature.anchor_protein). Sharing the whole
-    membership lets a feature stamp BOTH anchor_protein AND pg_accessions, so the
-    feature->pg join is unambiguous even when two distinct groups share a leader
-    (bigbio/qpx#266, cf. #240)."""
+    group[0] remains the producer's leader. For shared accessions and groups from
+    multiple identification runs, use the full index in ``protein_group_maps``.
+    """
     group_map, _ = protein_group_maps(cm)
-    return group_map
+    return group_map.unambiguous_accessions()
 
 
 def _map_info(cm) -> dict[int, tuple[str, str]]:
