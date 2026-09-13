@@ -517,9 +517,11 @@ def _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta) -> di
     for pid in pids:
         hits = pid.getHits()
         run = _pid_run(pid, map_info, cf_runs)
-        if run is None or not hits or hits[0].getSequence() != sequence:
+        if run is None or not hits:
             continue
         fields = _protein_group_fields(pid, group_map, group_meta)
+        if hits[0].getSequence() != sequence:
+            fields = dict.fromkeys(fields)
         by_run[run] = dict.fromkeys(fields) if run in by_run and by_run[run] != fields else fields
     return by_run
 

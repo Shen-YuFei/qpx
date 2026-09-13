@@ -311,3 +311,31 @@ def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse
         assert row["pg_global_qvalue"] == pytest.approx(qvalue)
         assert row["gg_names"] == row["gg_accessions"] == ["GENEA", f"GENE{member}"]
         assert row["intensities"][0]["intensity"] == intensity
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("add_matching_pid", [False, True])
+def test_sequence_conflict_clears_run_protein_fields(tmp_path, streaming, add_matching_pid):
+    """A conflicting identification must not inherit another run's protein group."""
+    root = ET.fromstring(_separate_identification_groups_xml())
+    cf = root.find("consensusElementList/consensusElement")
+    pid = cf.findall("PeptideIdentification")[1]
+    if add_matching_pid:
+        cf.append(deepcopy(pid))
+    pid.find("PeptideHit").set("sequence", "ANOTHERK")
+    cx = tmp_path / "sequence_conflict.consensusXML"
+    cx.write_text(ET.tostring(root, encoding="unicode"))
+
+    written = OpenMSConsensusConverter().convert(
+        str(cx), str(tmp_path / "out"), output_prefix="t", structures=("feature", "pg"), streaming=streaming
+    )
+    features = {row["run_file_name"]: row for row in pq.read_table(written["feature"]).to_pylist()}
+    assert set(features) == {"run_01", "run_02"}
+    matched = features["run_01"]
+    assert [entry["accession"] for entry in matched["pg_accessions"]] == ["A", "B"]
+    assert matched["pg_global_qvalue"] == pytest.approx(0.001)
+    assert matched["gg_names"] == matched["gg_accessions"] == ["GENEA", "GENEB"]
+    for field in ("anchor_protein", "pg_accessions", "unique", "pg_global_qvalue", "gg_accessions", "gg_names"):
+        assert features["run_02"][field] is None, field
+    for run, intensity in (("run_01", 1000.0), ("run_02", 3000.0)):
+        assert features[run]["intensities"][0]["intensity"] == intensity
