@@ -6,6 +6,7 @@ from xml.etree import ElementTree as ET
 
 import pyarrow.parquet as pq
 import pytest
+from defusedxml.ElementTree import fromstring
 
 from qpx.converters.openms_consensus.converter import OpenMSConsensusConverter
 from qpx.converters.openms_consensus.feature_adapter import (
@@ -190,7 +191,7 @@ def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming
     import duckdb
 
     cx = tmp_path / "annotated_shared_leader.consensusXML"
-    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    root = fromstring(_annotated_shared_leader_consensusxml())
     if reverse_evidence:
         for hit in root.findall(".//PeptideHit"):
             hit.set("protein_refs", " ".join(reversed(hit.get("protein_refs").split())))
@@ -238,7 +239,8 @@ def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("references", ["PH_0", "PH_1 PH_2", "PH_2 PH_1", ""])
 def test_ambiguous_feature_group_keeps_quantification(tmp_path, streaming, references):
-    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    """Ambiguous protein evidence leaves annotations null without losing intensities."""
+    root = fromstring(_annotated_shared_leader_consensusxml())
     for hit in root.findall(".//PeptideHit"):
         hit.set("protein_refs", references)
     cx = tmp_path / "ambiguous.consensusXML"
@@ -257,7 +259,7 @@ def test_ambiguous_feature_group_keeps_quantification(tmp_path, streaming, refer
 
 def _separate_identification_groups_xml(reverse_identifications=False):
     """One consensus feature, two runs, shared A assigned to different source groups."""
-    root = ET.fromstring(_annotated_shared_leader_consensusxml())
+    root = fromstring(_annotated_shared_leader_consensusxml())
     first = root.find("IdentificationRun")
     second = deepcopy(first)
     first.set("date", "2026-09-13T00:00:00")
@@ -298,6 +300,7 @@ def _separate_identification_groups_xml(reverse_identifications=False):
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("reverse_identifications", [False, True])
 def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse_identifications):
+    """Each run resolves its group from its own source identification."""
     cx = tmp_path / "separate_identifications.consensusXML"
     cx.write_text(_separate_identification_groups_xml(reverse_identifications))
     written = OpenMSConsensusConverter().convert(
@@ -317,7 +320,7 @@ def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse
 @pytest.mark.parametrize("add_matching_pid", [False, True])
 def test_sequence_conflict_clears_run_protein_fields(tmp_path, streaming, add_matching_pid):
     """A conflicting identification must not inherit another run's protein group."""
-    root = ET.fromstring(_separate_identification_groups_xml())
+    root = fromstring(_separate_identification_groups_xml())
     cf = root.find("consensusElementList/consensusElement")
     pid = cf.findall("PeptideIdentification")[1]
     if add_matching_pid:
