@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MuData default modality selection** — `build_mudata()` now selects precursor/protein modalities from available `feature`/`pg` source views, so valid single-view datasets no longer report false build failures. Explicit modality requests still report build errors.
 - **`verify_integrity` read whole files into memory** — it hashed each file with `read_bytes()` while `compute_integrity` streamed the same files in 64 KiB chunks, so verifying a multi-gigabyte feature or PSM view allocated the entire file. Both paths now share one chunked hasher.
 - **`verify_integrity` ignored `file_row_counts` and `file_sizes_bytes`** — both were computed and stored but never read back, so only checksums were ever verified. Row counts and sizes are now compared, the `-1` "could not be read" sentinel warns instead of silently counting as verified, and `compute_integrity` logs when it stores it.
 - **`verify_integrity` could not detect unrecorded files** — it walked only the stored checksum keys, so a file added to a dataset after packaging verified clean. Files not covered by the integrity record are now reported as warnings.
