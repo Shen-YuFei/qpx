@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MuData silently lost the `precursors` modality on large multiplexed data** — combining a `string` Arrow column over 2 GiB overflowed its int32 offsets, `build_mudata` caught the error and returned a partial MuData, and the pipeline wrote an incomplete `.h5mu` reporting success. String and binary columns are now widened to `large_string`/`large_binary` before combining. MSV000085836 (TMT, 552 runs x 10 channels) goes from `['proteins']` to `['precursors', 'proteins']`.
 - **`gene-map --dataset` copied only top-level files** — sharded / partitioned datasets kept their views in subdirectories, so an annotated copy came back incomplete. Subdirectories are now copied too, and a `--output-folder` that is the dataset itself or nested inside it is rejected instead of copying into its own destination.
 - **`gene-map` accepted `--in-place` together with `--output-folder`** — the destination silently won; it is now a usage error.
 - **`annotate_dataframe` divided by zero on an empty view** — the mapped-share log now reports 0.0%.

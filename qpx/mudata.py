@@ -87,7 +87,7 @@ def _dictionary_positions(column, index: pd.Index) -> np.ndarray:
     """
     import pyarrow.compute as pc
 
-    encoded = pc.dictionary_encode(column.combine_chunks())
+    encoded = pc.dictionary_encode(_combine_chunks(column))
     dictionary_positions = index.get_indexer(encoded.dictionary.to_pylist())
     codes = encoded.indices.to_numpy(zero_copy_only=False)
     if not encoded.indices.null_count:
@@ -126,11 +126,41 @@ def _pivot_arrow_to_sparse(
     return mat.tocsr()
 
 
+def _combine_chunks(column):
+    """Concatenate an Arrow ChunkedArray's chunks, widening strings first.
+
+    ``combine_chunks`` on a ``string``/``binary`` column builds one contiguous
+    array with **int32** offsets, so it raises
+
+        offset overflow while concatenating arrays, consider casting input from
+        `string` to `large_string` first
+
+    once the column's total bytes exceed 2 GiB. That is reachable on real data:
+    a TMT feature table is one row per precursor *per channel*, so the
+    run_file_name column repeats a long filename ten-plus times per precursor.
+    MSV000085836 (552 runs x 10 channels) tripped it and MuData silently came
+    back with no ``precursors`` modality (bigbio/qpx#316).
+
+    ``large_string`` uses int64 offsets and is otherwise equivalent, so widen
+    before combining rather than after — after is too late, the concat is what
+    overflows.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    if isinstance(column.type, pa.DataType):
+        if pa.types.is_string(column.type):
+            column = pc.cast(column, pa.large_string())
+        elif pa.types.is_binary(column.type):
+            column = pc.cast(column, pa.large_binary())
+    return column.combine_chunks()
+
+
 def _sorted_unique(table, column: str) -> pd.Index:
     """Sorted distinct values of an Arrow column, named after the column."""
     import pyarrow.compute as pc
 
-    values = pc.dictionary_encode(table.column(column).combine_chunks()).dictionary.to_pylist()
+    values = pc.dictionary_encode(_combine_chunks(table.column(column))).dictionary.to_pylist()
     return pd.Index(sorted(v for v in values if v is not None), name=column)
 
 
@@ -318,12 +348,12 @@ def _prepare_observations_arrow(
     import pyarrow.compute as pc
 
     if intensity_label is None:
-        runs = table.column("run_file_name").combine_chunks()
-        labels = table.column("intensity_label").combine_chunks()
+        runs = _combine_chunks(table.column("run_file_name"))
+        labels = _combine_chunks(table.column("intensity_label"))
         observation_id = pc.binary_join_element_wise(
-            pc.cast(runs, pa.string()),
-            pc.cast(labels, pa.string()),
-            "|",
+            pc.cast(runs, pa.large_string()),
+            pc.cast(labels, pa.large_string()),
+            pa.scalar("|", pa.large_string()),
         )
         table = table.append_column("observation_id", observation_id)
         obs_index = _sorted_unique(table, "observation_id")
