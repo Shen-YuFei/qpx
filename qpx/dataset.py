@@ -104,6 +104,7 @@ def _row_count(path: Path) -> int | None:
         import pyarrow.parquet as pq
 
         return int(pq.read_metadata(path).num_rows)
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - verification must not raise on a bad file
         _log.debug("Could not read a row count for %s: %s", path, exc)
         return None
@@ -1193,7 +1194,8 @@ class Dataset:
             checksums[name] = _sha256_file(f)
             try:
                 row_counts[name] = pq.read_metadata(f).num_rows
-            except Exception as exc:
+            # pylint: disable-next=broad-exception-caught
+            except Exception as exc:  # noqa: BLE001 - one bad file must not abort the whole record
                 # -1 is the "could not be read" sentinel. Record it, but say so:
                 # storing it silently produced an integrity record that looked
                 # complete for a file whose metadata was unreadable.
@@ -1209,7 +1211,8 @@ class Dataset:
                 import anndata
 
                 row_counts[name] = anndata.read_h5ad(f, backed="r").n_obs
-            except Exception as exc:
+            # pylint: disable-next=broad-exception-caught
+            except Exception as exc:  # noqa: BLE001 - one bad file must not abort the whole record
                 _log.warning("Could not read AnnData obs count for %s: %s", name, exc)
                 row_counts[name] = -1
 
