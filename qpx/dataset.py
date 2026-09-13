@@ -39,6 +39,46 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+def _verify_one_file(
+    fpath: Path,
+    name: str,
+    expected_sha: str,
+    expected_size: int | None,
+    expected_rows: int | None,
+) -> tuple[list[str], list[str]]:
+    """Check one recorded file's size, checksum and row count.
+
+    Returns ``(errors, warnings)``.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if expected_size is not None:
+        actual_size = fpath.stat().st_size
+        if actual_size != expected_size:
+            # Cheap and decisive: a size change is a content change, and
+            # reporting it by name beats a bare checksum mismatch.
+            errors.append(f"Size mismatch: {name} ({actual_size} != {expected_size})")
+
+    if _sha256_file(fpath) != expected_sha:
+        errors.append(f"Checksum mismatch: {name}")
+
+    if expected_rows is None:
+        return errors, warnings
+    if expected_rows < 0:
+        # The -1 sentinel compute_integrity stores for a file whose metadata it
+        # could not read. Never silently treat it as a verified count.
+        warnings.append(f"Row count was not recorded for {name}; it could not be read at packaging time")
+        return errors, warnings
+
+    actual_rows = _row_count(fpath)
+    if actual_rows is None:
+        warnings.append(f"Could not read a row count for {name}")
+    elif actual_rows != expected_rows:
+        errors.append(f"Row count mismatch: {name} ({actual_rows} != {expected_rows})")
+    return errors, warnings
+
+
 def _as_int(value) -> int | None:
     """Coerce a stored integrity number to int, or None if it is not one.
 
@@ -1239,29 +1279,15 @@ class Dataset:
                 continue
             verified.add(fpath)
 
-            expected_size = _as_int(stored_sizes.get(name))
-            if expected_size is not None:
-                actual_size = fpath.stat().st_size
-                if actual_size != expected_size:
-                    # Cheap and decisive: a size change is a content change, and
-                    # reporting it by name beats a bare checksum mismatch.
-                    errors.append(f"Size mismatch: {name} ({actual_size} != {expected_size})")
-
-            if _sha256_file(fpath) != expected_sha:
-                errors.append(f"Checksum mismatch: {name}")
-
-            expected_rows = _as_int(stored_row_counts.get(name))
-            if expected_rows is not None:
-                if expected_rows < 0:
-                    # The -1 sentinel compute_integrity stores for a file whose
-                    # metadata it could not read. Never silently treat it as verified.
-                    warnings.append(f"Row count was not recorded for {name}; it could not be read at packaging time")
-                else:
-                    actual_rows = _row_count(fpath)
-                    if actual_rows is None:
-                        warnings.append(f"Could not read a row count for {name}")
-                    elif actual_rows != expected_rows:
-                        errors.append(f"Row count mismatch: {name} ({actual_rows} != {expected_rows})")
+            file_errors, file_warnings = _verify_one_file(
+                fpath,
+                name,
+                expected_sha,
+                _as_int(stored_sizes.get(name)),
+                _as_int(stored_row_counts.get(name)),
+            )
+            errors.extend(file_errors)
+            warnings.extend(file_warnings)
 
         # Files present but absent from the record. Verification that only walks
         # the stored keys can answer "are the recorded files intact?" but never
