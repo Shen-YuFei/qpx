@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed modality left no trace a caller could act on** — `build_mudata` logged the failure and continued, so a MuData missing `precursors` was indistinguishable from one that never had it. Failures are now recorded in `mdata.uns["qpx_failed_modalities"]` (always present, empty when nothing failed), and `write_dataset_mudata` names the reason in its error rather than only the missing modality.
 - **MuData silently lost the `precursors` modality on large multiplexed data** — combining a `string` Arrow column over 2 GiB overflowed its int32 offsets, `build_mudata` caught the error and returned a partial MuData, and the pipeline wrote an incomplete `.h5mu` reporting success. String and binary columns are now widened to `large_string`/`large_binary` before combining. MSV000085836 (TMT, 552 runs x 10 channels) goes from `['proteins']` to `['precursors', 'proteins']`.
 - **`gene-map --dataset` copied only top-level files** — sharded / partitioned datasets kept their views in subdirectories, so an annotated copy came back incomplete. Subdirectories are now copied too, and a `--output-folder` that is the dataset itself or nested inside it is rejected instead of copying into its own destination.
 - **`gene-map` accepted `--in-place` together with `--output-folder`** — the destination silently won; it is now a usage error.
