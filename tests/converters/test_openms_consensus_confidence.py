@@ -147,3 +147,74 @@ def test_unique_is_unknown_without_a_resolved_group(tmp_path):
 
     resolved = feature_records_for_cf(consensus_feature, map_info, group_map={"P12345": ["P12345"]})
     assert all(record["unique"] is True for record in resolved), "a resolved group of one is unique"
+
+
+# Shared-leader groups [A,B] and [A,C] with protein q-values and GN= genes.
+# Distinct q-values per member make "best member" observable, and the shared
+# leader means keying the annotation on anchor_protein would give both groups
+# the same values — the bug class of bigbio/qpx#266.
+def _annotated_shared_leader_consensusxml():
+    from tests.converters.test_openms_consensus import _SHARED_LEADER_CONSENSUSXML
+
+    xml = _SHARED_LEADER_CONSENSUSXML.replace(
+        '<ProteinIdentification score_type="" higher_score_better="true"',
+        '<ProteinIdentification score_type="q-value" higher_score_better="false"',
+    )
+    # Real quantms consensusXML carries the FASTA header as a "Description"
+    # UserParam, not a description attribute — pyopenms ignores the attribute,
+    # so a fixture using it would test a file OpenMS never writes.
+    for index, (acc, score, gene) in enumerate((("A", "0.004", "GENEA"), ("B", "0.001", "GENEB"), ("C", "0.009", "GENEC"))):
+        xml = xml.replace(
+            f'<ProteinHit id="PH_{index}" accession="{acc}" score="0" sequence=""></ProteinHit>',
+            f'<ProteinHit id="PH_{index}" accession="{acc}" score="{score}" sequence="">'
+            f'<UserParam type="string" name="Description" value="Protein {acc} OS=Homo sapiens GN={gene} PE=1"/>'
+            "</ProteinHit>",
+        )
+    assert xml.count('name="Description"') == 3
+    return xml
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_feature_carries_its_protein_groups_qvalue_and_genes(tmp_path, streaming):
+    """feature.pg_global_qvalue / gg_names were null on every OpenMS dataset.
+
+    The converter computed both for the pg view and discarded them, so on
+    PXD000612 pg carried them for all 10,105 groups while the feature view had
+    0% — although every feature's group exists in pg. Each feature must now carry
+    exactly its own group's values, including when groups share a leader.
+    """
+    import duckdb
+
+    cx = tmp_path / "annotated_shared_leader.consensusXML"
+    cx.write_text(_annotated_shared_leader_consensusxml())
+    written = OpenMSConsensusConverter().convert(
+        str(cx),
+        str(tmp_path / ("stream" if streaming else "mem")),
+        output_prefix="t",
+        structures=("feature", "pg"),
+        streaming=streaming,
+    )
+    con = duckdb.connect()
+    features = {
+        seq: (qv, genes)
+        for seq, qv, genes in con.execute(
+            "SELECT sequence, pg_global_qvalue, gg_names FROM read_parquet($1)", [str(written["feature"])]
+        ).fetchall()
+    }
+    assert features["PEPTIDEK"][0] == pytest.approx(0.001)
+    assert sorted(features["PEPTIDEK"][1]) == ["GENEA", "GENEB"]
+    assert features["ELVISLIVK"][0] == pytest.approx(0.004)
+    assert sorted(features["ELVISLIVK"][1]) == ["GENEA", "GENEC"]
+
+    # And the two views agree group-for-group.
+    disagreements = con.execute(
+        """
+        SELECT count(*) FROM read_parquet($1) f
+        JOIN read_parquet($2) p
+          ON list_sort(list_transform(f.pg_accessions, x -> x.accession)) = list_sort(p.pg_accessions)
+        WHERE f.pg_global_qvalue IS DISTINCT FROM p.global_qvalue
+           OR list_sort(f.gg_names) IS DISTINCT FROM list_sort(p.gg_names)
+        """,
+        [str(written["feature"]), str(written["pg"])],
+    ).fetchone()[0]
+    assert disagreements == 0

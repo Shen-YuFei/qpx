@@ -450,7 +450,9 @@ def _group_subfeatures_by_run(cf, map_info: dict[int, tuple[str, str]]) -> dict[
     return by_run
 
 
-def consensus_features_to_records(consensusxml_path: str | None = None, cm=None, group_map=None, sdrf_path=None) -> list[dict]:
+def consensus_features_to_records(
+    consensusxml_path: str | None = None, cm=None, group_map=None, sdrf_path=None, group_meta=None
+) -> list[dict]:
     """Return QPX feature record dicts extracted from a consensusXML.
 
     Pass either ``consensusxml_path`` (loaded here) or an already-loaded ``cm``.
@@ -473,7 +475,7 @@ def consensus_features_to_records(consensusxml_path: str | None = None, cm=None,
     enzyme = resolve_enzyme(cm, sdrf_path)
     records: list[dict] = []
     for cf in cm:
-        records.extend(feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme))
+        records.extend(feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta))
     return records
 
 
@@ -487,7 +489,7 @@ def feature_map_info(cm) -> dict[int, tuple[str, str]]:
     return {idx: (_run_stem(headers[idx].filename), _map_label(headers[idx].label)) for idx in headers}
 
 
-def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=None, enzyme=None) -> list[dict]:
+def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=None, enzyme=None, group_meta=None) -> list[dict]:
     """Feature records for one consensus feature (one per run, channels as intensities).
 
     ``pg_accessions`` carries the full protein-group membership; the feature->pg
@@ -531,6 +533,9 @@ def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=N
     # With no resolved group the answer is unknown: a lone peptide evidence is
     # not proof of uniqueness, and claiming True there would invent information.
     unique = (len(group) == 1) if group else None
+    # The group's confidence and genes, from the same derivation as the pg view,
+    # so a feature and its protein group never disagree (null when unresolved).
+    pg_global_qvalue, gene_names = (group_meta or {}).get(tuple(group), (None, None)) if group else (None, None)
     error_ppm = mass_error_ppm(calculated_mz, observed_mz) if charge > 0 else None
     # Missed cleavages are a property of the peptide and the search enzyme, both
     # of which are in hand; the DIA-NN path already reports them (bigbio/qpx#300).
@@ -561,6 +566,9 @@ def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=N
                 "consensus_rt": consensus_rt,
                 "anchor_protein": anchor_protein,
                 "pg_accessions": pg_accessions,
+                "pg_global_qvalue": pg_global_qvalue,
+                "gg_accessions": gene_names,
+                "gg_names": gene_names,
                 "additional_scores": additional_scores,
             }
         )
