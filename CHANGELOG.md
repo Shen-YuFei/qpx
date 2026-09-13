@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`verify_integrity` read whole files into memory** — it hashed each file with `read_bytes()` while `compute_integrity` streamed the same files in 64 KiB chunks, so verifying a multi-gigabyte feature or PSM view allocated the entire file. Both paths now share one chunked hasher.
+- **`verify_integrity` ignored `file_row_counts` and `file_sizes_bytes`** — both were computed and stored but never read back, so only checksums were ever verified. Row counts and sizes are now compared, the `-1` "could not be read" sentinel warns instead of silently counting as verified, and `compute_integrity` logs when it stores it.
+- **`verify_integrity` could not detect unrecorded files** — it walked only the stored checksum keys, so a file added to a dataset after packaging verified clean. Files not covered by the integrity record are now reported as warnings.
 - **`gene-map --dataset` copied only top-level files** — sharded / partitioned datasets kept their views in subdirectories, so an annotated copy came back incomplete. Subdirectories are now copied too, and a `--output-folder` that is the dataset itself or nested inside it is rejected instead of copying into its own destination.
 - **`gene-map` accepted `--in-place` together with `--output-folder`** — the destination silently won; it is now a usage error.
 - **`annotate_dataframe` divided by zero on an empty view** — the mapped-share log now reports 0.0%.
