@@ -724,14 +724,24 @@ def _reshape_de_results(de: pd.DataFrame):
 # ---------------------------------------------------------------------------
 
 
-def _try_build_modality(name: str, builder, mod: dict) -> None:
-    """Call *builder*, add the result to *mod* if non-empty."""
+def _try_build_modality(name: str, builder, mod: dict, failures: dict[str, str] | None = None) -> None:
+    """Call *builder*, add the result to *mod* if non-empty.
+
+    A modality that raises is logged and skipped so one bad view cannot cost the
+    caller every other modality. The reason is also recorded in *failures*: a
+    warning in a log is not something a caller can branch on, and a MuData that
+    is quietly missing a modality is indistinguishable from one that never had
+    it. MSV000085836 shipped an h5mu with proteins and no precursors that way
+    (bigbio/qpx#316).
+    """
     try:
         adata = builder()
         if adata is not None and (not hasattr(adata, "n_obs") or adata.n_obs > 0):
             mod[name] = adata
     except Exception as exc:
         logger.warning("Failed to build %s modality: %s", name, exc)
+        if failures is not None:
+            failures[name] = f"{type(exc).__name__}: {exc}"
 
 
 def _is_multiplexed(engine: DuckDBEngine, table: str, label_field: str) -> bool:
@@ -848,11 +858,17 @@ def build_mudata(
         "expression": lambda: _build_expression_adata(ds_path, file_prefix),
         "differential": lambda: _build_differential_adata(ds_path, file_prefix),
     }
+    failures: dict[str, str] = {}
     for name, builder in builders.items():
         if name in requested:
-            _try_build_modality(name, builder, mod)
+            _try_build_modality(name, builder, mod, failures)
 
     mdata = mu.MuData(mod)
+
+    # Surface build failures on the object itself, so a caller can detect an
+    # incomplete view without scraping the log. Always set the key, so its
+    # absence means "built by an older qpx", not "nothing failed".
+    mdata.uns["qpx_failed_modalities"] = dict(failures)
 
     # Attach feature mapping if both precursors and proteins are present
     if "precursors" in mod and "proteins" in mod:
@@ -924,7 +940,11 @@ def write_dataset_mudata(
             )
             missing = required_modalities - set(mdata.mod)
             if missing:
-                raise ValueError(f"Missing required quantification modalities: {', '.join(sorted(missing))}")
+                # Say why, not just what: the build failure is the actionable part.
+                reasons = getattr(mdata, "uns", None) or {}
+                reasons = reasons.get("qpx_failed_modalities") or {}
+                detail = "; ".join(f"{name} ({reasons[name]})" if name in reasons else name for name in sorted(missing))
+                raise ValueError(f"Missing required quantification modalities: {detail}")
             mdata.write(str(h5mu_tmp))
             h5mu_tmp.replace(h5mu_path)
         finally:

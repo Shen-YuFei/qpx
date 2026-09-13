@@ -797,3 +797,63 @@ class TestCombineChunksOffsetOverflow:
 
         assert combined.type == pa.large_string()
         assert len(combined) == 2400
+
+
+class TestFailedModalitiesAreReported:
+    """A modality that fails to build must leave a trace a caller can branch on.
+
+    _try_build_modality logs and continues, so a MuData missing `precursors`
+    looked identical to one that never had it. MSV000085836 shipped an h5mu with
+    proteins and no precursors, reported as success (bigbio/qpx#316).
+    """
+
+    def test_records_the_reason_a_modality_failed(self):
+        from qpx.mudata import _try_build_modality
+
+        mod, failures = {}, {}
+
+        def boom():
+            raise ValueError("offset overflow while concatenating arrays")
+
+        _try_build_modality("precursors", boom, mod, failures)
+
+        assert "precursors" not in mod
+        assert "precursors" in failures
+        assert "offset overflow" in failures["precursors"]
+        assert failures["precursors"].startswith("ValueError")
+
+    def test_records_nothing_when_the_build_succeeds(self):
+        from qpx.mudata import _try_build_modality
+
+        mod, failures = {}, {}
+        _try_build_modality("proteins", lambda: SimpleNamespace(n_obs=3), mod, failures)
+
+        assert "proteins" in mod
+        assert failures == {}
+
+    def test_an_empty_modality_is_not_a_failure(self):
+        """A view with no rows is skipped, but nothing went wrong — don't claim it did."""
+        from qpx.mudata import _try_build_modality
+
+        mod, failures = {}, {}
+        _try_build_modality("differential", lambda: SimpleNamespace(n_obs=0), mod, failures)
+
+        assert mod == {}
+        assert failures == {}
+
+    def test_failures_survive_the_h5mu_round_trip(self, tmp_path):
+        import anndata as ad
+        import mudata as mu
+
+        adata = ad.AnnData(
+            X=np.zeros((2, 2), dtype=np.float32),
+            var=pd.DataFrame(index=["v1", "v2"]),
+        )
+        mdata = mu.MuData({"proteins": adata})
+        mdata.uns["qpx_failed_modalities"] = {"precursors": "ArrowInvalid: offset overflow"}
+        path = tmp_path / "d.h5mu"
+        mdata.write(str(path))
+
+        reloaded = mu.read_h5mu(str(path))
+
+        assert reloaded.uns["qpx_failed_modalities"]["precursors"].startswith("ArrowInvalid")
