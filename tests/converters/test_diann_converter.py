@@ -349,6 +349,34 @@ def test_plexdia_pg_preserves_each_channel_quantity(tmp_path):
     }
 
 
+@pytest.mark.parametrize("fallback_channel", ["L", "H"])
+def test_plexdia_pg_quantification_method_matches_each_channel(tmp_path, fallback_channel):
+    """A channel using MaxLFQ must not change another channel's quantity source."""
+    from qpx.converters.diann.pg_adapter import DiannPgAdapter
+
+    report_path, matrix_path, sdrf_path = _write_plexdia_inputs(tmp_path)
+    report = pd.read_csv(report_path, sep="\t")
+    report.loc[report["Channel"] == fallback_channel, "PG.Quantity"] = float("nan")
+    report.to_csv(report_path, sep="\t", index=False)
+    output_path = tmp_path / "mixed.pg.parquet"
+    with DiannPgAdapter() as adapter:
+        adapter.convert(
+            diann_report=str(report_path),
+            pg_matrix_path=str(matrix_path),
+            output_path=str(output_path),
+            sdrf_path=str(sdrf_path),
+        )
+
+    rows = pq.read_table(output_path).to_pylist()
+    expected_intensities = {"L": 1000.0, "H": 2000.0}
+    expected_intensities[fallback_channel] = {"L": 900.0, "H": 1800.0}[fallback_channel]
+    assert len(rows) == 2
+    assert {row["label"]: row["intensity"] for row in rows} == expected_intensities
+    for row in rows:
+        method = "PG.MaxLFQ" if row["label"] == fallback_channel else "PG.Quantity"
+        assert row["cv_params"] == [{"cv_name": "quantification_method", "cv_value": method}]
+
+
 def test_diann_pg_inconsistent_annotations_do_not_split_group(tmp_path):
     """One protein group with inconsistent per-precursor name/gene annotations
     must produce a single unique pg record, not duplicate-identity rows.
