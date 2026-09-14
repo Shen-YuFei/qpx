@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenMS consensusXML feature evidence** — preserve peptide positions within the resolved protein group using QPX's one-based coordinates, and record the source run for direct identifications. The streaming reader retains per-protein coordinate lists; ambiguous identification origins remain null.
 - **OpenMS consensusXML protein properties** — preserve the anchor protein's recorded sequence coverage and posterior probability in the PG view, including through the streaming reader. Conflicting values for the same anchor remain null.
 - **DIA-NN pg quantification source** — `pg.cv_params` records whether each channel's primary intensity came from `PG.Quantity` or the `PG.MaxLFQ` fallback.
 - **MuData default modality selection** — `build_mudata()` now selects precursor/protein modalities from available `feature`/`pg` source views, so valid single-view datasets no longer report false build failures. Explicit modality requests still report build errors.

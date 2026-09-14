@@ -820,6 +820,18 @@ contain conflicting values, the conflicting field remains null; values from
 other group members are not substituted. Both consensusXML readers use this
 mapping.
 
+`feature.pg_positions` retains the assigned peptide's known positions within
+the resolved protein group. OpenMS's zero-based inclusive coordinates are
+converted to QPX's one-based inclusive coordinates. Repeated evidence is
+deduplicated, while distinct positions for the same protein are preserved.
+Unknown positions and proteins without direct peptide evidence are omitted.
+Positions come from the run's own identifications when available; otherwise
+matching identifications on the consensus feature can supply sequence positions.
+`feature.id_run_file_name` is populated only when the run has a resolved direct
+identification of the exported peptide with a spectrum reference. Transferred
+features without their own identification, unresolved source runs and conflicting
+peptide assignments keep this field null.
+
 !!! warning "Protein intensity is an interim, unnormalized rollup"
     The consensusXML has no protein-level abundance — that quantity lived only in
     the mzTab (`protein_abundance_assay`, from ProteinQuantifier). Until OpenMS

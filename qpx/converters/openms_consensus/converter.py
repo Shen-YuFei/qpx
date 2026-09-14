@@ -107,7 +107,11 @@ def _cf_feature_psm_records(cf, map_info, group_map, resolve_run, seen, *, want_
     from qpx.converters.openms_consensus.feature_adapter import feature_records_for_cf
     from qpx.converters.openms_consensus.psm_adapter import _cf_element_runs, psm_records_for_pid
 
-    cf_feats = feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta) if want_feature else []
+    cf_feats = (
+        feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta, resolve_run=resolve_run)
+        if want_feature
+        else []
+    )
     cf_psms: list[dict] = []
     if want_psm:
         # Multi-run isobaric PIDs carry a local id_merge_index; the feature's
@@ -239,7 +243,7 @@ def _convert_streaming(
     map_run = {i: _run_stem(headers[i].filename) for i in headers}
     want_feature, want_psm, want_pg = ("feature" in structures, "psm" in structures, "pg" in structures)
     group_map, group_meta = protein_group_maps(cm) if want_feature else (None, None)
-    resolve_run = _run_resolver(cm) if want_psm or want_pg else None
+    resolve_run = _run_resolver(cm)
     maps = _ProteinMaps() if want_pg else None
     pep_intensity: dict = defaultdict(float) if want_pg else {}
     seen: set = set()
@@ -578,7 +582,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
             # Share the full protein-group membership so feature.anchor_protein and
             # feature.pg_accessions match pg (unambiguous even for shared leaders).
             group_map, group_meta = protein_group_maps(cm) if want_feature else (None, None)
-            resolve_run = _run_resolver(cm) if want_psm else None
+            resolve_run = _run_resolver(cm)
             seen: set = set()
             enzyme = resolve_enzyme(cm, sdrf_path)
             feat_recs: list[dict] = []

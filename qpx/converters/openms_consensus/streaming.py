@@ -89,22 +89,32 @@ class _MetaMixin:
 
 
 class _Evidence:
-    __slots__ = ("_acc",)
+    __slots__ = ("_acc", "_start", "_end")
 
-    def __init__(self, acc: str):
+    def __init__(self, acc: str, start: int = -1, end: int = -1):
         self._acc = acc
+        self._start = start
+        self._end = end
 
     def getProteinAccession(self) -> str:
         return self._acc
 
+    def getStart(self) -> int:
+        """Return the zero-based start, or OpenMS's unknown-position sentinel."""
+        return self._start
+
+    def getEnd(self) -> int:
+        """Return the inclusive zero-based end, or the unknown-position sentinel."""
+        return self._end
+
 
 class _PeptideHit(_MetaMixin):
-    __slots__ = ("_seq", "_charge", "_accs", "_meta", "_score")
+    __slots__ = ("_seq", "_charge", "_evidences", "_meta", "_score")
 
-    def __init__(self, seq: str, charge: int, accs: list[str], meta: dict[str, str], score: float):
+    def __init__(self, seq: str, charge: int, evidences: list[_Evidence], meta: dict[str, str], score: float):
         self._seq = seq
         self._charge = charge
-        self._accs = accs
+        self._evidences = evidences
         self._meta = meta
         self._score = score
 
@@ -120,7 +130,7 @@ class _PeptideHit(_MetaMixin):
         return self._score
 
     def getPeptideEvidences(self) -> list[_Evidence]:
-        return [_Evidence(a) for a in self._accs]
+        return self._evidences
 
 
 class _PeptideIdentification(_MetaMixin):
@@ -284,13 +294,24 @@ def _parse_protein_hit(element) -> _ProteinHit:
     )
 
 
+def _parse_peptide_evidences(hit_el, ph_to_acc: dict[str, str]) -> list[_Evidence]:
+    """Keep the parallel protein-reference and coordinate lists aligned."""
+    refs = hit_el.attrib.get("protein_refs", "").split()
+    starts = [int(value) for value in hit_el.attrib.get("start", "").split()]
+    ends = [int(value) for value in hit_el.attrib.get("end", "").split()]
+    return [
+        _Evidence(ph_to_acc[ref], starts[index] if index < len(starts) else -1, ends[index] if index < len(ends) else -1)
+        for index, ref in enumerate(refs)
+        if ref in ph_to_acc
+    ]
+
+
 def _parse_peptide_hit(hit_el, ph_to_acc: dict[str, str]) -> _PeptideHit:
     meta = _user_params(hit_el)
-    refs = hit_el.attrib.get("protein_refs", "").split()
-    accs = [ph_to_acc[r] for r in refs if r in ph_to_acc]
+    evidences = _parse_peptide_evidences(hit_el, ph_to_acc)
     charge = int(hit_el.attrib.get("charge") or 0)
     score = _f32(hit_el.attrib["score"]) if hit_el.attrib.get("score") not in (None, "") else None
-    return _PeptideHit(hit_el.attrib.get("sequence", ""), charge, accs, meta, score)
+    return _PeptideHit(hit_el.attrib.get("sequence", ""), charge, evidences, meta, score)
 
 
 def _parse_peptide_id(pid_el, ph_to_acc: dict[str, str]) -> _PeptideIdentification:

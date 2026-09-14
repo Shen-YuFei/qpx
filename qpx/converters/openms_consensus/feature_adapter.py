@@ -474,9 +474,14 @@ def consensus_features_to_records(
     # reports missed_cleavages too. Without it a caller of the library API got a
     # null column while the same data through the CLI got a value.
     enzyme = resolve_enzyme(cm, sdrf_path)
+    from qpx.converters.openms_consensus.psm_adapter import _run_resolver
+
+    resolve_run = _run_resolver(cm)
     records: list[dict] = []
     for cf in cm:
-        records.extend(feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta))
+        records.extend(
+            feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta, resolve_run=resolve_run)
+        )
     return records
 
 
@@ -526,7 +531,57 @@ def _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta) -> di
     return by_run
 
 
-def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=None, enzyme=None, group_meta=None) -> list[dict]:
+def _peptide_positions(hit) -> set[tuple[str, int, int]]:
+    """Preserve observed peptide-to-protein mappings in QPX's 1-based coordinates."""
+    positions: set[tuple[str, int, int]] = set()
+    for evidence in hit.getPeptideEvidences():
+        accession = evidence.getProteinAccession()
+        accession = accession.decode() if isinstance(accession, bytes) else accession
+        start, end = evidence.getStart(), evidence.getEnd()
+        if accession and 0 <= start <= end:
+            positions.add((accession, start + 1, end + 1))
+    return positions
+
+
+def _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run):
+    """Collect evidence once per consensus feature, including unresolved source runs."""
+    sequence = pids[0].getHits()[0].getSequence()
+    by_run: dict[str, dict] = {}
+    all_positions: set[tuple[str, int, int]] = set()
+    for pid in pids:
+        hits = pid.getHits()
+        if not hits:
+            continue
+        matches = hits[0].getSequence() == sequence
+        positions = _peptide_positions(hits[0]) if matches else set()
+        all_positions.update(positions)
+        run = resolve_run(pid, cf_runs) if resolve_run else _pid_run(pid, map_info, cf_runs)
+        if run is not None:
+            evidence = by_run.setdefault(run, {"consistent": True, "has_spectrum": False, "positions": set()})
+            evidence["consistent"] = evidence["consistent"] and matches
+            evidence["has_spectrum"] = evidence["has_spectrum"] or bool(_pid_scans(pid))
+            evidence["positions"].update(positions)
+    return by_run, all_positions
+
+
+def _feature_identification_fields(run, protein_fields, evidence_by_run, all_positions) -> dict:
+    """Record direct identification origins and the selected group's peptide evidence."""
+    evidence = evidence_by_run.get(run, {"consistent": False, "has_spectrum": False, "positions": all_positions})
+    members = {entry["accession"] for entry in protein_fields.get("pg_accessions") or []}
+    positions = [
+        {"protein_accession": acc, "start": start, "end": end}
+        for acc, start, end in sorted(evidence["positions"])
+        if acc in members
+    ]
+    return {
+        "id_run_file_name": run if evidence["consistent"] and evidence["has_spectrum"] else None,
+        "pg_positions": positions or None,
+    }
+
+
+def feature_records_for_cf(
+    cf, map_info: dict[int, tuple[str, str]], group_map=None, enzyme=None, group_meta=None, resolve_run=None
+) -> list[dict]:
     """Feature records for one consensus feature (one per run, channels as intensities).
 
     ``pg_accessions`` carries the full protein-group membership; the feature->pg
@@ -540,6 +595,7 @@ def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=N
     cf_runs = set(by_run)
     scan_by_run = _scan_by_run(pids, map_info, cf_runs=cf_runs)
     confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs)
+    evidence_by_run, all_positions = _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run)
     hit = pids[0].getHits()[0]
     seq_obj = hit.getSequence()
     peptidoform = to_proforma(seq_obj)
@@ -567,6 +623,7 @@ def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=N
     for run, entry in by_run.items():
         intensities = [{"label": label, "intensity": inten} for label, inten in entry["labels"].items()]
         posterior_error_probability, peptide_qvalue = confidence_by_run.get(run, (None, None))
+        run_protein_fields = protein_fields_by_run.get(run, protein_fields)
         records.append(
             {
                 "sequence": sequence,
@@ -585,7 +642,8 @@ def feature_records_for_cf(cf, map_info: dict[int, tuple[str, str]], group_map=N
                 "mass_error_ppm": error_ppm,
                 "missed_cleavages": missed,
                 "consensus_rt": consensus_rt,
-                **protein_fields_by_run.get(run, protein_fields),
+                **run_protein_fields,
+                **_feature_identification_fields(run, run_protein_fields, evidence_by_run, all_positions),
                 "additional_scores": additional_scores,
             }
         )
