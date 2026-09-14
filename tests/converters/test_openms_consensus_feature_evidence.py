@@ -201,3 +201,28 @@ def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming
         psms = pq.read_table(tmp_path / "out" / "openms.psm.parquet").to_pylist()
         for psm in psms:
             assert psm["feature_id"] == by_run[psm["run_file_name"]]["feature_id"]
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_shared_peptide_across_groups_keeps_positions_on_each_protein(tmp_path, streaming):
+    """A peptide whose evidence spans two inferred groups gets no group (that
+    would be a guess), but its coordinates on each protein are recorded facts
+    and each pg_positions entry names its own protein, so none are dropped."""
+    root = _position_root()
+    protein_id = root.find(".//ProteinIdentification")
+    # A second protein that OpenMS left as its own group: P12345 and P67890 are
+    # two singleton groups, and the peptide maps to both.
+    protein_id.append(fromstring('<ProteinHit id="PH_1" accession="P67890" score="0" sequence=""/>'))
+    hit = root.find(".//PeptideHit")
+    hit.set("protein_refs", "PH_0 PH_1")
+    hit.set("start", "0 10")
+    hit.set("end", "7 17")
+
+    rows = _feature_rows(root, tmp_path, streaming)
+
+    assert rows[0]["pg_accessions"] is None
+    assert rows[0]["anchor_protein"] is None
+    assert rows[0]["pg_positions"] == [
+        {"protein_accession": "P12345", "start": 1, "end": 8},
+        {"protein_accession": "P67890", "start": 11, "end": 18},
+    ]
