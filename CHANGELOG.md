@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenMS consensusXML empty PSM output** — both readers now warn and skip the PSM file when no exportable PSM records remain. Output paths and provenance exclude the skipped view, preventing a missing-file error during metadata generation while other views continue exporting.
 - **OpenMS consensusXML feature evidence** — preserve peptide positions within the resolved protein group using QPX's one-based coordinates, and record the source run for direct identifications. The streaming reader retains per-protein coordinate lists; ambiguous identification origins remain null.
 - **OpenMS consensusXML protein properties** — preserve the anchor protein's recorded sequence coverage and posterior probability in the PG view, including through the streaming reader. Conflicting values for the same anchor remain null.
 - **DIA-NN pg quantification source** — `pg.cv_params` records whether each channel's primary intensity came from `PG.Quantity` or the `PG.MaxLFQ` fallback.

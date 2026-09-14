@@ -810,6 +810,12 @@ QPX format 1.1. The consensusXML carries per-run peptide-feature intensities,
 PSMs, and the protein-inference graph; the SDRF supplies sample/label/fraction
 metadata and the `grouped_runs` quantification units.
 
+If PSM output is requested but no exportable PSM records remain (for example,
+the identifications lack spectrum references), the converter logs a warning and
+does not create `psm.parquet` or register it in the returned outputs or provenance.
+Other requested views are still exported. A PSM-only request with no exportable
+records completes with a warning and no output files.
+
 Protein properties are taken from the group's existing `anchor_protein`:
 `ProteinHit.coverage` populates `pg.sequence_coverage` (percent), and
 `Posterior Probability_score` is retained in `pg.additional_scores` as

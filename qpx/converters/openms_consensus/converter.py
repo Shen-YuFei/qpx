@@ -127,7 +127,7 @@ def _cf_feature_psm_records(cf, map_info, group_map, resolve_run, seen, *, want_
 
 
 def _write_view(writer_cls, path, records, *, creator, compression, identity_composite=None):
-    """Write ``records`` to a view parquet via its writer (empty -> header only)."""
+    """Write records via a view writer; empty input does not create a file."""
     kwargs = {"creator": creator, "compression": compression}
     if identity_composite is not None:
         kwargs["identity_composite"] = identity_composite
@@ -287,7 +287,7 @@ def _convert_streaming(
         )
         if fw is not None:
             written["feature"] = out / f"{output_prefix}.feature.parquet"
-        if pw is not None:
+        if pw is not None and seen:
             written["psm"] = out / f"{output_prefix}.psm.parquet"
 
     if want_pg:
@@ -399,6 +399,10 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         They are retained to preserve identification evidence; pass ``False``
         to exclude them.
 
+        If no exportable PSM records remain, warn and skip the PSM file and its
+        output metadata. Other requested views are still exported; an empty
+        PSM-only request returns an empty dict.
+
         ``feature_id`` records a link in the exported dataset, not quantification
         status. It is only populated when both feature and PSM views are emitted;
         PSM-only output leaves it null even for assigned identifications.
@@ -465,6 +469,9 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                     )
                 )
 
+        if PSM in requested and PSM not in written:
+            _log.warning("No exportable PSM records; skipping PSM Parquet output.")
+
         sdrf_paths, run_ontology = _write_sdrf_metadata(out, output_prefix, sdrf_path, requested, compression)
         written.update(sdrf_paths)
 
@@ -508,7 +515,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                 ontology_entries.extend(score_ontology_entries(names, view=view))  # noqa: PERF401
         self._write_ontology(out, output_prefix, ontology_entries)
 
-        structures = sorted(requested & {PSM, FEATURE, PG, RUN, SAMPLE})
+        structures = sorted(requested.intersection(written, {PSM, FEATURE, PG, RUN, SAMPLE}))
         provenance_records = self._build_provenance(structures, consensusxml_path)
         self._write_provenance(out, output_prefix, provenance_records)
         if provenance_records:
@@ -613,7 +620,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                     compression=compression,
                     identity_composite=_FEATURE_IDENTITY_COMPOSITE,
                 )
-            if want_psm:
+            if want_psm and psm_recs:
                 written["psm"] = _write_view(
                     PsmWriter,
                     out / f"{output_prefix}.psm.parquet",
