@@ -206,19 +206,24 @@ class _ConsensusFeature:
 
 
 class _ProteinHit(_MetaMixin):
-    __slots__ = ("_acc", "_score", "_desc", "_meta")
+    __slots__ = ("_acc", "_score", "_desc", "_meta", "_coverage")
 
-    def __init__(self, acc, score, desc, meta):
+    def __init__(self, acc, score, desc, meta, coverage=-1.0):
         self._acc = acc
         self._score = score
         self._desc = desc
         self._meta = meta
+        self._coverage = coverage
 
     def getAccession(self):
         return self._acc
 
     def getScore(self):
         return self._score
+
+    def getCoverage(self):
+        """Return percent coverage, or OpenMS's unknown-coverage sentinel."""
+        return self._coverage
 
     def getDescription(self):
         # pyopenms exposes the FASTA header via the "Description" UserParam.
@@ -265,6 +270,18 @@ class _ProteinIdentification:
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
+
+def _parse_protein_hit(element) -> _ProteinHit:
+    attrs = element.attrib
+    score = _f32(attrs["score"]) if attrs.get("score") not in (None, "") else None
+    return _ProteinHit(
+        attrs.get("accession", ""),
+        score,
+        attrs.get("description", ""),
+        _user_params(element),
+        float(attrs.get("coverage", "-1")),
+    )
 
 
 def _parse_peptide_hit(hit_el, ph_to_acc: dict[str, str]) -> _PeptideHit:
@@ -363,8 +380,7 @@ class StreamingConsensusMap:
                 acc = el.attrib.get("accession", "")
                 phid = el.attrib.get("id", "")
                 self._ph_to_acc[phid] = acc
-                score = _f32(el.attrib["score"]) if el.attrib.get("score") not in (None, "") else None
-                ph_hits.append(_ProteinHit(acc, score, el.attrib.get("description", ""), _user_params(el)))
+                ph_hits.append(_parse_protein_hit(el))
                 el.clear()
             elif event == "end" and tag == "ProteinIdentification":
                 # The indistinguishable groups are ProteinIdentification-level

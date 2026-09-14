@@ -810,6 +810,16 @@ QPX format 1.1. The consensusXML carries per-run peptide-feature intensities,
 PSMs, and the protein-inference graph; the SDRF supplies sample/label/fraction
 metadata and the `grouped_runs` quantification units.
 
+Protein properties are taken from the group's existing `anchor_protein`:
+`ProteinHit.coverage` populates `pg.sequence_coverage` (percent), and
+`Posterior Probability_score` is retained in `pg.additional_scores` as
+`posterior_probability` with `higher_better: true`. These describe the
+representative protein, not an aggregate probability or coverage of the group.
+Missing or unknown values remain null. If repeated records for that accession
+contain conflicting values, the conflicting field remains null; values from
+other group members are not substituted. Both consensusXML readers use this
+mapping.
+
 !!! warning "Protein intensity is an interim, unnormalized rollup"
     The consensusXML has no protein-level abundance — that quantity lived only in
     the mzTab (`protein_abundance_assay`, from ProteinQuantifier). Until OpenMS

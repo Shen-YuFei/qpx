@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenMS consensusXML protein properties** — preserve the anchor protein's recorded sequence coverage and posterior probability in the PG view, including through the streaming reader. Conflicting values for the same anchor remain null.
 - **DIA-NN pg quantification source** — `pg.cv_params` records whether each channel's primary intensity came from `PG.Quantity` or the `PG.MaxLFQ` fallback.
 - **MuData default modality selection** — `build_mudata()` now selects precursor/protein modalities from available `feature`/`pg` source views, so valid single-view datasets no longer report false build failures. Explicit modality requests still report build errors.
 - **OpenMS feature view left `pg_global_qvalue`, `gg_names` and `gg_accessions` null** — the consensusXML converter computed each protein group's q-value and gene names for the pg view and then discarded them, so every feature carried none while its group in pg had both (PXD000612: pg 100%, feature 0%). Features now carry their own group's values from the same derivation as pg, in both the streaming and in-memory paths, including when two groups share a leading protein. Matching uses full membership and the originating identification, independently of protein evidence order; ambiguous groups and runs with conflicting peptide sequences keep protein-group fields null while feature intensities are retained.
