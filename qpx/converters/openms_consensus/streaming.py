@@ -89,29 +89,6 @@ class _MetaMixin:
         return self._meta.get(key)
 
 
-class _PeptideHit(_MetaMixin):
-    __slots__ = ("_seq", "_charge", "_evidences", "_meta", "_score")
-
-    def __init__(self, seq: str, charge: int, evidences: list[oms.PeptideEvidence], meta: dict[str, str], score: float):
-        self._seq = seq
-        self._charge = charge
-        self._evidences = evidences
-        self._meta = meta
-        self._score = score
-
-    def getSequence(self):
-        return oms.AASequence.fromString(self._seq)
-
-    def getCharge(self) -> int:
-        return self._charge
-
-    def getScore(self):
-        return self._score
-
-    def getPeptideEvidences(self) -> list[oms.PeptideEvidence]:
-        return self._evidences
-
-
 class _PeptideIdentification(_MetaMixin):
     __slots__ = ("_hits", "_mz", "_rt", "_ref", "_score_type", "_higher", "_meta")
 
@@ -194,36 +171,6 @@ class _ConsensusFeature:
         return self._pids
 
 
-class _ProteinHit(_MetaMixin):
-    __slots__ = ("_acc", "_score", "_desc", "_meta", "_coverage", "_sequence")
-
-    def __init__(self, acc, score, desc, meta, coverage=-1.0, sequence=""):
-        self._acc = acc
-        self._score = score
-        self._desc = desc
-        self._meta = meta
-        self._coverage = coverage
-        self._sequence = sequence
-
-    def getAccession(self):
-        return self._acc
-
-    def getScore(self):
-        return self._score
-
-    def getCoverage(self):
-        """Return percent coverage, or OpenMS's unknown-coverage sentinel."""
-        return self._coverage
-
-    def getSequence(self):
-        """Return the recorded protein sequence, or an empty string if unknown."""
-        return self._sequence
-
-    def getDescription(self):
-        # pyopenms exposes the FASTA header via the "Description" UserParam.
-        return self._meta.get("Description", self._desc)
-
-
 class _Group:
     __slots__ = ("accessions",)
 
@@ -266,17 +213,22 @@ class _ProteinIdentification:
 # ---------------------------------------------------------------------------
 
 
-def _parse_protein_hit(element) -> _ProteinHit:
+def _parse_hit_score(attrs: dict[str, str]) -> float:
+    """Use NaN for absent scores; adapters normalize it to None, not zero."""
+    return _f32(attrs.get("score") or "nan")
+
+
+def _parse_protein_hit(element) -> oms.ProteinHit:
     attrs = element.attrib
-    score = _f32(attrs["score"]) if attrs.get("score") not in (None, "") else None
-    return _ProteinHit(
-        attrs.get("accession", ""),
-        score,
-        attrs.get("description", ""),
-        _user_params(element),
-        float(attrs.get("coverage", "-1")),
-        attrs.get("sequence", ""),
-    )
+    hit = oms.ProteinHit()
+    hit.setAccession(attrs.get("accession", ""))
+    hit.setScore(_parse_hit_score(attrs))
+    hit.setDescription(attrs.get("description", ""))
+    hit.setCoverage(float(attrs.get("coverage", "-1")))
+    hit.setSequence(attrs.get("sequence", ""))
+    for key, value in _user_params(element).items():
+        hit.setMetaValue(key, value)
+    return hit
 
 
 def _parse_peptide_evidences(hit_el, ph_to_acc: dict[str, str]) -> list[oms.PeptideEvidence]:
@@ -296,12 +248,15 @@ def _parse_peptide_evidences(hit_el, ph_to_acc: dict[str, str]) -> list[oms.Pept
     return evidences
 
 
-def _parse_peptide_hit(hit_el, ph_to_acc: dict[str, str]) -> _PeptideHit:
-    meta = _user_params(hit_el)
-    evidences = _parse_peptide_evidences(hit_el, ph_to_acc)
-    charge = int(hit_el.attrib.get("charge") or 0)
-    score = _f32(hit_el.attrib["score"]) if hit_el.attrib.get("score") not in (None, "") else None
-    return _PeptideHit(hit_el.attrib.get("sequence", ""), charge, evidences, meta, score)
+def _parse_peptide_hit(hit_el, ph_to_acc: dict[str, str]) -> oms.PeptideHit:
+    hit = oms.PeptideHit()
+    hit.setSequence(oms.AASequence.fromString(hit_el.attrib.get("sequence", "")))
+    hit.setCharge(int(hit_el.attrib.get("charge") or 0))
+    hit.setScore(_parse_hit_score(hit_el.attrib))
+    hit.setPeptideEvidences(_parse_peptide_evidences(hit_el, ph_to_acc))
+    for key, value in _user_params(hit_el).items():
+        hit.setMetaValue(key, value)
+    return hit
 
 
 def _parse_peptide_id(pid_el, ph_to_acc: dict[str, str]) -> _PeptideIdentification:
@@ -365,7 +320,7 @@ class StreamingConsensusMap:
     # -- header (proteins + maps), parsed once --------------------------------
 
     def _parse_header(self) -> None:
-        ph_hits: list[_ProteinHit] = []
+        ph_hits: list[oms.ProteinHit] = []
         ph_meta: dict[str, str] = {}  # ProteinIdentification-level UserParams (groups live here)
         prot_score_type = ""
         identifier = ""

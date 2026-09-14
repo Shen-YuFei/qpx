@@ -17,6 +17,7 @@ from typing import Optional
 
 from qpx.converters.channel_labels import normalize_label
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
+from qpx.converters.utils import safe_float
 from qpx.core.cleavage import count_missed_cleavages
 from qpx.core.files import run_file_stem as _run_stem
 
@@ -144,8 +145,7 @@ def qvalue_of(hit, score_type: str) -> float | None:
     """
     if str(score_type or "").lower() not in _QVALUE_SCORE_TYPES:
         return None
-    score = hit.getScore()
-    return float(score) if score is not None else None
+    return safe_float(hit.getScore())
 
 
 def _canonical_channel(label: Optional[str]) -> str:

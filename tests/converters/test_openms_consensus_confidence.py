@@ -81,6 +81,35 @@ def test_qvalue_of_returns_none_without_a_score():
     assert qvalue_of(_scored_hit(score=None), "q-value") is None
 
 
+@pytest.mark.parametrize(("score", "expected"), [(None, None), ("", None), ("0", 0.0), ("0.125", 0.125)])
+def test_streaming_missing_scores_are_not_zero(tmp_path, score, expected):
+    """A native hit's default zero must not turn missing confidence into zero FDR."""
+    root = fromstring(_TMT_CONSENSUSXML)
+    for identification in root.findall(".//ProteinIdentification") + root.findall(".//PeptideIdentification"):
+        identification.set("score_type", "q-value")
+    for hit in root.findall(".//ProteinHit") + root.findall(".//PeptideHit"):
+        if score is None:
+            del hit.attrib["score"]
+        else:
+            hit.set("score", score)
+    source = tmp_path / "scores.consensusXML"
+    ET.ElementTree(root).write(source, encoding="utf-8", xml_declaration=True)
+    written = OpenMSConsensusConverter().convert(
+        str(source), str(tmp_path / "out"), structures=("feature", "psm", "pg"), streaming=True
+    )
+
+    for view, field in (("feature", "peptide_qvalue"), ("pg", "global_qvalue")):
+        rows = pq.read_table(written[view]).to_pylist()
+        assert rows
+        assert all(row[field] == expected for row in rows)
+    psms = pq.read_table(written["psm"]).to_pylist()
+    assert psms
+    scores = [
+        score["score_value"] for row in psms for score in row["additional_scores"] or [] if score["score_name"] == "q-value"
+    ]
+    assert scores == ([expected] * len(psms) if expected is not None else [])
+
+
 def test_mass_error_ppm_is_computed_from_the_two_mz_values():
     """mass_error_ppm is derived when both m/z inputs are present."""
     assert mass_error_ppm(456.5589294433594, 456.5606994628906) == pytest.approx(3.876, abs=1e-2)

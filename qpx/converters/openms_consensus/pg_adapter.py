@@ -130,8 +130,9 @@ def _protein_hit_meta(prot) -> tuple[dict[str, bool], dict[str, float], dict[str
         acc = _acc_str(hit.getAccession())
         if hit.metaValueExists("target_decoy"):
             acc_decoy[acc] = "decoy" in str(hit.getMetaValue("target_decoy")).lower()
-        if score_is_qvalue and hit.getScore() is not None:
-            acc_qvalue[acc] = float(hit.getScore())
+        score = safe_float(hit.getScore())
+        if score_is_qvalue and score is not None:
+            acc_qvalue[acc] = score
         gene = _GENE_RE.search(str(hit.getDescription() or "")) if hasattr(hit, "getDescription") else None
         if gene:
             acc_gene[acc] = gene.group(1)
