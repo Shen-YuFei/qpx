@@ -443,6 +443,12 @@ class DiannPgAdapter(DiaNNBaseAdapter):
                     {
                         "label": str(label),
                         "intensity": float(primary_quantity),
+                        "cv_params": [
+                            {
+                                "cv_name": "quantification_method",
+                                "cv_value": "PG.Quantity" if raw_quantity is not None else "PG.MaxLFQ",
+                            }
+                        ],
                     }
                 )
             if maxlfq_val is not None and raw_quantity is not None:

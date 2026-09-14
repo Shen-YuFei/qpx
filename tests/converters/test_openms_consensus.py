@@ -143,7 +143,7 @@ def test_pg_peptide_counts_are_per_protein(monkeypatch):
 
         @staticmethod
         def getProteinIdentifications():
-            return [object()]
+            return []
 
     protein_maps = pg_adapter._ProteinMaps()
     protein_maps.acc_to_pep.update({"P1": {"PEPA", "PEPB"}, "P2": {"PEPB"}})
