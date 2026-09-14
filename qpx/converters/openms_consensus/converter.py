@@ -400,8 +400,10 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         to exclude them.
 
         If no exportable PSM records remain, warn and skip the PSM file and its
-        output metadata. Other requested views are still exported; an empty
-        PSM-only request returns an empty dict.
+        output metadata. After successful core conversion, remove any existing
+        PSM file for this output prefix so Dataset cannot discover stale matches.
+        Other requested views are still exported; an empty PSM-only request
+        returns an empty dict.
 
         ``feature_id`` records a link in the exported dataset, not quantification
         status. It is only populated when both feature and PSM views are emitted;
@@ -470,6 +472,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                 )
 
         if PSM in requested and PSM not in written:
+            (out / f"{output_prefix}.psm.parquet").unlink(missing_ok=True)
             _log.warning("No exportable PSM records; skipping PSM Parquet output.")
 
         sdrf_paths, run_ontology = _write_sdrf_metadata(out, output_prefix, sdrf_path, requested, compression)

@@ -8,6 +8,7 @@ from defusedxml.ElementTree import fromstring, tostring
 
 from qpx.converters.openms_consensus import converter
 from qpx.converters.openms_consensus.converter import _stream_feature_psm
+from qpx.dataset import Dataset
 from tests.converters.test_openms_consensus import _TMT_CONSENSUSXML
 
 _LOGGER = "qpx.converters.openms_consensus.converter"
@@ -28,6 +29,16 @@ def no_psm_xml_file(tmp_path):
         pid.attrib.pop("spectrum_reference")
     path = tmp_path / "no_psm.consensusXML"
     path.write_bytes(tostring(root, encoding="utf-8"))
+    return path
+
+
+@pytest.fixture(name="existing_psm")
+def existing_psm_file(tmp_path, psm_parquet):
+    """A valid PSM output from an earlier conversion using a custom prefix."""
+    out = tmp_path / "out"
+    out.mkdir()
+    path = out / "rerun.psm.parquet"
+    path.write_bytes(psm_parquet.read_bytes())
     return path
 
 
@@ -53,29 +64,57 @@ def test_empty_psm_is_skipped(tmp_path, no_psm_xml, streaming, structures, caplo
         assert not list(out.iterdir())
 
 
-def test_no_psm_request_does_not_warn(tmp_path, no_psm_xml, streaming, caplog):
-    """Feature-only exports do not warn about an unrequested PSM view."""
+def test_no_psm_request_does_not_warn(existing_psm, no_psm_xml, streaming, caplog):
+    """Feature-only exports neither warn about nor delete an unrequested PSM view."""
+    previous = existing_psm.read_bytes()
     converter.OpenMSConsensusConverter().convert(
-        str(no_psm_xml), str(tmp_path / "out"), structures=("feature",), streaming=streaming
+        str(no_psm_xml), str(existing_psm.parent), output_prefix="rerun", structures=("feature",), streaming=streaming
     )
     assert _WARNING not in caplog.text
+    assert existing_psm.read_bytes() == previous
 
 
-def test_empty_psm_does_not_register_existing_file(tmp_path, no_psm_xml, streaming):
-    """An old destination must not be mistaken for newly exported records."""
-    out = tmp_path / "out"
-    out.mkdir()
-    old_psm = out / "openms.psm.parquet"
-    old_psm.write_bytes(b"existing output")
+@pytest.mark.parametrize("structures", [("psm",), ("feature", "psm")])
+def test_empty_psm_removes_existing_file(existing_psm, no_psm_xml, streaming, structures):
+    """Dataset discovery must not expose stale matches after an empty PSM rerun."""
+    out = existing_psm.parent
+    previous = existing_psm.read_bytes()
+    other_psm = out / "other.psm.parquet"
+    other_psm.write_bytes(previous)
+    with Dataset(out, file_prefix="rerun", duckdb_threads=24) as dataset:
+        assert dataset.psm is not None
 
     written = converter.OpenMSConsensusConverter().convert(
-        str(no_psm_xml), str(out), structures=("feature", "psm"), streaming=streaming
+        str(no_psm_xml), str(out), output_prefix="rerun", structures=structures, streaming=streaming
     )
 
-    assert set(written) == {"feature"}
-    assert old_psm.read_bytes() == b"existing output"
-    provenance = pq.read_table(out / "openms.provenance.parquet").to_pylist()
-    assert all("psm" not in step["output_views"] for step in provenance)
+    assert set(written) == set(structures) - {"psm"}
+    assert not existing_psm.exists()
+    assert other_psm.read_bytes() == previous
+    with Dataset(out, file_prefix="rerun", duckdb_threads=24) as dataset:
+        assert dataset.psm is None
+        assert (dataset.feature is not None) == ("feature" in structures)
+    if written:
+        provenance = pq.read_table(out / "rerun.provenance.parquet").to_pylist()
+        assert all("psm" not in step["output_views"] for step in provenance)
+
+
+def test_failed_conversion_preserves_existing_psm(existing_psm, no_psm_xml, streaming, monkeypatch):
+    """A failed conversion must retain the previous PSM output."""
+    previous = existing_psm.read_bytes()
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("conversion failed")
+
+    if streaming:
+        monkeypatch.setattr(converter, "_convert_streaming", fail)
+    else:
+        monkeypatch.setattr(converter.OpenMSConsensusConverter, "_convert_in_memory", fail)
+    with pytest.raises(RuntimeError, match="conversion failed"):
+        converter.OpenMSConsensusConverter().convert(
+            str(no_psm_xml), str(existing_psm.parent), output_prefix="rerun", structures=("psm",), streaming=streaming
+        )
+    assert existing_psm.read_bytes() == previous
 
 
 @pytest.mark.parametrize("include_unassigned", [True, False])
