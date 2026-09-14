@@ -184,3 +184,26 @@ def test_requires_exactly_one_destination(dataset_dir, tmp_path, args):
         ["protein-properties", "--dataset", str(dataset_dir), "--fasta", str(_dataset_fasta(tmp_path)), *args],
     )
     assert result.exit_code != 0
+
+
+def test_coverage_counts_shared_peptides_named_by_psm_evidence(dataset_dir, tmp_path):
+    """Group membership alone drops peptides shared across groups. On PXD000612
+    that put ACTB at 4.5% coverage against OpenMS's 84.3%. A PSM whose evidence
+    names the anchor must count toward its coverage."""
+    from qpx.writers import PsmWriter
+    from tests.conftest import make_psm_record
+
+    # THIRDPEP is grouped to P12345 in the feature view, but its PSM evidence
+    # also names P67890, whose sequence contains it (3-10 of 13).
+    psm = make_psm_record(sequence="THIRDPEP", run_file_name="run_02")
+    psm["protein_accessions"] = ["P12345", "P67890"]
+    with PsmWriter(dataset_dir / "exp.psm.parquet") as writer:
+        writer.write_batch([psm])
+
+    _run(dataset_dir, _dataset_fasta(tmp_path), "--in-place")
+
+    pg = {r["anchor_protein"]: r for r in _rows(dataset_dir, "pg")}
+    assert pg["P67890"]["sequence_coverage"] == pytest.approx(100 * 8 / 13, rel=1e-5)
+    features = {r["sequence"]: r for r in _rows(dataset_dir, "feature")}
+    # Positions stay tied to the feature's own group (P12345), not the PSM evidence.
+    assert features["THIRDPEP"]["pg_positions"] is None

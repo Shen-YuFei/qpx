@@ -380,7 +380,8 @@ def transform_protein_properties_cmd(dataset: Path, fasta: Path, in_place: bool,
     """Fill protein properties the producer did not record, from a FASTA.
 
     For target rows only, and only where the value is null, fills
-    ``pg.sequence_coverage`` (the anchor covered by the dataset's peptides),
+    ``pg.sequence_coverage`` (the anchor covered by the dataset's target peptides
+    whose evidence names it: PSM protein accessions, feature groups, recorded positions),
     ``pg.molecular_weight`` (anchor average mass, kDa) and ``feature.pg_positions``
     (every one-based occurrence in each group member). Values a producer recorded
     are never overwritten. Proteins absent from the FASTA, such as DIA-NN's internal

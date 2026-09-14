@@ -7,7 +7,7 @@ null:
 
 - ``pg.molecular_weight``   — average mass of the anchor protein, in kDa
 - ``pg.sequence_coverage``  — percent of the anchor covered by the dataset's
-  peptides mapped to it
+  target peptides whose protein evidence includes it
 - ``feature.pg_positions``  — every one-based occurrence of the peptide in each
   member of its protein group
 
@@ -186,31 +186,45 @@ def _accession_lists(column: pa.ChunkedArray) -> list[tuple[str, ...] | None]:
     return out
 
 
-def _peptide_protein_candidates(feature_path: Path) -> dict[str, set[str]]:
-    """Map each target peptide sequence to the proteins it is attributed to.
+def _peptide_protein_candidates(feature_path: Path, psm_path: Path | None = None) -> dict[str, set[str]]:
+    """Map each target peptide sequence to every protein its evidence names.
 
-    From the feature view's group memberships, plus the proteins named by
-    positions a producer already recorded (a peptide shared across groups has a
-    null group but recorded positions).
+    Sources, unioned: the PSM view's ``protein_accessions`` (every protein an
+    identification maps to, shared peptides included), the feature view's group
+    memberships, and positions a producer already recorded.
+
+    Coverage needs the PSM evidence. Group membership alone drops every peptide
+    shared across groups — on PXD000612 that put ACTB at 4.5% coverage against the
+    84.3% OpenMS recorded, since actin peptides are mostly shared with other
+    actins. Positions do not use these candidates; they stay tied to the group.
     """
     import duckdb
 
     con = duckdb.connect()
-    path = str(feature_path).replace("'", "''")
-    columns = {row[0] for row in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}')").fetchall()}
-    decoy = "NOT coalesce(is_decoy, false)" if "is_decoy" in columns else "true"
     candidates: dict[str, set[str]] = defaultdict(set)
-    queries = [
-        f"""SELECT sequence, list_distinct(list_transform(pg_accessions, x -> x.accession))
-            FROM read_parquet('{path}') WHERE {decoy} AND sequence IS NOT NULL AND pg_accessions IS NOT NULL
-            GROUP BY ALL"""
-    ]
-    if "pg_positions" in columns:
-        queries.append(
-            f"""SELECT sequence, list_distinct(list_transform(pg_positions, x -> x.protein_accession))
-                FROM read_parquet('{path}') WHERE {decoy} AND sequence IS NOT NULL AND pg_positions IS NOT NULL
-                GROUP BY ALL"""
-        )
+    queries: list[str] = []
+    for view_path in (feature_path, psm_path):
+        if view_path is None or not Path(view_path).is_file():
+            continue
+        path = str(view_path).replace("'", "''")
+        columns = {row[0] for row in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}')").fetchall()}
+        decoy = "NOT coalesce(is_decoy, false)" if "is_decoy" in columns else "true"
+        where = f"WHERE {decoy} AND sequence IS NOT NULL"
+        if "protein_accessions" in columns:
+            queries.append(
+                f"SELECT sequence, list_distinct(protein_accessions) FROM read_parquet('{path}') "
+                f"{where} AND protein_accessions IS NOT NULL GROUP BY ALL"
+            )
+        if "pg_accessions" in columns:
+            queries.append(
+                f"SELECT sequence, list_distinct(list_transform(pg_accessions, x -> x.accession)) FROM read_parquet('{path}') "
+                f"{where} AND pg_accessions IS NOT NULL GROUP BY ALL"
+            )
+        if "pg_positions" in columns:
+            queries.append(
+                f"SELECT sequence, list_distinct(list_transform(pg_positions, x -> x.protein_accession)) FROM read_parquet('{path}') "
+                f"{where} AND pg_positions IS NOT NULL GROUP BY ALL"
+            )
     for query in queries:
         for sequence, accessions in con.execute(query).fetchall():
             for accession in accessions or ():
@@ -387,7 +401,8 @@ def annotate_protein_properties(
 
     pg_path = dataset_dir / f"{prefix}.pg.parquet"
     feature_path = dataset_dir / f"{prefix}.feature.parquet"
-    candidates = _peptide_protein_candidates(feature_path) if feature_path.is_file() else {}
+    psm_path = dataset_dir / f"{prefix}.psm.parquet"
+    candidates = _peptide_protein_candidates(feature_path, psm_path)
 
     if pg_path.is_file():
         protein_peptides = _protein_peptides(candidates)
