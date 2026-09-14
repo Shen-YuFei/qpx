@@ -162,27 +162,49 @@ def _build_groups(prot) -> list[list[str]]:
     return groups
 
 
-def _anchor_properties(coverages: set[float], probabilities: set[float]) -> dict:
+def _protein_molecular_weight(sequences: set[str]) -> float | None:
+    """Average mass in kDa for one agreed, unmodified protein sequence."""
+    if len(sequences) != 1:
+        return None
+    sequence = next(iter(sequences))
+    # U/O have defined masses; J denotes the isobaric I/L pair. B/Z/X do not.
+    if not sequence or not set(sequence).issubset("ACDEFGHIKLMNPQRSTVWYJUO"):
+        return None
+    from pyopenms import AASequence
+
+    return AASequence.fromString(sequence).getAverageWeight() / 1000.0
+
+
+def _anchor_properties(coverages: set[float], probabilities: set[float], sequences: set[str]) -> dict:
     """Keep an anchor's known properties only when its source records agree."""
     coverage = next(iter(coverages)) if len(coverages) == 1 else None
     scores = None
     if len(probabilities) == 1:
         scores = [{"score_name": "posterior_probability", "score_value": next(iter(probabilities)), "higher_better": True}]
-    return {"sequence_coverage": coverage, "additional_scores": scores}
+    return {
+        "sequence_coverage": coverage,
+        "additional_scores": scores,
+        "molecular_weight": _protein_molecular_weight(sequences),
+    }
 
 
 def _protein_properties(cm) -> dict[str, dict]:
-    """Index recorded coverage and posterior probability by protein accession.
+    """Index coverage, posterior probability and theoretical mass by accession.
 
     ProteinHit properties describe the representative protein, not a group-wide
-    aggregate. Unknown coverage (-1), missing scores and conflicting records do
-    not supply a value; other group members are never used as a substitute.
+    aggregate. Mass is computed from the complete unmodified ProteinHit sequence.
+    Missing, unknown or conflicting properties do not supply a value; other group
+    members are never used as a substitute.
     """
     coverages: dict[str, set[float]] = defaultdict(set)
     probabilities: dict[str, set[float]] = defaultdict(set)
+    sequences: dict[str, set[str]] = defaultdict(set)
     for prot in cm.getProteinIdentifications():
         for hit in prot.getHits():
             acc = _acc_str(hit.getAccession())
+            sequence = hit.getSequence()
+            if sequence:
+                sequences[acc].add(sequence)
             coverage = hit.getCoverage()
             if 0 <= coverage <= 100:
                 coverages[acc].add(float(coverage))
@@ -190,7 +212,10 @@ def _protein_properties(cm) -> dict[str, dict]:
                 probability = safe_float(hit.getMetaValue("Posterior Probability_score"))
                 if probability is not None and 0 <= probability <= 1:
                     probabilities[acc].add(probability)
-    return {acc: _anchor_properties(coverages[acc], probabilities[acc]) for acc in coverages.keys() | probabilities.keys()}
+    return {
+        acc: _anchor_properties(coverages[acc], probabilities[acc], sequences[acc])
+        for acc in coverages.keys() | probabilities.keys() | sequences.keys()
+    }
 
 
 def _merge_protein_ids(cm) -> tuple[dict[str, bool], dict[str, float], dict[str, str], list[list[str]]]:

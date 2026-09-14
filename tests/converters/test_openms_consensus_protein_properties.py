@@ -1,4 +1,4 @@
-"""Preserve recorded protein properties without mixing group representatives."""
+"""Preserve protein properties and derive mass from the group's own anchor."""
 
 from copy import deepcopy
 
@@ -96,3 +96,60 @@ def test_pg_repeated_anchor_records_must_agree(tmp_path, streaming, conflict):
             assert row["additional_scores"] is None
         else:
             assert row["additional_scores"][0]["score_value"] == pytest.approx(0.95)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("grouped", [False, True])
+@pytest.mark.parametrize(("sequence", "expected_kda"), [("ACD", 0.3073251), ("MUOJ", 0.6497068)])
+def test_pg_molecular_weight_uses_anchor_sequence(tmp_path, streaming, grouped, sequence, expected_kda):
+    """Use the anchor's average neutral mass in kDa, independent of its peptides."""
+    root = _protein_root(grouped)
+    root.find(".//ProteinHit").set("sequence", sequence)
+    if grouped:
+        root.find(".//ProteinHit[@id='PH_1']").set("sequence", "WWWW")
+    rows = _pg_rows(root, tmp_path, streaming)
+
+    assert len(rows) == 2
+    for row in rows:
+        assert row["anchor_protein"] == "P12345"
+        assert row["molecular_weight"] == pytest.approx(expected_kda)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("sequence", [None, "", "ACX", "ABZ", "C(Carbamidomethyl)PEPTIDEK"])
+def test_pg_molecular_weight_unavailable_for_unknown_anchor_sequence(tmp_path, streaming, sequence):
+    """Missing, ambiguous or modified sequences cannot borrow a member's mass."""
+    root = _protein_root(grouped=True)
+    anchor = root.find(".//ProteinHit")
+    if sequence is None:
+        del anchor.attrib["sequence"]
+    else:
+        anchor.set("sequence", sequence)
+    root.find(".//ProteinHit[@id='PH_1']").set("sequence", "ACD")
+    rows = _pg_rows(root, tmp_path, streaming)
+
+    assert rows
+    assert all(row["molecular_weight"] is None for row in rows)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("duplicate_sequence", "expected_kda"), [("", 0.3073251), ("ACD", 0.3073251), ("ADC", None)])
+def test_pg_molecular_weight_requires_consistent_anchor_sequence(tmp_path, streaming, duplicate_sequence, expected_kda):
+    """Conflicting sequences remain unknown even when their masses are equal."""
+    root = _protein_root()
+    root.find(".//ProteinHit").set("sequence", "ACD")
+    duplicate = deepcopy(root.find("IdentificationRun"))
+    duplicate.set("id", "PI_1")
+    hit = duplicate.find("ProteinIdentification/ProteinHit")
+    hit.set("id", "PH_1")
+    hit.set("sequence", duplicate_sequence)
+    root.insert(1, duplicate)
+    rows = _pg_rows(root, tmp_path, streaming)
+
+    assert rows
+    for row in rows:
+        if expected_kda is None:
+            assert row["molecular_weight"] is None
+        else:
+            assert row["molecular_weight"] == pytest.approx(expected_kda)
+        assert row["sequence_coverage"] == pytest.approx(80)

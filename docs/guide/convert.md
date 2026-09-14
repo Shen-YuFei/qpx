@@ -826,6 +826,13 @@ contain conflicting values, the conflicting field remains null; values from
 other group members are not substituted. Both consensusXML readers use this
 mapping.
 
+`pg.molecular_weight` is the theoretical average molecular weight of that same
+anchor's complete, unmodified `ProteinHit.sequence`, in **kDa**. It remains null
+when the sequence is absent, contains ambiguous residues such as B/Z/X or
+modification notation, or conflicts across records for the anchor. U/O and the
+isobaric I/L code J are supported. Other group members and identified peptides
+are not used to reconstruct the sequence; this path does not load a FASTA.
+
 `feature.pg_positions` retains the assigned peptide's known positions within
 the resolved protein group. OpenMS's zero-based inclusive coordinates are
 converted to QPX's one-based inclusive coordinates. Repeated evidence is

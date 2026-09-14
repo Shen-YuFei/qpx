@@ -67,13 +67,16 @@ for q-value semantics.
 | `gg_qvalue` | Read from `GG.Q.Value`, when present. | Null: this path has no gene-group q-value. Protein-level confidence is not a gene-level q-value. |
 | `additional_scores` | Includes `PG.Q.Value` as `pg_qvalue` when available. | The existing `anchor_protein`'s `Posterior Probability_score`, stored as `posterior_probability` with `higher_better: true`. Null if absent, invalid or conflicting for that anchor. |
 | `sequence_coverage` | Not populated; the converter does not calculate coverage from sequences or a FASTA. | The existing anchor's recorded `ProteinHit.coverage` in percent. Unknown values, missing annotations and conflicting coverage values for that anchor remain null. Other group members are not substitutes. |
-| `molecular_weight` | Not populated. | Not populated, including when `ProteinHit.sequence` is present. The converter does not calculate theoretical molecular weight from that sequence. |
+| `molecular_weight` | Not populated. | The theoretical average molecular weight of the existing anchor's complete, unmodified `ProteinHit.sequence`, in kDa. Null for missing, ambiguous, modified or conflicting sequences; other group members are not substitutes. |
 | `cv_params` | Each quantified row records whether its primary intensity came from `PG.Quantity` or the `PG.MaxLFQ` fallback. | Each quantified row records `unnormalized_unique_peptide_sum`, or the corresponding top-N method selected by `--pg-top`. Null when the row has no quantity. |
 
 The schema defines `molecular_weight` in **kDa** and allows it to be null.
-Adding a sequence-based calculation requires a separate choice of representative
-protein and mass convention. This table records current behavior without
-defining that calculation or treating the field as permanently out of scope.
+OpenMS consensusXML uses the existing `anchor_protein` and average isotopic
+masses, including the terminal water molecule, without post-translational
+modifications. The calculation uses the recorded protein sequence and does not
+load a FASTA or reconstruct a protein from identified peptides. Both readers
+support the standard amino acids, U/O and the isobaric I/L code J; sequences with
+B/Z/X or modification notation remain null.
 Converters that receive an explicit molecular-weight value, such as MaxQuant,
 can preserve it; see [Protein Group mappings](pg.md#tool-mappings).
 

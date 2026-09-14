@@ -21,6 +21,7 @@ modification handling is byte-identical.
 from __future__ import annotations
 
 import numpy as np
+import pyopenms as oms
 from defusedxml.ElementTree import iterparse
 
 
@@ -88,30 +89,10 @@ class _MetaMixin:
         return self._meta.get(key)
 
 
-class _Evidence:
-    __slots__ = ("_acc", "_start", "_end")
-
-    def __init__(self, acc: str, start: int = -1, end: int = -1):
-        self._acc = acc
-        self._start = start
-        self._end = end
-
-    def getProteinAccession(self) -> str:
-        return self._acc
-
-    def getStart(self) -> int:
-        """Return the zero-based start, or OpenMS's unknown-position sentinel."""
-        return self._start
-
-    def getEnd(self) -> int:
-        """Return the inclusive zero-based end, or the unknown-position sentinel."""
-        return self._end
-
-
 class _PeptideHit(_MetaMixin):
     __slots__ = ("_seq", "_charge", "_evidences", "_meta", "_score")
 
-    def __init__(self, seq: str, charge: int, evidences: list[_Evidence], meta: dict[str, str], score: float):
+    def __init__(self, seq: str, charge: int, evidences: list[oms.PeptideEvidence], meta: dict[str, str], score: float):
         self._seq = seq
         self._charge = charge
         self._evidences = evidences
@@ -119,8 +100,6 @@ class _PeptideHit(_MetaMixin):
         self._score = score
 
     def getSequence(self):
-        import pyopenms as oms
-
         return oms.AASequence.fromString(self._seq)
 
     def getCharge(self) -> int:
@@ -129,7 +108,7 @@ class _PeptideHit(_MetaMixin):
     def getScore(self):
         return self._score
 
-    def getPeptideEvidences(self) -> list[_Evidence]:
+    def getPeptideEvidences(self) -> list[oms.PeptideEvidence]:
         return self._evidences
 
 
@@ -216,14 +195,15 @@ class _ConsensusFeature:
 
 
 class _ProteinHit(_MetaMixin):
-    __slots__ = ("_acc", "_score", "_desc", "_meta", "_coverage")
+    __slots__ = ("_acc", "_score", "_desc", "_meta", "_coverage", "_sequence")
 
-    def __init__(self, acc, score, desc, meta, coverage=-1.0):
+    def __init__(self, acc, score, desc, meta, coverage=-1.0, sequence=""):
         self._acc = acc
         self._score = score
         self._desc = desc
         self._meta = meta
         self._coverage = coverage
+        self._sequence = sequence
 
     def getAccession(self):
         return self._acc
@@ -234,6 +214,10 @@ class _ProteinHit(_MetaMixin):
     def getCoverage(self):
         """Return percent coverage, or OpenMS's unknown-coverage sentinel."""
         return self._coverage
+
+    def getSequence(self):
+        """Return the recorded protein sequence, or an empty string if unknown."""
+        return self._sequence
 
     def getDescription(self):
         # pyopenms exposes the FASTA header via the "Description" UserParam.
@@ -291,19 +275,25 @@ def _parse_protein_hit(element) -> _ProteinHit:
         attrs.get("description", ""),
         _user_params(element),
         float(attrs.get("coverage", "-1")),
+        attrs.get("sequence", ""),
     )
 
 
-def _parse_peptide_evidences(hit_el, ph_to_acc: dict[str, str]) -> list[_Evidence]:
+def _parse_peptide_evidences(hit_el, ph_to_acc: dict[str, str]) -> list[oms.PeptideEvidence]:
     """Keep the parallel protein-reference and coordinate lists aligned."""
     refs = hit_el.attrib.get("protein_refs", "").split()
     starts = [int(value) for value in hit_el.attrib.get("start", "").split()]
     ends = [int(value) for value in hit_el.attrib.get("end", "").split()]
-    return [
-        _Evidence(ph_to_acc[ref], starts[index] if index < len(starts) else -1, ends[index] if index < len(ends) else -1)
-        for index, ref in enumerate(refs)
-        if ref in ph_to_acc
-    ]
+    evidences = []
+    for index, ref in enumerate(refs):
+        if ref not in ph_to_acc:
+            continue
+        evidence = oms.PeptideEvidence()
+        evidence.setProteinAccession(ph_to_acc[ref])
+        evidence.setStart(starts[index] if index < len(starts) else -1)
+        evidence.setEnd(ends[index] if index < len(ends) else -1)
+        evidences.append(evidence)
+    return evidences
 
 
 def _parse_peptide_hit(hit_el, ph_to_acc: dict[str, str]) -> _PeptideHit:
