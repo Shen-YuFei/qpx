@@ -567,6 +567,8 @@ def _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run):
 def _feature_identification_fields(run, protein_fields, evidence_by_run, all_positions) -> dict:
     """Record direct identification origins and the selected group's peptide evidence."""
     evidence = evidence_by_run.get(run, {"consistent": False, "has_spectrum": False, "positions": all_positions})
+    if run in evidence_by_run and not evidence["consistent"]:
+        return {"id_run_file_name": None, "pg_positions": None}
     members = {entry["accession"] for entry in protein_fields.get("pg_accessions") or []}
     positions = [
         {"protein_accession": acc, "start": start, "end": end}

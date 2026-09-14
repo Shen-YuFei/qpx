@@ -159,8 +159,9 @@ def test_conflicting_peptide_assignment_has_no_identification_origin(tmp_path, s
 
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("entry_point", ["converter", "adapter"])
-def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming, entry_point):
-    """The source run follows spectra_data ordering, not the order of map columns."""
+@pytest.mark.parametrize("conflicting_peptide", [False, True])
+def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming, entry_point, conflicting_peptide):
+    """Merge order resolves source runs while conflicting direct evidence stays null."""
     root = _multirun_root(tmp_path)
     root.find(".//ProteinIdentification").append(
         fromstring('<UserParam type="stringList" name="spectra_data" value="[run_02.mzML,run_01.mzML]"/>')
@@ -169,6 +170,12 @@ def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming
         mapping = pid.find("UserParam[@name='map_index']")
         mapping.set("name", "id_merge_index")
         mapping.set("value", str(1 - index))
+    if conflicting_peptide:
+        consensus = root.find(".//consensusElement")
+        conflicting = deepcopy(consensus.find("PeptideIdentification"))
+        conflicting.set("spectrum_reference", "scan=44")
+        conflicting.find("PeptideHit").set("sequence", "ELVISLIVK")
+        consensus.append(conflicting)
     if entry_point == "converter":
         rows = _feature_rows(root, tmp_path, streaming)
     else:
@@ -179,7 +186,9 @@ def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming
         rows = consensus_features_to_records(cm=consensus, group_map=group_map, group_meta=group_meta)
 
     by_run = {row["run_file_name"]: row for row in rows}
-    assert by_run["run_01"]["id_run_file_name"] == "run_01"
+    assert by_run["run_01"]["id_run_file_name"] == (None if conflicting_peptide else "run_01")
     assert by_run["run_02"]["id_run_file_name"] == "run_02"
-    assert by_run["run_01"]["pg_positions"][0]["start"] == 2
+    assert by_run["run_01"]["pg_positions"] == (
+        None if conflicting_peptide else [{"protein_accession": "P12345", "start": 2, "end": 9}]
+    )
     assert by_run["run_02"]["pg_positions"][0]["start"] == 22
