@@ -328,10 +328,29 @@ def _separate_identification_groups_xml(reverse_identifications=False):
 
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("reverse_identifications", [False, True])
-def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse_identifications):
+@pytest.mark.parametrize("merge_index", [False, True])
+def test_feature_group_uses_its_runs_identification(tmp_path, streaming, reverse_identifications, merge_index):
     """Each run resolves its group from its own source identification."""
+    root = fromstring(_separate_identification_groups_xml(reverse_identifications))
+    if merge_index:
+        indices = {}
+        for index, identification in enumerate(root.findall("IdentificationRun")):
+            identifier = identification.get("id")
+            indices[identifier] = str(index)
+            run = "run_01" if identifier == "PI_0" else "run_02"
+            ET.SubElement(
+                identification.find("ProteinIdentification"),
+                "UserParam",
+                type="stringList",
+                name="spectra_data",
+                value=f"[{run}.mzML]",
+            )
+        for pid in root.findall(".//PeptideIdentification"):
+            mapping = pid.find("UserParam[@name='map_index']")
+            mapping.set("name", "id_merge_index")
+            mapping.set("value", indices[pid.get("identification_run_ref")])
     cx = tmp_path / "separate_identifications.consensusXML"
-    cx.write_text(_separate_identification_groups_xml(reverse_identifications))
+    cx.write_text(ET.tostring(root, encoding="unicode"))
     written = OpenMSConsensusConverter().convert(
         str(cx), str(tmp_path / "out"), output_prefix="t", structures=("feature", "pg"), streaming=streaming
     )

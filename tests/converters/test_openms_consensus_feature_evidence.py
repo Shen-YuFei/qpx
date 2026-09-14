@@ -177,7 +177,7 @@ def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming
         conflicting.find("PeptideHit").set("sequence", "ELVISLIVK")
         consensus.append(conflicting)
     if entry_point == "converter":
-        rows = _feature_rows(root, tmp_path, streaming)
+        rows = _feature_rows(root, tmp_path, streaming, structures=("feature", "psm"))
     else:
         source = tmp_path / "adapter.consensusXML"
         source.write_bytes(tostring(root, encoding="utf-8", xml_declaration=True))
@@ -192,3 +192,12 @@ def test_identification_origin_uses_the_recorded_merge_order(tmp_path, streaming
         None if conflicting_peptide else [{"protein_accession": "P12345", "start": 2, "end": 9}]
     )
     assert by_run["run_02"]["pg_positions"][0]["start"] == 22
+    assert by_run["run_01"]["scan"] == ([42, 44] if conflicting_peptide else [42])
+    assert by_run["run_02"]["scan"] == [43]
+    for run, confidence in [("run_01", 0.001), ("run_02", 0.02)]:
+        assert by_run[run]["peptide_qvalue"] == pytest.approx(confidence)
+        assert by_run[run]["posterior_error_probability"] == pytest.approx(confidence)
+    if entry_point == "converter":
+        psms = pq.read_table(tmp_path / "out" / "openms.psm.parquet").to_pylist()
+        for psm in psms:
+            assert psm["feature_id"] == by_run[psm["run_file_name"]]["feature_id"]

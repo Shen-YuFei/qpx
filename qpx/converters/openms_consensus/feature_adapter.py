@@ -376,8 +376,10 @@ def _pid_scans(pid) -> list[int]:
     return _scan_of(ref)
 
 
-def _pid_run(pid, map_info: dict[int, tuple[str, str]], cf_runs: Optional[set[str]] = None) -> str | None:
+def _pid_run(pid, map_info: dict[int, tuple[str, str]], cf_runs: Optional[set[str]] = None, resolve_run=None) -> str | None:
     """Resolve one identification to the run that produced it."""
+    if resolve_run is not None:
+        return resolve_run(pid, cf_runs)
     pid_run = None
     if pid.metaValueExists("map_index"):
         pid_run = map_info.get(int(pid.getMetaValue("map_index")), (None, None))[0]
@@ -390,23 +392,21 @@ def _pid_run(pid, map_info: dict[int, tuple[str, str]], cf_runs: Optional[set[st
     return pid_run
 
 
-def _scan_by_run(pids, map_info: dict[int, tuple[str, str]], cf_runs: Optional[set[str]] = None) -> dict[str, list[int]]:
+def _scan_by_run(
+    pids, map_info: dict[int, tuple[str, str]], cf_runs: Optional[set[str]] = None, resolve_run=None
+) -> dict[str, list[int]]:
     """Attribute each identification's scan(s) to its own run.
 
-    A consensus feature links spectra from several runs, so scans are resolved
-    per ID via its ``map_index`` (falling back to the sole run only when every
-    map is the same physical run, e.g. isobaric channels) rather than copying
-    one ID's scan onto every run's record. In a multi-run isobaric consensusXML
-    the PID carries only a local ``id_merge_index`` (no global ``map_index``); the
-    caller's ``cf_runs`` (the feature's positive-intensity element runs) then
-    attributes the scan — each such feature lives in a single run.
+    The shared PSM resolver handles map indices, single-run features and merged
+    run order from ``spectra_data``. Without it, only ``map_index`` or a sole
+    feature/map run can establish the origin.
     """
     scan_by_run: dict[str, list[int]] = {}
     for pid in pids:
         scans = _pid_scans(pid)
         if not scans:
             continue
-        pid_run = _pid_run(pid, map_info, cf_runs)
+        pid_run = _pid_run(pid, map_info, cf_runs, resolve_run)
         if pid_run is not None:
             run_scans = scan_by_run.setdefault(pid_run, [])
             run_scans.extend(scan for scan in scans if scan not in run_scans)
@@ -417,12 +417,13 @@ def _confidence_by_run(
     pids,
     map_info: dict[int, tuple[str, str]],
     cf_runs: Optional[set[str]] = None,
+    resolve_run=None,
 ) -> dict[str, tuple[float | None, float | None]]:
     """Return the first identification's PEP and q-value for each run."""
     confidence_by_run: dict[str, tuple[float | None, float | None]] = {}
     for pid in pids:
         hits = pid.getHits()
-        pid_run = _pid_run(pid, map_info, cf_runs)
+        pid_run = _pid_run(pid, map_info, cf_runs, resolve_run)
         if not hits or pid_run is None or pid_run in confidence_by_run:
             continue
         hit = hits[0]
@@ -515,13 +516,13 @@ def _protein_group_fields(pid, group_map, group_meta) -> dict:
     }
 
 
-def _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta) -> dict[str, dict]:
+def _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta, resolve_run=None) -> dict[str, dict]:
     """Use each run's own identification; conflicting assignments stay unknown."""
     by_run: dict[str, dict] = {}
     sequence = pids[0].getHits()[0].getSequence()
     for pid in pids:
         hits = pid.getHits()
-        run = _pid_run(pid, map_info, cf_runs)
+        run = _pid_run(pid, map_info, cf_runs, resolve_run)
         if run is None or not hits:
             continue
         fields = _protein_group_fields(pid, group_map, group_meta)
@@ -555,7 +556,7 @@ def _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run):
         matches = hits[0].getSequence() == sequence
         positions = _peptide_positions(hits[0]) if matches else set()
         all_positions.update(positions)
-        run = resolve_run(pid, cf_runs) if resolve_run else _pid_run(pid, map_info, cf_runs)
+        run = _pid_run(pid, map_info, cf_runs, resolve_run)
         if run is not None:
             evidence = by_run.setdefault(run, {"consistent": True, "has_spectrum": False, "positions": set()})
             evidence["consistent"] = evidence["consistent"] and matches
@@ -595,8 +596,8 @@ def feature_records_for_cf(
         return []
     by_run = _group_subfeatures_by_run(cf, map_info)
     cf_runs = set(by_run)
-    scan_by_run = _scan_by_run(pids, map_info, cf_runs=cf_runs)
-    confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs)
+    scan_by_run = _scan_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run)
+    confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run)
     evidence_by_run, all_positions = _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run)
     hit = pids[0].getHits()[0]
     seq_obj = hit.getSequence()
@@ -613,7 +614,7 @@ def feature_records_for_cf(
     consensus_rt = float(cf.getRT() if streamed_consensus_rt is None else streamed_consensus_rt)
     calculated_mz = float(seq_obj.getMZ(charge)) if charge else observed_mz
     protein_fields = _protein_group_fields(pids[0], group_map, group_meta)
-    protein_fields_by_run = _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta)
+    protein_fields_by_run = _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta, resolve_run=resolve_run)
     if any(fields != protein_fields for fields in protein_fields_by_run.values()):
         protein_fields = dict.fromkeys(protein_fields)
     error_ppm = mass_error_ppm(calculated_mz, observed_mz) if charge > 0 else None
