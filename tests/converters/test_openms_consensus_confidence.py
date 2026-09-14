@@ -390,3 +390,46 @@ def test_sequence_conflict_clears_run_protein_fields(tmp_path, streaming, add_ma
         assert features["run_02"][field] is None, field
     for run, intensity in (("run_01", 1000.0), ("run_02", 3000.0)):
         assert features[run]["intensities"][0]["intensity"] == intensity
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_pg_names_come_from_uniprot_entry_names(tmp_path, streaming):
+    """pg.pg_names was null on every OpenMS dataset although the accessions carry
+    the entry name (``sp|ACC|NAME``); DIA-NN fills it (bigbio/qpx#300)."""
+    import duckdb
+
+    from tests.converters.test_openms_consensus import _SHARED_LEADER_CONSENSUSXML
+
+    xml = _SHARED_LEADER_CONSENSUSXML
+    for acc, full in (("A", "sp|P11111|AAA_HUMAN"), ("B", "sp|P22222|BBB_HUMAN"), ("C", "sp|P33333|CCC_HUMAN")):
+        xml = xml.replace(f'accession="{acc}"', f'accession="{full}"')
+    cx = tmp_path / "named.consensusXML"
+    cx.write_text(xml)
+    written = OpenMSConsensusConverter().convert(
+        str(cx), str(tmp_path / ("stream" if streaming else "mem")), output_prefix="t", structures=("pg",), streaming=streaming
+    )
+
+    names = {
+        tuple(sorted(accs)): name_list
+        for accs, name_list in duckdb.connect()
+        .execute("SELECT DISTINCT pg_accessions, pg_names FROM read_parquet($1)", [str(written["pg"])])
+        .fetchall()
+    }
+    assert names[("sp|P11111|AAA_HUMAN", "sp|P22222|BBB_HUMAN")] in (["AAA_HUMAN", "BBB_HUMAN"], ["BBB_HUMAN", "AAA_HUMAN"])
+    assert names[("sp|P11111|AAA_HUMAN", "sp|P33333|CCC_HUMAN")] in (["AAA_HUMAN", "CCC_HUMAN"], ["CCC_HUMAN", "AAA_HUMAN"])
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_pg_names_stay_null_for_bare_accessions(tmp_path, streaming):
+    """A bare accession has no entry name; pg_names must not echo pg_accessions."""
+    import duckdb
+
+    from tests.converters.test_openms_consensus import _SHARED_LEADER_CONSENSUSXML
+
+    cx = tmp_path / "bare.consensusXML"
+    cx.write_text(_SHARED_LEADER_CONSENSUSXML)
+    written = OpenMSConsensusConverter().convert(
+        str(cx), str(tmp_path / ("stream" if streaming else "mem")), output_prefix="t", structures=("pg",), streaming=streaming
+    )
+
+    assert duckdb.connect().execute("SELECT count(pg_names) FROM read_parquet($1)", [str(written["pg"])]).fetchone()[0] == 0

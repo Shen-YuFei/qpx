@@ -22,7 +22,7 @@ import pandas as pd
 from qpx.converters.base import resolve_columns
 from qpx.converters.diann.base_adapter import DiaNNBaseAdapter
 from qpx.converters.mappings import get_field_mappings
-from qpx.converters.utils import safe_float
+from qpx.converters.utils import is_contaminant_accession, safe_float
 from qpx.core.sql import sql_build, validate_identifier
 from qpx.writers.pg import PgWriter
 
@@ -488,7 +488,7 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             "intensities": intensities or None,
             "additional_intensities": additional_intensities or None,
             "is_decoy": is_decoy,
-            "contaminant": None,
+            "contaminant": any(is_contaminant_accession(a) for a in pg_accessions) if pg_accessions else None,
             "peptides": peptides,
             "peptide_counts": {
                 "unique_sequences": unique_sequences,

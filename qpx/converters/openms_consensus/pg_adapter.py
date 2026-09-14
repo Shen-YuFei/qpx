@@ -31,7 +31,7 @@ from qpx.converters.openms_consensus.feature_adapter import (
 )
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
-from qpx.converters.utils import safe_float
+from qpx.converters.utils import is_contaminant_accession, safe_float, uniprot_entry_name
 
 _GENE_RE = re.compile(r"GN=([^\s]+)")
 
@@ -113,7 +113,7 @@ def _is_decoy_accession(acc: str) -> bool:
 
 
 def _is_contaminant(acc: str) -> bool:
-    return "CONTAM" in str(acc).upper()
+    return is_contaminant_accession(acc)
 
 
 def _acc_str(acc) -> str:
@@ -428,6 +428,10 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
         # Prefer the target_decoy meta; fall back to the accession prefix.
         is_decoy = all(acc_decoy.get(a, _is_decoy_accession(a)) for a in accs)
         global_qvalue, genes = _group_qvalue_and_genes(accs, acc_qvalue, acc_gene)
+        # Entry names from the ``db|ACC|NAME`` accessions, aligned with pg_accessions;
+        # null unless every member has one, so a partial list never misaligns.
+        member_names = [uniprot_entry_name(a) for a in accs]
+        pg_names = member_names if all(member_names) else None
         # Only the quantification units where this group was actually identified
         # (its peptides appear in a run of that unit) — not every unit.
         group_runs: set[str] = set()
@@ -441,6 +445,7 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
                 records.append(
                     {
                         "pg_accessions": list(accs),
+                        "pg_names": pg_names,
                         "anchor_protein": anchor,
                         **properties.get(anchor, {}),
                         "grouped_runs": list(unit),
