@@ -1390,3 +1390,65 @@ def test_diann_pg_quantification_method_names_the_maxlfq_fallback(tmp_path):
 
     assert out[0]["intensity"] == 700.0
     assert out[0]["cv_params"] == [{"cv_name": "quantification_method", "cv_value": "PG.MaxLFQ"}]
+
+
+def test_protein_properties_from_fasta_on_bare_diann_accessions(converted_output, tmp_path):
+    """DIA-NN reports bare accessions (``P12345``) and no protein sequence at all.
+
+    A FASTA keyed ``sp|P12345|NAME`` must still reach them. Proteins left out of
+    the FASTA (as DIA-NN's internal decoys always are) stay null and are reported.
+    """
+    import duckdb
+    from click.testing import CliRunner
+
+    from qpx.cli.transform import transform
+
+    feature = converted_output / "diann_test.feature.parquet"
+    if not (converted_output / "diann_test.pg.parquet").exists():
+        pytest.skip("pg.parquet was not produced")
+    groups = (
+        duckdb.connect()
+        .execute(
+            "SELECT a, list(DISTINCT sequence) FROM (SELECT sequence, unnest(list_transform(pg_accessions, x -> x.accession)) a "
+            "FROM read_parquet($1) WHERE NOT is_decoy) GROUP BY a ORDER BY a",
+            [str(feature)],
+        )
+        .fetchall()
+    )
+    assert len(groups) >= 2, "fixture needs at least two proteins"
+    withheld = groups[0][0]
+    linker = "WWWWW"  # never inside a tryptic peptide here, so each peptide occurs once
+    records = []
+    for accession, peptides in groups[1:]:
+        records.append(f">sp|{accession}|{accession}_HUMAN\nM{linker}{linker.join(sorted(peptides))}{linker}\n")
+    fasta = tmp_path / "search.fasta"
+    fasta.write_text("".join(records))
+
+    out = tmp_path / "annotated"
+    result = CliRunner().invoke(
+        transform,
+        ["protein-properties", "--dataset", str(converted_output), "--fasta", str(fasta), "--output-folder", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+
+    con = duckdb.connect()
+    pg = dict(
+        con.execute(
+            "SELECT anchor_protein, any_value(molecular_weight) FROM read_parquet($1) WHERE NOT is_decoy GROUP BY 1",
+            [str(out / "diann_test.pg.parquet")],
+        ).fetchall()
+    )
+    assert pg[withheld] is None
+    assert all(pg[accession] is not None for accession, _ in groups[1:] if accession in pg)
+    assert withheld in result.output
+
+    bad = con.execute(
+        "SELECT count(*) FROM (SELECT sequence, unnest(pg_positions) p FROM read_parquet($1) WHERE pg_positions IS NOT NULL) "
+        'WHERE p."end" - p.start + 1 <> length(sequence)',
+        [str(out / "diann_test.feature.parquet")],
+    ).fetchone()[0]
+    filled = con.execute(
+        "SELECT count(*) FROM read_parquet($1) WHERE pg_positions IS NOT NULL", [str(out / "diann_test.feature.parquet")]
+    ).fetchone()[0]
+    assert filled > 0
+    assert bad == 0
