@@ -21,10 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Cross-converter pg fields (bigbio/qpx#300)** — three fields one converter filled and another left null:
-  DIA-NN `pg.contaminant` was hard-coded null (PXD017199 has 176 `CONTAM_` groups, all unflagged) and now uses the
-  same accession rule as OpenMS, shared in `converters/utils.py`; DIA-NN `pg.cv_params` records which quantity became
-  each channel's `pg.intensity` (`quantification_method` = `PG.Quantity`, or `PG.MaxLFQ` for the fallback), as OpenMS already did;
+- **OpenMS consensusXML empty PSM output** — both readers now warn and skip the PSM file when no exportable PSM records remain. Output paths and provenance exclude the skipped view, preventing a missing-file error during metadata generation while other views continue exporting.
+- **OpenMS consensusXML feature evidence** — preserve peptide positions using QPX's one-based coordinates — on the resolved protein group's members, or on every evidence protein for a peptide shared across groups (whose group is null), and record the source run for direct identifications. The streaming reader retains per-protein coordinate lists; ambiguous identification origins remain null.
+- **OpenMS consensusXML protein properties** — preserve the anchor protein's recorded sequence coverage and posterior probability in the PG view, including through the streaming reader. Conflicting values for the same anchor remain null.
+- **DIA-NN pg quantification source** — `pg.cv_params` records whether each channel's primary intensity came from `PG.Quantity` or the `PG.MaxLFQ` fallback.
+- **MuData default modality selection** — `build_mudata()` now selects precursor/protein modalities from available `feature`/`pg` source views, so valid single-view datasets no longer report false build failures. Explicit modality requests still report build errors.
+- **Cross-converter pg fields (bigbio/qpx#300)** — DIA-NN `pg.contaminant` was hard-coded null (PXD017199 has 176
+  `CONTAM_` groups, all unflagged) and now uses the same accession rule as OpenMS, shared in `converters/utils.py`;
   OpenMS `pg.pg_names` carries the UniProt entry names from `sp|ACC|NAME` accessions, and stays null for a group with
   any bare accession so names never misalign with `pg_accessions`.
 - **OpenMS feature view left `pg_global_qvalue`, `gg_names` and `gg_accessions` null** — the consensusXML converter computed each protein group's q-value and gene names for the pg view and then discarded them, so every feature carried none while its group in pg had both (PXD000612: pg 100%, feature 0%). Features now carry their own group's values from the same derivation as pg, in both the streaming and in-memory paths, including when two groups share a leading protein. Matching uses full membership and the originating identification, independently of protein evidence order; ambiguous groups and runs with conflicting peptide sequences keep protein-group fields null while feature intensities are retained.

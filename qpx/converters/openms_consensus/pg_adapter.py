@@ -31,7 +31,7 @@ from qpx.converters.openms_consensus.feature_adapter import (
 )
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
-from qpx.converters.utils import is_contaminant_accession, uniprot_entry_name
+from qpx.converters.utils import is_contaminant_accession, safe_float, uniprot_entry_name
 
 _GENE_RE = re.compile(r"GN=([^\s]+)")
 
@@ -130,8 +130,9 @@ def _protein_hit_meta(prot) -> tuple[dict[str, bool], dict[str, float], dict[str
         acc = _acc_str(hit.getAccession())
         if hit.metaValueExists("target_decoy"):
             acc_decoy[acc] = "decoy" in str(hit.getMetaValue("target_decoy")).lower()
-        if score_is_qvalue and hit.getScore() is not None:
-            acc_qvalue[acc] = float(hit.getScore())
+        score = safe_float(hit.getScore())
+        if score_is_qvalue and score is not None:
+            acc_qvalue[acc] = score
         gene = _GENE_RE.search(str(hit.getDescription() or "")) if hasattr(hit, "getDescription") else None
         if gene:
             acc_gene[acc] = gene.group(1)
@@ -160,6 +161,62 @@ def _build_groups(prot) -> list[list[str]]:
             groups.append([acc])
             covered.add(acc)
     return groups
+
+
+def _protein_molecular_weight(sequences: set[str]) -> float | None:
+    """Average mass in kDa for one agreed, unmodified protein sequence."""
+    if len(sequences) != 1:
+        return None
+    sequence = next(iter(sequences))
+    # U/O have defined masses; J denotes the isobaric I/L pair. B/Z/X do not.
+    if not sequence or not set(sequence).issubset("ACDEFGHIKLMNPQRSTVWYJUO"):
+        return None
+    from pyopenms import AASequence
+
+    return AASequence.fromString(sequence).getAverageWeight() / 1000.0
+
+
+def _anchor_properties(coverages: set[float], probabilities: set[float], sequences: set[str]) -> dict:
+    """Keep an anchor's known properties only when its source records agree."""
+    coverage = next(iter(coverages)) if len(coverages) == 1 else None
+    scores = None
+    if len(probabilities) == 1:
+        scores = [{"score_name": "posterior_probability", "score_value": next(iter(probabilities)), "higher_better": True}]
+    return {
+        "sequence_coverage": coverage,
+        "additional_scores": scores,
+        "molecular_weight": _protein_molecular_weight(sequences),
+    }
+
+
+def _protein_properties(cm) -> dict[str, dict]:
+    """Index coverage, posterior probability and theoretical mass by accession.
+
+    ProteinHit properties describe the representative protein, not a group-wide
+    aggregate. Mass is computed from the complete unmodified ProteinHit sequence.
+    Missing, unknown or conflicting properties do not supply a value; other group
+    members are never used as a substitute.
+    """
+    coverages: dict[str, set[float]] = defaultdict(set)
+    probabilities: dict[str, set[float]] = defaultdict(set)
+    sequences: dict[str, set[str]] = defaultdict(set)
+    for prot in cm.getProteinIdentifications():
+        for hit in prot.getHits():
+            acc = _acc_str(hit.getAccession())
+            sequence = hit.getSequence()
+            if sequence:
+                sequences[acc].add(sequence)
+            coverage = hit.getCoverage()
+            if 0 <= coverage <= 100:
+                coverages[acc].add(float(coverage))
+            if hit.metaValueExists("Posterior Probability_score"):
+                probability = safe_float(hit.getMetaValue("Posterior Probability_score"))
+                if probability is not None and 0 <= probability <= 1:
+                    probabilities[acc].add(probability)
+    return {
+        acc: _anchor_properties(coverages[acc], probabilities[acc], sequences[acc])
+        for acc in coverages.keys() | probabilities.keys() | sequences.keys()
+    }
 
 
 def _merge_protein_ids(cm) -> tuple[dict[str, bool], dict[str, float], dict[str, str], list[list[str]]]:
@@ -350,6 +407,7 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
     units, labels = pg_units_and_labels(map_info, sdrf_path)
 
     acc_decoy, acc_qvalue, acc_gene, groups = _merge_protein_ids(cm)
+    properties = _protein_properties(cm)
     quant_method = "unnormalized_unique_peptide_sum" if not top else f"unnormalized_unique_peptide_top{top}_sum"
 
     records: list[dict] = []
@@ -389,6 +447,7 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
                         "pg_accessions": list(accs),
                         "pg_names": pg_names,
                         "anchor_protein": anchor,
+                        **properties.get(anchor, {}),
                         "grouped_runs": list(unit),
                         "label": label,
                         # interim unnormalized total; null when the group has no
