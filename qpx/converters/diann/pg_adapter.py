@@ -429,9 +429,6 @@ class DiannPgAdapter(DiaNNBaseAdapter):
 
         intensities = []
         additional_intensities = []
-        # Which DIA-NN quantity became pg.intensity, recorded like the OpenMS path's
-        # quantification_method so a consumer can tell the two apart (#300).
-        quant_methods: set[str] = set()
         for label, channel_group in quant_groups:
             raw_quantity = deterministic_quantity(channel_group, "pg_quantity_raw")
             maxlfq_val = deterministic_quantity(channel_group, "lfq")
@@ -442,11 +439,16 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             if primary_quantity is None:
                 primary_quantity = maxlfq_val
             if primary_quantity is not None:
-                quant_methods.add("PG.Quantity" if raw_quantity is not None else "PG.MaxLFQ")
                 intensities.append(
                     {
                         "label": str(label),
                         "intensity": float(primary_quantity),
+                        "cv_params": [
+                            {
+                                "cv_name": "quantification_method",
+                                "cv_value": "PG.Quantity" if raw_quantity is not None else "PG.MaxLFQ",
+                            }
+                        ],
                     }
                 )
             if maxlfq_val is not None and raw_quantity is not None:
@@ -499,5 +501,5 @@ class DiannPgAdapter(DiaNNBaseAdapter):
             "sequence_coverage": None,
             "molecular_weight": None,
             "additional_scores": additional_scores or None,
-            "cv_params": [{"cv_name": "quantification_method", "cv_value": m} for m in sorted(quant_methods)] or None,
+            "cv_params": None,
         }
