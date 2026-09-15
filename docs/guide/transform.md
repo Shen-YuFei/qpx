@@ -185,7 +185,7 @@ to write an annotated copy and leave the source dataset untouched.
 Fills protein properties a producer did not record, from the FASTA used for the search. DIA-NN never reports protein sequences, and some consensusXML files carry protein hits without them. For **target rows only**, and **only where the value is null**:
 
 | Field | Computed as |
-|---|---|
+| --- | --- |
 | `pg.molecular_weight` | Average mass of the anchor protein's sequence, in kDa (same definition as the OpenMS consensusXML converter) |
 | `pg.sequence_coverage` | Percent of the anchor covered by the dataset's target peptides whose evidence names it: PSM `protein_accessions`, feature group membership, recorded positions |
 | `feature.pg_positions` | Every one-based occurrence of the peptide in each member of its protein group |
@@ -197,7 +197,7 @@ The same step runs after conversion when `--fasta` is passed to `qpxc convert di
 ### Parameters {#protein-properties-parameters}
 
 | Parameter | Description |
-|---|---|
+| --- | --- |
 | `--dataset` | QPX dataset directory (flat Parquet views) |
 | `--fasta` | Protein FASTA used for the search (plain or `.gz`) |
 | `--in-place` | Overwrite the dataset's files |
