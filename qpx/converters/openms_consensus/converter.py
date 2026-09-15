@@ -26,7 +26,7 @@ from qpx.converters.openms_consensus.pg_adapter import (
     protein_group_maps,
 )
 from qpx.converters.orchestrator import BaseOrchestrator
-from qpx.core.constants import FEATURE, ONTOLOGY, PG, PSM, RUN, SAMPLE
+from qpx.core.constants import DATASET, FEATURE, ONTOLOGY, PG, PROVENANCE, PSM, RUN, SAMPLE
 from qpx.core.data import FeatureSchema
 from qpx.core.data.identity import derive_id
 from qpx.writers.feature import FeatureWriter
@@ -375,6 +375,14 @@ def _write_sdrf_metadata(
     return {name: paths[name] for name in metadata}, run_ontology
 
 
+def _remove_orphaned_metadata(output_folder: Path, output_prefix: str) -> None:
+    """Remove metadata after an empty rerun only if no same-prefix data remains."""
+    if any((output_folder / f"{output_prefix}.{view}.parquet").is_file() for view in _STRUCTURE_ALL):
+        return
+    for view in (DATASET, ONTOLOGY, PROVENANCE):
+        (output_folder / f"{output_prefix}.{view}.parquet").unlink(missing_ok=True)
+
+
 class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
     """consensusXML + SDRF -> QPX views.
 
@@ -408,6 +416,8 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         conversion, remove any existing file for each skipped view and this
         output prefix so Dataset cannot discover stale records. Other requested
         views are still exported; an entirely empty export returns an empty dict.
+        When no same-prefix core or run/sample views remain, their orphaned
+        ontology/provenance/dataset metadata is also removed.
 
         ``feature_id`` records a link in the exported dataset, not quantification
         status. It is only populated when both feature and PSM views are emitted;
@@ -488,6 +498,8 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         # ontology entries only materialise when a PSI-MS term resolves.
         if written:
             self._write_metadata(out, output_prefix, written, consensusxml_path, run_ontology, requested, project_accession)
+        else:
+            _remove_orphaned_metadata(out, output_prefix)
 
         return written
 

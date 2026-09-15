@@ -107,6 +107,37 @@ def test_unrequested_quantification_view_is_preserved(existing_view, empty_view_
     assert f"No exportable {empty_view.upper()} records" not in caplog.text
 
 
+@pytest.mark.parametrize("keep_feature", [False, True])
+def test_empty_rerun_removes_only_orphaned_metadata(tmp_path, streaming, ontology_parquet, keep_feature):
+    """Clear stale metadata only when no same-prefix data remains after a rerun."""
+    source = tmp_path / "input.consensusXML"
+    source.write_text(_TMT_CONSENSUSXML, encoding="utf-8")
+    out = tmp_path / "out"
+    conv = converter.OpenMSConsensusConverter()
+    conv.convert(str(source), str(out), output_prefix="rerun", structures=("feature", "psm", "pg"), streaming=streaming)
+    (out / "rerun.ontology.parquet").write_bytes(ontology_parquet.read_bytes())
+    before = {path.name: path.read_bytes() for path in out.iterdir()}
+    other = {name.replace("rerun.", "other.", 1): data for name, data in before.items()}
+    for name, data in other.items():
+        (out / name).write_bytes(data)
+    root = fromstring(_TMT_CONSENSUSXML)
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag in ("PeptideIdentification", "ProteinHit"):
+                parent.remove(child)
+    source.write_bytes(tostring(root, encoding="utf-8"))
+    structures = ("psm", "pg") if keep_feature else ("feature", "psm", "pg")
+
+    written = conv.convert(str(source), str(out), output_prefix="rerun", structures=structures, streaming=streaming)
+
+    assert not written
+    expected = {name: data for name, data in before.items() if name not in ("rerun.psm.parquet", "rerun.pg.parquet")}
+    assert {path.name: path.read_bytes() for path in out.glob("rerun.*")} == (expected if keep_feature else {})
+    assert {path.name: path.read_bytes() for path in out.glob("other.*")} == other
+    with Dataset(out, file_prefix="rerun", duckdb_threads=24) as dataset:
+        assert bool(dataset.available_structures) == keep_feature
+
+
 def test_failed_conversion_preserves_quantification_view(existing_view, empty_view_xml, empty_view, streaming, monkeypatch):
     """Clear an old empty view only after core conversion has completed successfully."""
     previous = existing_view.read_bytes()
