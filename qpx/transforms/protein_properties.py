@@ -130,6 +130,15 @@ class FastaSequences:
                 sequence = self._sequences.get(parts[1])
         return sequence
 
+    def canonical_accession(self, accession: str) -> str:
+        """Share an evidence key only for an unambiguous target FASTA accession."""
+        if _is_decoy_identifier(accession):
+            return accession
+        parts = accession.split("|")
+        if len(parts) >= 2 and parts[1] in self._sequences:
+            return parts[1]
+        return accession
+
 
 @dataclass
 class ProteinPropertiesReport:  # pylint: disable=too-many-instance-attributes
@@ -247,11 +256,11 @@ def _collect_evidence(con, view_path: Path, candidates: dict[str, set[str]]) -> 
             candidates[sequence].update(accession for accession in accessions or () if accession)
 
 
-def _protein_peptides(candidates: dict[str, set[str]]) -> dict[str, set[str]]:
+def _protein_peptides(candidates: dict[str, set[str]], fasta: FastaSequences) -> dict[str, set[str]]:
     proteins: dict[str, set[str]] = defaultdict(set)
     for sequence, accessions in candidates.items():
         for accession in accessions:
-            proteins[accession].add(sequence)
+            proteins[fasta.canonical_accession(accession)].add(sequence)
     return proteins
 
 
@@ -276,46 +285,49 @@ def _rewrite_view(source: Path, destination: Path, fill_batch) -> None:
             writer.write_table(fill_batch(table).cast(schema))
 
 
-def _fill_pg_table(table: pa.Table, fasta: FastaSequences, protein_peptides, report: ProteinPropertiesReport) -> pa.Table:
-    names = table.schema.names
-    report.pg_rows += table.num_rows
-    anchors = table.column("anchor_protein").to_pylist()
-    decoys = table.column("is_decoy").to_pylist() if "is_decoy" in names else [False] * table.num_rows
-    coverage = table.column("sequence_coverage").to_pylist() if "sequence_coverage" in names else None
-    weight = table.column("molecular_weight").to_pylist() if "molecular_weight" in names else None
-    if coverage is None and weight is None:
-        return table
-    cache: dict[str, tuple[float | None, float | None]] = {}
+def _fill_pg_rows(anchors, decoys, columns, fasta: FastaSequences, protein_peptides, report: ProteinPropertiesReport) -> None:
+    """Fill missing target-row properties using the same accession keys as the evidence."""
+    cache: dict[str, dict[str, float | None]] = {}
     for row, anchor in enumerate(anchors):
-        needs_coverage = coverage is not None and coverage[row] is None
-        needs_weight = weight is not None and weight[row] is None
-        if decoys[row] or not anchor or not (needs_coverage or needs_weight):
+        missing = [name for name, values in columns.items() if values[row] is None]
+        if decoys[row] or not anchor or not missing:
             continue
         report.pg_rows_eligible += 1
-        if anchor not in cache:
-            sequence = fasta.get(anchor)
-            if sequence is None:
-                cache[anchor] = (None, None)
-            else:
-                spans = [span for peptide in protein_peptides.get(anchor, ()) for span in peptide_occurrences(peptide, sequence)]
-                cache[anchor] = (sequence_coverage_percent(sequence, spans), average_molecular_weight_kda(sequence))
-        if fasta.get(anchor) is None:
+        sequence = fasta.get(anchor)
+        if sequence is None:
             report.pg_anchors_not_in_fasta += 1
             _note_unmatched(report, anchor)
             continue
-        cov, mw = cache[anchor]
-        if needs_coverage and cov is not None:
-            coverage[row] = cov
-            report.pg_coverage_filled += 1
-        if needs_weight and mw is not None:
-            weight[row] = mw
-            report.pg_molecular_weight_filled += 1
-    if coverage is not None:
-        index = names.index("sequence_coverage")
-        table = table.set_column(index, table.schema.field(index), pa.array(coverage, type=table.schema.field(index).type))
-    if weight is not None:
-        index = names.index("molecular_weight")
-        table = table.set_column(index, table.schema.field(index), pa.array(weight, type=table.schema.field(index).type))
+        key = fasta.canonical_accession(anchor)
+        if key not in cache:
+            spans = [span for peptide in protein_peptides.get(key, ()) for span in peptide_occurrences(peptide, sequence)]
+            cache[key] = {
+                "sequence_coverage": sequence_coverage_percent(sequence, spans),
+                "molecular_weight": average_molecular_weight_kda(sequence),
+            }
+        for name in missing:
+            columns[name][row] = cache[key][name]
+
+
+def _fill_pg_table(table: pa.Table, fasta: FastaSequences, protein_peptides, report: ProteinPropertiesReport) -> pa.Table:
+    names = table.schema.names
+    report.pg_rows += table.num_rows
+    columns = {name: table.column(name).to_pylist() for name in ("sequence_coverage", "molecular_weight") if name in names}
+    if not columns:
+        return table
+    anchors = table.column("anchor_protein").to_pylist()
+    decoys = table.column("is_decoy").to_pylist() if "is_decoy" in names else [False] * table.num_rows
+    _fill_pg_rows(anchors, decoys, columns, fasta, protein_peptides, report)
+    for name, values in columns.items():
+        index = names.index(name)
+        column_field = table.schema.field(index)
+        filled = pa.array(values, type=column_field.type)
+        count = table.column(name).null_count - filled.null_count
+        if name == "sequence_coverage":
+            report.pg_coverage_filled += count
+        else:
+            report.pg_molecular_weight_filled += count
+        table = table.set_column(index, column_field, filled)
     return table
 
 
@@ -418,7 +430,7 @@ def annotate_protein_properties(
     candidates = _peptide_protein_candidates(feature_path, psm_path)
 
     if pg_path.is_file():
-        protein_peptides = _protein_peptides(candidates)
+        protein_peptides = _protein_peptides(candidates, fasta)
         name = pg_path.name
         _rewrite_view(pg_path, staging / name, lambda t: _fill_pg_table(t, fasta, protein_peptides, report))
         written.append(name)
