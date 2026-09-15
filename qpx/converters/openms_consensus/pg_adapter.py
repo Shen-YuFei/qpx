@@ -32,6 +32,7 @@ from qpx.converters.openms_consensus.feature_adapter import (
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 from qpx.converters.utils import is_contaminant_accession, safe_float, uniprot_entry_name
+from qpx.core.protein_sequence import average_molecular_weight_kda
 
 _GENE_RE = re.compile(r"GN=([^\s]+)")
 
@@ -167,13 +168,8 @@ def _protein_molecular_weight(sequences: set[str]) -> float | None:
     """Average mass in kDa for one agreed, unmodified protein sequence."""
     if len(sequences) != 1:
         return None
-    sequence = next(iter(sequences))
-    # U/O have defined masses; J denotes the isobaric I/L pair. B/Z/X do not.
-    if not sequence or not set(sequence).issubset("ACDEFGHIKLMNPQRSTVWYJUO"):
-        return None
-    from pyopenms import AASequence
-
-    return AASequence.fromString(sequence).getAverageWeight() / 1000.0
+    # Shared with the FASTA-based protein-properties transform, so both agree.
+    return average_molecular_weight_kda(next(iter(sequences)))
 
 
 def _anchor_properties(coverages: set[float], probabilities: set[float], sequences: set[str]) -> dict:
