@@ -339,6 +339,10 @@ def annotate_dataset_protein_properties(
 
 def _echo_protein_properties_report(report) -> None:
     click.echo(f"  FASTA: {report.fasta_entries} entries ({report.fasta_decoy_entries} decoys skipped)")
+    evidence = ", ".join(report.coverage_evidence) or "none"
+    click.echo(f"  coverage evidence from: {evidence}")
+    if "psm" not in report.coverage_evidence:
+        click.echo("  note: no PSM view, so coverage counts only peptides assigned to each protein group")
     click.echo(
         f"  pg: {report.pg_coverage_filled} sequence_coverage and {report.pg_molecular_weight_filled} molecular_weight "
         f"filled of {report.pg_rows_eligible} target rows needing them; {report.pg_anchors_not_in_fasta} anchors not in the FASTA"
