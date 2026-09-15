@@ -62,6 +62,8 @@ for q-value semantics.
 
 | Field | DIA-NN | OpenMS consensusXML |
 | ------- | -------- | --------------------- |
+| `pg_names` | Split from the report's `Protein.Names`. | UniProt entry names taken from `db\|ACCESSION\|NAME` accessions, aligned with `pg_accessions`. Null when any member is a bare accession with no entry name, so the list never misaligns; a bare accession is not repeated as its own name. |
+| `contaminant` | True when any member accession carries the `CONTAM` marker of the quantms/sdrf-pipelines contaminant database. | Same rule, shared with DIA-NN (`qpx.converters.utils.is_contaminant_accession`). |
 | `global_qvalue` | Read from `Global.PG.Q.Value`, when present. | The lowest available member-protein q-value, only when the source protein score is declared to be a q-value/FDR. Null if no member has such a score. |
 | `pg_qvalue` | Read from run-level `PG.Q.Value`, when present. | Null: no separate run-level protein-group q-value is reported by this path. The experiment-level value belongs in `global_qvalue`. |
 | `gg_qvalue` | Read from `GG.Q.Value`, when present. | Null: this path has no gene-group q-value. Protein-level confidence is not a gene-level q-value. |
