@@ -49,9 +49,9 @@ def sequence_coverage_percent(protein: str | None, spans) -> float | None:
         return None
     covered = bytearray(len(protein))
     for start, end in spans:
-        lo, hi = max(start, 1), min(end, len(protein))
-        if lo <= hi:
-            covered[lo - 1 : hi] = b"\x01" * (hi - lo + 1)
+        first, last = max(start, 1) - 1, min(end, len(protein))
+        if first < last:
+            covered[first:last] = b"\x01" * (last - first)
     n_covered = sum(covered)
     if not n_covered:
         return None
