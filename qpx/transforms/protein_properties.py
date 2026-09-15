@@ -229,22 +229,22 @@ def _peptide_protein_candidates(feature_path: Path, psm_path: Path | None = None
     con = duckdb.connect()
     try:
         for view_path in (feature_path, psm_path):
-            if view_path is None or not Path(view_path).is_file():
-                continue
-            columns = set(pq.read_schema(view_path).names)
-            if "sequence" not in columns:
-                continue
-            for column in _EVIDENCE_QUERIES:
-                if column not in columns:
-                    continue
-                rows = con.execute(_evidence_query(column, "is_decoy" in columns), [str(view_path)]).fetchall()
-                for sequence, accessions in rows:
-                    for accession in accessions or ():
-                        if accession:
-                            candidates[sequence].add(accession)
+            if view_path is not None and Path(view_path).is_file():
+                _collect_evidence(con, Path(view_path), candidates)
     finally:
         con.close()
     return candidates
+
+
+def _collect_evidence(con, view_path: Path, candidates: dict[str, set[str]]) -> None:
+    """Add one view's peptide -> protein evidence to ``candidates``."""
+    columns = set(pq.read_schema(view_path).names)
+    if "sequence" not in columns:
+        return
+    for column in (name for name in _EVIDENCE_QUERIES if name in columns):
+        rows = con.execute(_evidence_query(column, "is_decoy" in columns), [str(view_path)]).fetchall()
+        for sequence, accessions in rows:
+            candidates[sequence].update(accession for accession in accessions or () if accession)
 
 
 def _protein_peptides(candidates: dict[str, set[str]]) -> dict[str, set[str]]:
