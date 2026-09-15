@@ -186,6 +186,31 @@ def _accession_lists(column: pa.ChunkedArray) -> list[tuple[str, ...] | None]:
     return out
 
 
+# Evidence column -> SQL expression yielding that row's protein accessions. Fixed
+# templates with the file bound as a parameter: no query text is built from input.
+_EVIDENCE_QUERIES = {
+    "protein_accessions": (
+        "SELECT sequence, list_distinct(protein_accessions) FROM read_parquet($1) "
+        "WHERE {decoy} sequence IS NOT NULL AND protein_accessions IS NOT NULL GROUP BY ALL"
+    ),
+    "pg_accessions": (
+        "SELECT sequence, list_distinct(list_transform(pg_accessions, x -> x.accession)) FROM read_parquet($1) "
+        "WHERE {decoy} sequence IS NOT NULL AND pg_accessions IS NOT NULL GROUP BY ALL"
+    ),
+    "pg_positions": (
+        "SELECT sequence, list_distinct(list_transform(pg_positions, x -> x.protein_accession)) FROM read_parquet($1) "
+        "WHERE {decoy} sequence IS NOT NULL AND pg_positions IS NOT NULL GROUP BY ALL"
+    ),
+}
+_TARGET_ONLY = "NOT coalesce(is_decoy, false) AND"
+
+
+def _evidence_query(column: str, has_decoy_flag: bool) -> str:
+    """The fixed evidence query for ``column``, target-restricted when the view has ``is_decoy``."""
+    template = _EVIDENCE_QUERIES[column]
+    return template.replace("{decoy}", _TARGET_ONLY if has_decoy_flag else "")
+
+
 def _peptide_protein_candidates(feature_path: Path, psm_path: Path | None = None) -> dict[str, set[str]]:
     """Map each target peptide sequence to every protein its evidence names.
 
@@ -200,37 +225,25 @@ def _peptide_protein_candidates(feature_path: Path, psm_path: Path | None = None
     """
     import duckdb
 
-    con = duckdb.connect()
     candidates: dict[str, set[str]] = defaultdict(set)
-    queries: list[str] = []
-    for view_path in (feature_path, psm_path):
-        if view_path is None or not Path(view_path).is_file():
-            continue
-        path = str(view_path).replace("'", "''")
-        columns = {row[0] for row in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}')").fetchall()}
-        decoy = "NOT coalesce(is_decoy, false)" if "is_decoy" in columns else "true"
-        where = f"WHERE {decoy} AND sequence IS NOT NULL"
-        if "protein_accessions" in columns:
-            queries.append(
-                f"SELECT sequence, list_distinct(protein_accessions) FROM read_parquet('{path}') "
-                f"{where} AND protein_accessions IS NOT NULL GROUP BY ALL"
-            )
-        if "pg_accessions" in columns:
-            queries.append(
-                f"SELECT sequence, list_distinct(list_transform(pg_accessions, x -> x.accession)) FROM read_parquet('{path}') "
-                f"{where} AND pg_accessions IS NOT NULL GROUP BY ALL"
-            )
-        if "pg_positions" in columns:
-            queries.append(
-                f"SELECT sequence, list_distinct(list_transform(pg_positions, x -> x.protein_accession)) FROM read_parquet('{path}') "
-                f"{where} AND pg_positions IS NOT NULL GROUP BY ALL"
-            )
-    for query in queries:
-        for sequence, accessions in con.execute(query).fetchall():
-            for accession in accessions or ():
-                if accession:
-                    candidates[sequence].add(accession)
-    con.close()
+    con = duckdb.connect()
+    try:
+        for view_path in (feature_path, psm_path):
+            if view_path is None or not Path(view_path).is_file():
+                continue
+            columns = set(pq.read_schema(view_path).names)
+            if "sequence" not in columns:
+                continue
+            for column in _EVIDENCE_QUERIES:
+                if column not in columns:
+                    continue
+                rows = con.execute(_evidence_query(column, "is_decoy" in columns), [str(view_path)]).fetchall()
+                for sequence, accessions in rows:
+                    for accession in accessions or ():
+                        if accession:
+                            candidates[sequence].add(accession)
+    finally:
+        con.close()
     return candidates
 
 
