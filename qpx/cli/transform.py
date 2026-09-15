@@ -201,6 +201,7 @@ def _annotate_dataset_views(
 def _stage_dataset_integrity(qpx_dataset, prefix: str, staging: Path, out_dir: Path) -> tuple[Path, Path] | None:
     """Update existing integrity records for the staged quantification files."""
     from qpx.dataset import Dataset
+    from qpx.transforms.utils import count_staged_structures
     from qpx.writers import DatasetWriter
 
     if qpx_dataset.dataset_meta is None:
@@ -218,6 +219,7 @@ def _stage_dataset_integrity(qpx_dataset, prefix: str, staging: Path, out_dir: P
     for field in fields:
         if isinstance(record.get(field), dict):
             record[field].update(integrity[field])
+    record["total_structures"] = count_staged_structures(out_dir, staging, integrity["file_checksums"])
     record["packaged_at"] = integrity["packaged_at"]
     name = f"{prefix}.dataset.parquet"
     with DatasetWriter(staging / name) as writer:

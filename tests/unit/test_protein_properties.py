@@ -207,3 +207,115 @@ def test_coverage_counts_shared_peptides_named_by_psm_evidence(dataset_dir, tmp_
     features = {r["sequence"]: r for r in _rows(dataset_dir, "feature")}
     # Positions stay tied to the feature's own group (P12345), not the PSM evidence.
     assert features["THIRDPEP"]["pg_positions"] is None
+
+
+@pytest.mark.parametrize("direction", ["forward", "reverse"])
+def test_coverage_keeps_psm_evidence_after_accession_normalization(dataset_dir, tmp_path, direction):
+    """Normalizing PG/feature identifiers must retain shared-peptide PSM evidence."""
+    from qpx.writers import PsmWriter
+    from tests.conftest import make_psm_record
+
+    fasta = _dataset_fasta(tmp_path)
+    full = "sp|P67890|PROT2_HUMAN"
+    if direction == "forward":
+        preparation = CliRunner().invoke(
+            transform,
+            [
+                "normalize-accessions",
+                "--dataset",
+                str(dataset_dir),
+                "--direction",
+                "reverse",
+                "--fasta",
+                str(fasta),
+                "--in-place",
+            ],
+        )
+        assert preparation.exit_code == 0, preparation.output
+    psm = make_psm_record(sequence="THIRDPEP", run_file_name="run_02")
+    psm["protein_accessions"] = [full if direction == "forward" else "P67890"]
+    with PsmWriter(dataset_dir / "exp.psm.parquet") as writer:
+        writer.write_batch([psm])
+    psm_before = (dataset_dir / "exp.psm.parquet").read_bytes()
+
+    result = CliRunner().invoke(
+        transform,
+        ["normalize-accessions", "--dataset", str(dataset_dir), "--direction", direction, "--fasta", str(fasta), "--in-place"],
+    )
+    assert result.exit_code == 0, result.output
+    anchors_before = [row["anchor_protein"] for row in _rows(dataset_dir, "pg")]
+    _run(dataset_dir, fasta, "--in-place")
+
+    pg = {row["anchor_protein"]: row for row in _rows(dataset_dir, "pg")}
+    anchor = "P67890" if direction == "forward" else full
+    assert pg[anchor]["sequence_coverage"] == pytest.approx(100 * 8 / 13, rel=1e-5)
+    assert list(pg) == anchors_before
+    assert (dataset_dir / "exp.psm.parquet").read_bytes() == psm_before
+
+
+@pytest.mark.parametrize("in_place", [True, False])
+def test_new_provenance_updates_structure_count(dataset_dir, tmp_path, in_place):
+    """The final count includes new provenance once and excludes staging files."""
+    from qpx import Dataset
+    from qpx.writers import DatasetWriter
+
+    with Dataset(dataset_dir) as dataset:
+        record = dataset.dataset_meta.to_df().iloc[0].to_dict()
+        record.update(dataset.compute_integrity())
+    with DatasetWriter(dataset_dir / "exp.dataset.parquet") as writer:
+        writer.write_batch([record])
+    source_before = (dataset_dir / "exp.dataset.parquet").read_bytes()
+    assert record["total_structures"] == 5
+    output = dataset_dir if in_place else tmp_path / "annotated"
+    destination = ["--in-place"] if in_place else ["--output-folder", str(output)]
+    _run(dataset_dir, _dataset_fasta(tmp_path), *destination)
+
+    with Dataset(output) as dataset:
+        metadata = dataset.dataset_meta.to_df().iloc[0]
+        assert metadata["total_structures"] == dataset.compute_integrity()["total_structures"] == 6
+        assert dataset.verify_integrity() == {"errors": [], "warnings": []}
+    if not in_place:
+        assert (dataset_dir / "exp.dataset.parquet").read_bytes() == source_before
+
+    _run(output, _dataset_fasta(tmp_path), "--in-place")
+    assert _rows(output, "dataset")[0]["total_structures"] == 6
+
+
+def test_coverage_does_not_merge_conflicting_fasta_accessions(dataset_dir, tmp_path):
+    """Different sequences sharing a bare accession keep their own protein evidence."""
+    from qpx.writers import PgWriter, PsmWriter
+    from tests.conftest import make_pg_record, make_psm_record
+
+    fasta = _fasta(tmp_path, ">sp|P12345|A\nMPEPTIDEK\n>tr|P12345|B\nMPEPTIDEKAAA\n")
+    anchors = ["sp|P12345|A", "tr|P12345|B", "P12345"]
+    with PgWriter(dataset_dir / "exp.pg.parquet") as writer:
+        writer.write_batch([make_pg_record(anchor_protein=anchor, pg_accessions=[anchor]) for anchor in anchors])
+    (dataset_dir / "exp.feature.parquet").unlink()
+    psm = make_psm_record()
+    psm["protein_accessions"] = [anchors[0]]
+    with PsmWriter(dataset_dir / "exp.psm.parquet") as writer:
+        writer.write_batch([psm])
+
+    _run(dataset_dir, fasta, "--in-place")
+
+    pg = {row["anchor_protein"]: row for row in _rows(dataset_dir, "pg")}
+    assert pg[anchors[0]]["sequence_coverage"] == pytest.approx(100 * 8 / 9, rel=1e-5)
+    assert pg[anchors[1]]["sequence_coverage"] is None
+    assert pg["P12345"]["sequence_coverage"] is None
+    assert pg["P12345"]["molecular_weight"] is None
+
+
+def test_coverage_does_not_alias_decoy_evidence_to_a_target(dataset_dir, tmp_path):
+    """A target PSM can name decoy proteins; their identifiers must stay distinct."""
+    from qpx.writers import PsmWriter
+    from tests.conftest import make_psm_record
+
+    psm = make_psm_record(sequence="THIRDPEP", run_file_name="run_02")
+    psm["protein_accessions"] = ["DECOY_sp|P67890|PROT2_HUMAN"]
+    with PsmWriter(dataset_dir / "exp.psm.parquet") as writer:
+        writer.write_batch([psm])
+
+    _run(dataset_dir, _dataset_fasta(tmp_path), "--in-place")
+
+    pg = {row["anchor_protein"]: row for row in _rows(dataset_dir, "pg")}
+    assert pg["P67890"]["sequence_coverage"] is None
