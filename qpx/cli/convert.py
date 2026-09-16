@@ -40,7 +40,7 @@ def _log_summary(output_folder) -> None:
 
 
 def _write_mudata(output_folder: Path, prefix: str, enabled: bool) -> None:
-    """Write the dataset's MuData view after a conversion, when asked.
+    """Refresh or remove the dataset's MuData view after a conversion.
 
     Uses qpx's own writer, which refuses a MuData missing a required
     quantification modality rather than writing a partial view, and is
@@ -48,6 +48,10 @@ def _write_mudata(output_folder: Path, prefix: str, enabled: bool) -> None:
     that cannot be built is reported and the conversion still succeeds.
     """
     if not enabled:
+        try:
+            (Path(output_folder) / f"{prefix}.h5mu").unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not remove stale MuData for %s: %s", prefix, exc)
         return
     from qpx.mudata import write_dataset_mudata
 
@@ -314,8 +318,8 @@ def convert_diann_cmd(
     converter.write_dataset(output_folder, prefix=prefix, project_accession=project_accession)
 
     _annotate_protein_properties(output_folder, fasta, prefix)
-    _write_mudata(output_folder, prefix, mudata)
     _maybe_enrich_pride(output_folder, project_accession, enrich_pride)
+    _write_mudata(output_folder, prefix, mudata)
 
     _log_summary(output_folder)
     click.echo(f"DIA-NN conversion complete. Output: {output_folder}")
@@ -1015,7 +1019,7 @@ def convert_openms_consensus_cmd(
     )
     if written:
         _annotate_protein_properties(Path(output_folder), fasta, output_prefix)
-        _write_mudata(Path(output_folder), output_prefix, mudata)
+    _write_mudata(Path(output_folder), output_prefix, mudata and bool(written))
     _log_summary(output_folder)
     click.echo(f"consensusXML conversion complete. Wrote: {sorted(written)}")
 
