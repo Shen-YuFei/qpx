@@ -49,14 +49,14 @@ def uniprot_entry_name(entry: str) -> Optional[str]:
 
 
 def is_contaminant_accession(accession) -> bool:
-    """True for a contaminant protein, by the ``CONTAM`` accession marker.
+    """Recognize known contaminant accession markers, ignoring case.
 
-    The quantms/sdrf-pipelines contaminant database prefixes its entries
-    ``CONTAM_`` (``sp|CONTAM_P19001|CONTAM_K1C19_MOUSE``). One rule shared by the
-    converters, so the same protein is not a contaminant in one and unflagged in
-    another (bigbio/qpx#300).
+    Preserve the legacy ``CONTAM`` substring rule. The quantms ``Cont_`` marker
+    must start a bare accession or follow a leading UniProt ``sp|``/``tr|`` prefix,
+    as in ``sp|Cont_Q7SIH1|A2MG_BOVIN``; unrelated ``CONT`` text is not a marker.
     """
-    return "CONTAM" in str(accession).upper()
+    accession = str(accession).upper()
+    return "CONTAM" in accession or accession.startswith(("CONT_", "SP|CONT_", "TR|CONT_"))
 
 
 def strip_uniprot_prefix(accession: str) -> str:
