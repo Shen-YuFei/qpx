@@ -184,6 +184,7 @@ Output files generated:
 
 - **Feature**: `{output-prefix}-{uuid}.feature.parquet` (always produced)
 - **Protein Group**: `{output-prefix}-{uuid}.pg.parquet` (produced when `--pg-matrix-path` is provided)
+- **MuData**: `{output-prefix}.h5mu` (written by default; `--no-mudata` skips it)
 
 ### Common Issues {#diann-issues}
 
@@ -885,6 +886,7 @@ qpxc convert openms-consensus \
 - `<prefix>.psm.parquet` — one row per spectrum match (scan, PEP, q-value, decoy).
 - `<prefix>.pg.parquet` — protein groups (`pg_accessions`, `grouped_runs`, peptide/feature counts, `global_qvalue`, decoy, genes); one row per channel with a populated `label` and an interim `intensity` = unnormalized sum of the group's unique peptides (stamped with a `quantification_method` cv_param; null where a group has no unique-peptide signal). See `--pg-top`.
 - `<prefix>.run.parquet`, `<prefix>.sample.parquet` — from the SDRF (when provided).
+- `<prefix>.h5mu` — the dataset's MuData view, written by default; disable with `--no-mudata`. Best-effort: a view that cannot be built is reported and the conversion still succeeds, because the Parquet views are the dataset's source of truth.
 
 ---
 
