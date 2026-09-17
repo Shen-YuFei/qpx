@@ -39,6 +39,29 @@ def _log_summary(output_folder) -> None:
     log_conversion_summary(output_folder, logger=logger)
 
 
+def _write_mudata(output_folder: Path, prefix: str, enabled: bool) -> None:
+    """Refresh or remove the dataset's MuData view after a conversion.
+
+    Uses qpx's own writer, which refuses a MuData missing a required
+    quantification modality rather than writing a partial view, and is
+    best-effort: the parquet views are the dataset's source of truth, so a view
+    that cannot be built is reported and the conversion still succeeds.
+    """
+    if not enabled:
+        try:
+            (Path(output_folder) / f"{prefix}.h5mu").unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not remove stale MuData for %s: %s", prefix, exc)
+        return
+    from qpx.mudata import write_dataset_mudata
+
+    written = write_dataset_mudata(Path(output_folder), prefix)
+    if written is None:
+        click.echo("WARNING: no MuData view was written (see the log); the Parquet views are complete")
+    else:
+        click.echo(f"MuData view: {written.name}")
+
+
 def _annotate_protein_properties(output_folder: Path, fasta: Optional[Path], prefix: Optional[str] = None) -> None:
     """Fill null protein properties from an optional FASTA after a conversion.
 
@@ -197,6 +220,16 @@ def convert():
     default=None,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--mudata/--no-mudata",
+    default=True,
+    show_default=True,
+    help=(
+        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
+        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
+        "the build on very large datasets."
+    ),
+)
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
 def convert_diann_cmd(
     report_path: Path,
@@ -217,6 +250,7 @@ def convert_diann_cmd(
     compression: str,
     diann_log: Optional[Path],
     fasta: Optional[Path],
+    mudata: bool,
     verbose: bool,
 ):
     """Convert DIA-NN report to QPX format.
@@ -285,6 +319,7 @@ def convert_diann_cmd(
 
     _annotate_protein_properties(output_folder, fasta, prefix)
     _maybe_enrich_pride(output_folder, project_accession, enrich_pride)
+    _write_mudata(output_folder, prefix, mudata)
 
     _log_summary(output_folder)
     click.echo(f"DIA-NN conversion complete. Output: {output_folder}")
@@ -932,6 +967,16 @@ def convert_openms_cmd(**kwargs):
     default=None,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--mudata/--no-mudata",
+    default=True,
+    show_default=True,
+    help=(
+        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
+        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
+        "the build on very large datasets."
+    ),
+)
 def convert_openms_consensus_cmd(
     consensusxml_path,
     sdrf_path,
@@ -945,6 +990,7 @@ def convert_openms_consensus_cmd(
     include_unassigned_psms,
     compression,
     fasta,
+    mudata,
 ):
     """Convert an OpenMS consensusXML (+ SDRF) to QPX.
 
@@ -973,6 +1019,7 @@ def convert_openms_consensus_cmd(
     )
     if written:
         _annotate_protein_properties(Path(output_folder), fasta, output_prefix)
+    _write_mudata(Path(output_folder), output_prefix, mudata and bool(written))
     _log_summary(output_folder)
     click.echo(f"consensusXML conversion complete. Wrote: {sorted(written)}")
 

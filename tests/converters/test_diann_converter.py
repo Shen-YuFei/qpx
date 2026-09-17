@@ -1452,3 +1452,35 @@ def test_protein_properties_from_fasta_on_bare_diann_accessions(converted_output
     ).fetchone()[0]
     assert filled > 0
     assert bad == 0
+
+
+@pytest.mark.parametrize("mudata_flag, expect_h5mu", [([], True), (["--no-mudata"], False)])
+def test_diann_convert_writes_the_mudata_view(tmp_path, mudata_flag, expect_h5mu):
+    """The DIA-NN converter wrote the parquet views and stopped, so the MuData view
+    had to be built by the caller (an embedded script in the nf-module)."""
+    from click.testing import CliRunner
+
+    from qpx.cli.convert import convert
+
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        convert,
+        [
+            "diann",
+            "--report-path",
+            str(_REPORT),
+            "--sdrf-file",
+            str(_SDRF),
+            "--pg-matrix-path",
+            str(_PG_MATRIX),
+            "--output-folder",
+            str(out),
+            "--output-prefix",
+            "d",
+            *mudata_flag,
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (out / "d.feature.parquet").is_file()
+    assert (out / "d.h5mu").is_file() is expect_h5mu

@@ -1077,3 +1077,63 @@ def test_openms_consensus_fasta_uses_the_output_prefix_in_a_shared_folder(tmp_pa
     assert rows[0]["pg_positions"] == [{"protein_accession": "P12345", "start": 3, "end": 10}]
     # The other dataset in the folder is left untouched.
     assert pq.read_table(folder / "first.feature.parquet").to_pylist()[0]["pg_positions"] is None
+
+
+def _consensus_convert(tmp_path, folder, *extra):
+    from click.testing import CliRunner
+
+    from qpx.cli.convert import convert
+
+    cx = tmp_path / "mudata.consensusXML"
+    cx.write_text(_TMT_CONSENSUSXML)
+    result = CliRunner().invoke(
+        convert,
+        [
+            "openms-consensus",
+            "--consensusxml",
+            str(cx),
+            "--output-folder",
+            str(folder),
+            "--output-prefix",
+            "t",
+            "--structures",
+            "feature,pg,psm",
+            *extra,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    return result
+
+
+def test_convert_writes_the_mudata_view_by_default(tmp_path):
+    """convert diann / openms-consensus wrote the parquet views and stopped, so the
+    MuData view had to be built by the caller (an embedded script in the nf-module).
+    It is now written by the converter itself, as convert openms already does."""
+    folder = tmp_path / "with_mudata"
+    result = _consensus_convert(tmp_path, folder)
+
+    assert (folder / "t.h5mu").is_file()
+    assert "MuData view: t.h5mu" in result.output
+
+
+def test_no_mudata_skips_the_build(tmp_path):
+    folder = tmp_path / "without_mudata"
+    result = _consensus_convert(tmp_path, folder, "--no-mudata")
+
+    assert not (folder / "t.h5mu").exists()
+    assert "MuData" not in result.output
+    assert (folder / "t.feature.parquet").is_file()
+
+
+def test_mudata_failure_does_not_fail_the_conversion(tmp_path, monkeypatch):
+    """The parquet views are the source of truth; a view that cannot be built is
+    reported and the conversion still succeeds."""
+    import qpx.mudata
+
+    monkeypatch.setattr(qpx.mudata, "write_dataset_mudata", lambda *a, **k: None)
+    folder = tmp_path / "failed_mudata"
+    result = _consensus_convert(tmp_path, folder)
+
+    assert not (folder / "t.h5mu").exists()
+    assert "WARNING: no MuData view was written" in result.output
+    assert (folder / "t.pg.parquet").is_file()
