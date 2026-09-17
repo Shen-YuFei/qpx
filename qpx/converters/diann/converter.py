@@ -187,13 +187,15 @@ class DiaNNConverter(BaseOrchestrator):
 
     @classmethod
     def _parse_diann_version(cls, log_path: str | None) -> str | None:
-        """Extract DIA-NN version from the first line of a summary log."""
+        """Extract the first DIA-NN version found in a summary log."""
         if not log_path:
             return None
         try:
             with open(log_path, encoding="utf-8", errors="replace") as fh:
-                match = cls._DIANN_VERSION_RE.search(fh.readline())
-                return match.group(1) if match else None
+                for line in fh:
+                    match = cls._DIANN_VERSION_RE.search(line)
+                    if match:
+                        return match.group(1)
         except OSError:
             logger.debug("Could not read DIA-NN log: %s", log_path)
-            return None
+        return None
