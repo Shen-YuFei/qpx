@@ -48,7 +48,7 @@ AB Sciex instruments use a four-component identifier: sample, period, cycle, and
 
 ## The scan_format metadata field
 
-Because the `scan` array alone does not tell a reader how to interpret the integer components, QPX files include a `scan_format` metadata field in the Parquet file footer. This field declares the format used throughout the file.
+Because the `scan` array alone does not tell a reader how to interpret the integer components, a producer can declare `scan_format` in the Parquet file footer when it knows the format used throughout the file. A one-element array alone cannot distinguish `scan` from `index`.
 
 | `scan_format` value | Meaning | Example scan value |
 | ------------------- | ------- | ------------------ |
@@ -60,6 +60,27 @@ Because the `scan` array alone does not tell a reader how to interpret the integ
     - `scan` and `index` formats always produce a **single-element** array.
     - `nativeId` format produces arrays of **2 to 4 elements**, depending on the instrument vendor.
     - The `scan_format` metadata field tells the reader how many components to expect and how to interpret them.
+
+The OpenMS consensusXML converter declares this metadata for PSM output when
+all encountered spectrum references have the same recognized format. It uses
+the original native ID keys, including explicit `scan=` and `index=`, rather
+than guessing from array length. Mixed or unknown formats remain undeclared.
+Both the in-memory and streaming conversion paths follow this rule.
+On PyArrow 14–16, a streaming writer that has already flushed batches cannot
+update its footer declaration: conversion warns and leaves `scan_format`
+unset. PyArrow 17 or newer supports the late update. A declaration known before
+the first batch is written works on all supported versions.
+
+For a declared PSM format, validation checks non-empty scan arrays against the
+lengths above. A mismatch is a warning by default and an error under strict
+validation, including `qpxc validate`. Legacy files without `scan_format` remain
+valid; an unknown historical value produces a warning and skips this check.
+This check currently covers standalone local files, not unions of multiple
+Parquet shards or partitioned datasets with potentially different declarations.
+
+Feature arrays can contain components from several supporting spectra. This
+PSM cardinality check does not apply to Feature output, and the consensusXML
+converter does not declare one native-ID format for those combined arrays.
 
 ## When to use nativeId vs scan
 
@@ -105,8 +126,10 @@ file_metadata = {
     "creation_date": "2024-06-15",
 }
 
-# Write the Parquet file with metadata
-pq.write_table(table, "output.psm.parquet", metadata=file_metadata)
+# Attach metadata to the Arrow schema before writing the Parquet file.
+encoded_metadata = {key.encode(): value.encode() for key, value in file_metadata.items()}
+table = table.replace_schema_metadata({**(table.schema.metadata or {}), **encoded_metadata})
+pq.write_table(table, "output.psm.parquet")
 ```
 
 ## Further reading
