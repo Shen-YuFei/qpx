@@ -274,9 +274,9 @@ def _copy_core(
     ``feature`` and ``pg`` carry ``intensities[].label`` — OpenMS ``-out_qpx``
     writes the run filename (feature) or a bare channel index (pg) there, so
     those two are relabeled with canonical channel labels when the experiment
-    type is known (``is_lfq=None`` preserves their source labels: no SDRF
-    evidence). When a consensusXML ``fraction_group`` design is available, that
-    cv_param is stamped onto pg/feature rows in the same streaming pass. Legacy
+    type can be resolved (``is_lfq=None`` preserves their source labels, including
+    SILAC channels already assigned by OpenMS). When a ``fraction_group`` design
+    is available, that cv_param is stamped onto pg/feature rows in the same streaming pass. Legacy
     pre-1.1 tables are projected onto the current schemas and receive mandatory
     IDs before they are atomically installed at the destination.
     """
@@ -401,7 +401,7 @@ class OpenMSConverter(BaseOrchestrator):
         maplist = parse_consensusxml_maplist(self.consensusxml_path) if self.consensusxml_path else {}
 
         channel_labels = {}
-        if maplist and experiment_type:
+        if maplist and experiment_type and experiment_type != "SILAC":
             channel_labels = channel_labels_from_consensusxml(
                 self.consensusxml_path, experiment_type, sdrf_labels, maplist=maplist
             )
@@ -409,9 +409,11 @@ class OpenMSConverter(BaseOrchestrator):
                 logger.info("Resolved %d channels from consensusXML", len(channel_labels))
         if not channel_labels and experiment_type:
             channel_labels = resolve_channel_labels(experiment_type, sdrf_labels)
-        is_lfq = experiment_type == "LFQ" if experiment_type else None
+        is_lfq = experiment_type == "LFQ" if experiment_type not in (None, "SILAC") else None
         if experiment_type is None:
             logger.info("No SDRF channel labels available; preserving OpenMS intensity labels")
+        elif experiment_type == "SILAC":
+            logger.info("Preserving OpenMS SILAC intensity labels")
 
         # OpenMS's experimental-design ``fraction_group`` (the replicate/fraction
         # grouping key) is stamped as a cv_param on pg + feature rows during the
@@ -508,6 +510,8 @@ class OpenMSConverter(BaseOrchestrator):
         is_isobaric = experiment_type in {"TMT", "iTRAQ"}
         step_name = "isobaric_quantification" if is_isobaric else "label_free_quantification"
         tool_name = "OpenMS/IsobaricWorkflow" if is_isobaric else "OpenMS/ProteomicsLFQ"
+        if experiment_type == "SILAC":
+            step_name, tool_name = "silac_quantification", "OpenMS"
         return [
             {
                 "step_order": 1,
