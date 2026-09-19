@@ -1,10 +1,15 @@
-"""Ambiguous native identities must not replace any existing core output."""
+"""Native duplicates persist with warnings while strict audit reports errors."""
 
+import logging
 from copy import deepcopy
 
+import pyarrow.parquet as pq
 import pytest
+from click.testing import CliRunner
 
+from qpx.cli.validate import validate_cmd
 from qpx.converters.openms.converter import OpenMSConverter
+from qpx.core.data.loader import load_schema
 from qpx.writers import FeatureWriter, PgWriter, PsmWriter
 from tests.conftest import make_feature_record, make_pg_record, make_psm_record
 
@@ -21,6 +26,8 @@ def _write_source_bundle(folder, conflict_view, conflict):
         first = factory()
         records = [first]
         if view == conflict_view:
+            if conflict == "unidentified":
+                first.update(sequence="", peptidoform="")
             if conflict == "provided_id":
                 first["feature_id"] = 101
             second = deepcopy(first)
@@ -41,28 +48,44 @@ def _write_source_bundle(folder, conflict_view, conflict):
     ("view", "conflict"),
     [
         ("feature", "identical"),
+        ("feature", "unidentified"),
         ("feature", "provided_id"),
         ("psm", "different_match"),
         ("pg", "different_quantity"),
     ],
 )
-def test_native_identity_conflict_preserves_entire_existing_bundle(tmp_path, view, conflict):
-    """Do not deduplicate records or invent IDs when source identity is ambiguous."""
+def test_native_duplicate_warning_preserves_source_records(tmp_path, caplog, view, conflict):
+    """Preserve duplicate rows, identities and quantities for a separate strict audit."""
     source = tmp_path / "source"
     source.mkdir()
     _write_source_bundle(source, view, conflict)
     original_inputs = {path: path.read_bytes() for path in source.iterdir()}
     output = tmp_path / "output"
     output.mkdir()
-    original_outputs = {}
     for core_view in _VIEW_INPUTS:
         path = output / f"openms.{core_view}.parquet"
-        original_outputs[path] = f"existing {core_view} output".encode()
-        path.write_bytes(original_outputs[path])
+        path.write_bytes(f"existing {core_view} output".encode())
 
-    with pytest.raises(ValueError, match="Cannot safely identify native OpenMS .*duplicate.*openms-consensus"):
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="qpx.writers.base"):
         OpenMSConverter(source).convert(output)
 
-    assert {path: path.read_bytes() for path in output.iterdir()} == original_outputs
+    assert f"Primary key ({view}_id) has 1 duplicate row" in caplog.text
+    for core_view in _VIEW_INPUTS:
+        before = pq.read_table(source / f"native.{core_view}.parquet")
+        after = pq.read_table(output / f"openms.{core_view}.parquet")
+        assert after.equals(before, check_metadata=False)
     assert {path: path.read_bytes() for path in source.iterdir()} == original_inputs
     assert not list(output.rglob("*.tmp"))
+
+    duplicate_path = output / f"openms.{view}.parquet"
+    table = pq.read_table(duplicate_path)
+    assert table.num_rows == 2
+    for strict, severity in ((False, "warning"), (True, "error")):
+        result = load_schema(view).validate_full(table, strict=strict)
+        assert result.is_valid is not strict
+        assert [issue.severity for issue in result.issues if issue.check == "duplicate_pk"] == [severity]
+    if conflict == "identical":
+        audit = CliRunner().invoke(validate_cmd, ["--file", str(duplicate_path)])
+        assert audit.exit_code == 1
+        assert "duplicate row" in audit.output

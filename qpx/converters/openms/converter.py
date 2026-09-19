@@ -156,21 +156,14 @@ def _collect_score_names(table_path: Path) -> set[str]:
 def _validate_core(discovered: dict[str, Path]) -> None:
     """Validate each discovered parquet file against its QPX schema.
 
-    Retain the usual lenient treatment of missing optional source information,
-    but reject unresolved duplicate identities in this native import path.
-    Colliding rows can represent distinct upstream objects, so neither dropping
-    them nor assigning arbitrary replacement IDs is safe.
+    Preserve source records with duplicate identities, which the writer reports
+    as warnings. Strict validation remains an explicit audit step. Missing
+    columns and type mismatches are errors; the writer rejects null IDs.
     """
     for view, path in discovered.items():
         schema = load_schema(_VIEW_SCHEMAS[view])
         table = pq.read_table(str(path))
         result = schema.validate_full(table, strict=False)
-        duplicates = [issue.message for issue in result.issues if issue.check == "duplicate_pk"]
-        if duplicates:
-            raise ValueError(
-                f"Cannot safely identify native OpenMS {view}: {'; '.join(duplicates)}. "
-                "Use `qpxc convert openms-consensus` with the original consensusXML."
-            )
         if not result.is_valid:
             errors = "; ".join(i.message for i in result.errors)
             raise ValueError(f"Validation failed for {path.name}: {errors}")
@@ -391,7 +384,7 @@ class OpenMSConverter(BaseOrchestrator):
             "`qpxc convert openms` (over the OpenMS -out_qpx parquet folder) is DEPRECATED. "
             "Some OpenMS exporters assign PSMs to the first run or emit conflicting identities "
             "(OpenMS#9872, OpenMS#9871). A companion consensusXML can restore uniquely matched PSM runs; "
-            "unresolved identities cause conversion to fail. Prefer `qpxc convert openms-consensus` "
+            "remaining duplicate IDs are retained with warnings. Prefer `qpxc convert openms-consensus` "
             "to read the original consensusXML directly."
         )
 

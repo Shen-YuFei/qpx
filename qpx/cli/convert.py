@@ -832,9 +832,10 @@ def convert_openms_cmd(**kwargs):
     ``qpxc convert openms-consensus`` to read the original consensusXML directly.
 
     With --consensusxml, uniquely matching spectrum evidence restores PSM runs.
-    Missing or ambiguous matches, or remaining duplicate identities, fail before
-    existing core outputs are replaced. Rows are not discarded or assigned
-    arbitrary IDs to resolve conflicts.
+    Missing or ambiguous spectrum matches fail before existing core outputs are
+    replaced. Duplicate identities are retained with warnings; use
+    ``qpxc validate`` to report them as errors. Rows are not discarded
+    or assigned arbitrary IDs to resolve conflicts.
 
     Validates the existing psm/feature/pg parquet files, copies them to the
     output folder, and generates the missing metadata tables (run, sample,
