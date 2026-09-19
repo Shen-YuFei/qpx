@@ -334,16 +334,21 @@ class FragPipePgAdapter(BaseConverter):
             # MaxLFQ-only experiments (detected from a "<exp> MaxLFQ Intensity"
             # column) have no Total Intensity; fall back to MaxLFQ as the primary
             # intensity rather than dropping the protein group entirely.
+            primary_intensity = None
             if total_intensity > 0:
                 primary_intensity = total_intensity
             elif maxlfq_val is not None and maxlfq_val > 0:
                 primary_intensity = maxlfq_val
-            else:
+            # Unit-specific identifications survive a missing quantity.
+            if primary_intensity is None and not any(
+                (safe_float(row.get(f"{experiment} {suffix}")) or 0) > 0
+                for suffix in ("Spectral Count", "Unique Spectral Count", "Total Spectral Count")
+            ):
                 continue
 
             # Intensities (new schema: {label, intensity})
             label = "LFQ"
-            intensities = [{"label": label, "intensity": float(primary_intensity)}]
+            intensities = [{"label": label, "intensity": primary_intensity}]
 
             # Additional intensities pre-computed by FragPipe (MaxLFQ)
             additional_intensities = []
