@@ -795,7 +795,8 @@ print(generate_example(convert_openms_cmd))
 
 ### Output Files {#openms-output}
 
-- Copies and validates the OpenMS `psm`, `feature`, and `pg` Parquet files found in `--qpx-dir`.
+- Upgrades and validates the OpenMS `psm`, `feature`, and `pg` Parquet files found in `--qpx-dir`, normalizing run references while preserving supplied IDs.
+- Recovers PSM runs from exact spectrum evidence when the companion `--consensusxml` contains peptide identifications. Missing or ambiguous matches and unresolved duplicate identities stop conversion before existing core outputs are replaced.
 - Generates `run`, `sample`, `ontology`, `provenance`, and `dataset` views.
 - Generates a MuData file when the converted quantification views are sufficient for export.
 

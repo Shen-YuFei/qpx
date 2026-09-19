@@ -135,3 +135,41 @@ def test_compressed_runs_retain_fraction_group_annotation(tmp_path):
         run_column = "grouped_runs" if view == "pg" else "run_file_name"
         expected_run = ["sample.part.1"] if view == "pg" else "sample.part.1"
         assert record[run_column] == expected_run
+
+
+@pytest.mark.parametrize("declaration", ["sdrf", "maplist"])
+def test_declared_canonical_run_is_not_stripped_again(tmp_path, declaration):
+    """An acquisition suffix can be part of an already declared canonical stem."""
+    source = tmp_path / "source"
+    source.mkdir()
+    feature = make_feature_record(run_file_name="sample.raw", intensities=[{"label": "LFQ", "intensity": 1000.0}])
+    feature["id_run_file_name"] = "sample.raw"
+    with FeatureWriter(source / "native.feature.parquet") as writer:
+        writer.write_batch([feature])
+    with PsmWriter(source / "native.psm.parquet") as writer:
+        writer.write_batch([make_psm_record(run_file_name="sample.raw")])
+    with PgWriter(source / "native.pg.parquet") as writer:
+        writer.write_batch([make_pg_record(run_file_name="sample.raw", intensities=[{"label": "LFQ", "intensity": 5000.0}])])
+    sdrf, companion = None, None
+    if declaration == "sdrf":
+        sdrf = tmp_path / "input.sdrf.tsv"
+        sdrf.write_text(
+            "source name\tcharacteristics[organism]\tcharacteristics[organism part]\tcomment[data file]\tcomment[label]\n"
+            "sample_1\tHomo sapiens\tliver\tsample.raw.mzML\tlabel free sample\n"
+        )
+    else:
+        companion = tmp_path / "native.consensusXML"
+        write_lfq_consensusxml(companion, [(0, "sample.raw.mzML", "1", "1", "1")], trailing="</consensusXML>")
+    output = tmp_path / "output"
+
+    OpenMSConverter(source, sdrf, consensusxml_path=companion).convert(output)
+
+    for view, column in (("feature", "run_file_name"), ("feature", "id_run_file_name"), ("psm", "run_file_name")):
+        assert pq.read_table(output / f"openms.{view}.parquet")[column].to_pylist() == ["sample.raw"]
+    assert pq.read_table(output / "openms.pg.parquet")["grouped_runs"].to_pylist() == [["sample.raw"]]
+    with Dataset(output, file_prefix="openms", duckdb_threads=6) as dataset:
+        assert all(result.is_valid for result in dataset.validate(strict=True).values())
+        if declaration == "sdrf":
+            for level, expected in (("peptide", 1000.0), ("protein", 5000.0)):
+                quantities = dataset.intensity(level).to_df().set_index("sample_accession")["intensity"].to_dict()
+                assert quantities == {"sample_1": expected}
