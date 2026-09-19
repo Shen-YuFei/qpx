@@ -27,6 +27,7 @@ from qpx.converters.channel_labels import (
     relabel_intensities_table,
     resolve_channel_labels,
 )
+from qpx.converters.openms.run_names import normalize_run_names
 from qpx.converters.orchestrator import BaseOrchestrator
 from qpx.converters.sdrf import SdrfConverter
 from qpx.core.constants import FEATURE, ONTOLOGY, PG, PSM, RUN, SAMPLE
@@ -219,6 +220,8 @@ def _rewrite_core_file(
         "software_provider": metadata.get(b"software_provider", b"OpenMS").decode(),
         "compression": compression,
     }
+    if view == FEATURE:
+        writer_kwargs["override_provided_ids"] = False
     identity_composite = _source_identity_composite(parquet, view)
     if identity_composite:
         writer_kwargs["identity_composite"] = identity_composite
@@ -246,6 +249,7 @@ def _rewrite_core_file(
                     run_column=run_column,
                     cv_param_resolver=fraction_group_resolver,
                 )
+                table = normalize_run_names(table, view)
                 annotated += group_annotated
                 rows += table.num_rows
                 if view != PG or "intensities" not in table.column_names:
