@@ -6,7 +6,7 @@ A scan value is always stored as an **array of int32** values. For simple instru
 
 ## Instrument-specific formats
 
-Each instrument vendor uses a different native identifier structure. QPX encodes the numeric components as an integer array.
+Each instrument vendor uses a different native identifier structure. QPX encodes all numeric components in their native order, including repeated values. The default Thermo controller components are the exception described below. The examples are not an exhaustive list of native ID formats.
 
 ### Thermo
 
@@ -26,6 +26,9 @@ Bruker TIMS instruments use a two-component identifier combining frame and scan.
 | Native ID | QPX `scan` value |
 | --------- | ---------------- |
 | `frame=120 scan=475` | `[120, 475]` |
+| `frame=120 scan=475 precursor=3` | `[120, 475, 3]` |
+| `frame=120 windowGroup=2 scan=475` | `[120, 2, 475]` |
+| `merged=0 frame=120 scanStart=4 scanEnd=8` | `[0, 120, 4, 8]` |
 
 ### Waters
 
@@ -80,11 +83,11 @@ The `scan` field appears in the following QPX views:
 | View | Field name | Notes |
 | ---- | ---------- | ----- |
 | PSM (`psm_file`) | `scan` | Scan of the identified MS/MS spectrum |
-| Feature (`feature_file`) | `id_scan` | Scan of the best PSM that identified the feature |
-| MZ (`mz_file`) | `id` | The spectrum identifier (uses the same encoding conventions) |
+| Feature (`feature_file`) | `scan` | Scan components reported by the feature producer |
+| MZ (`mz_file`) | `id` | String spectrum identifier, retaining the native ID |
 
 !!! tip
-    The `id_scan` value in the Feature view refers to the best PSM that identified the feature. The run file for that scan is recorded in `id_run_file_name`, which may differ from the feature's own `run_file_name`.
+    The OpenMS consensusXML converter can combine components from multiple supporting spectra in `feature.scan`. Use the linked PSM rows to retrieve each complete spectrum identifier; do not treat the combined feature array as one native ID. `id_run_file_name` records the direct identification's run when that origin is known.
 
 ## File metadata example
 

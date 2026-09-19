@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import re
 
 from qpx.converters.openms_consensus.feature_adapter import (
     _run_stem,
@@ -32,14 +31,10 @@ from qpx.converters.openms_consensus.feature_adapter import (
 )
 from qpx.converters.utils import safe_float
 from qpx.core.cleavage import count_missed_cleavages
+from qpx.core.scan import scan_from_native_id
 
 _log = logging.getLogger(__name__)
 
-# Thermo/Bruker/single-peak-list nativeIDs expose the spectrum ordinal directly.
-_SCAN_RE = re.compile(r"(?:scan|index|spectrum)=(\d+)", re.IGNORECASE)
-# Sciex WIFF nativeIDs (``sample=.. period=.. cycle=.. experiment=..``) carry no
-# scan/index/spectrum token; the cycle is the acquisition ordinal (scan-equivalent).
-_CYCLE_RE = re.compile(r"cycle=(\d+)", re.IGNORECASE)
 # scan is a list<int32>; keep any surrogate within the signed 32-bit range.
 _INT32_MASK = 0x7FFFFFFF
 
@@ -59,22 +54,17 @@ def _surrogate_scan(spectrum_ref: str) -> int:
 def _scan_of(spectrum_ref: str) -> list[int]:
     """Parse the scan number(s) from a spectrum reference into a list<int>.
 
-    Recognizes the common ``scan=``/``index=``/``spectrum=`` tokens (Thermo,
-    Bruker, single peak lists, Waters), falls back to the Sciex ``cycle=``
-    ordinal, and finally to a deterministic surrogate for nativeID schemes with
-    no recognizable ordinal. A completely empty reference returns ``[]`` (the
-    caller skips those PSMs). Shared with the feature adapter so psm.scan and
-    feature.scan stay consistent.
+    Keeps every numeric native ID component in its original order, except for
+    default Thermo controller components. Opaque identifiers retain the existing
+    deterministic surrogate. An empty reference returns ``[]`` (the caller skips
+    those PSMs). The feature adapter uses the same parser.
     """
     ref = str(spectrum_ref or "")
     if not ref:
         return []
-    scans = [int(m) for m in _SCAN_RE.findall(ref)]
+    scans = scan_from_native_id(ref)
     if scans:
         return scans
-    cycles = [int(m) for m in _CYCLE_RE.findall(ref)]
-    if cycles:
-        return cycles
     return [_surrogate_scan(ref)]
 
 
