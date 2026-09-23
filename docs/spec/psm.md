@@ -122,6 +122,11 @@ Several fields in the PSM view use structures shared across other QPX views:
     when only the PSM view is exported, **all `feature_id` values are null**, even
     for identifications assigned to a consensus feature in the source.
 
+    When copies of one identification sit in several consensus features (OpenMS
+    FeatureFinderIdentification on group-merged IDs), `feature_id` points to the
+    feature row in the PSM's own run, ranked by same peptidoform and charge, then
+    closest RT to the precursor, then m/z, consensus quality and `feature_id`.
+
     The API filters the recorded links:
 
     ```python

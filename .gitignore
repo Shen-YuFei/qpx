@@ -113,3 +113,4 @@ scripts/plasma_infiltration_model.py
 scripts/plot_absexpr_analysis.py
 scripts/plot_blood_biology.py
 docs/superpowers/*
+CLAUDE.md

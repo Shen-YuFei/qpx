@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`convert openms-consensus` on FeatureFinderIdentification maps built from group-merged IDs** (nf-core/mhcquant) ([#PR](https://github.com/bigbio/qpx/pull/PR)):
+  - PSM run: copies of one identification in every run's map resolve to the spectrum's run via `id_merge_index` (per ProteinIdentification) instead of `map_index`, and collapse to one PSM. Output for quantms ProteomicsLFQ/IsobaricWorkflow maps is unchanged.
+  - A single-run map with an empty column header (FileConverter featureXML → consensusXML) takes the run from the identification metadata instead of writing `run_file_name = ""`.
+  - One peak in one run reported by two consensus features (isobaric targets sharing a peak, then FeatureLinker + IDConflictResolver) is written once: the row of the consensus feature with more runs, then higher quality. PSM links follow the kept row.
+  - Own-run identifications that IDConflictResolver moved to the unassigned list are attached again to their feature: `scan`, `id_run_file_name`, confidence and the PSM link are filled for those rows.
+  - `psm.feature_id` is chosen by a fixed ranking (feature in the PSM's run, same peptidoform/charge, closest RT, m/z, quality, `feature_id`) instead of the first copy read.
+  - Percolator PEP (`MS:1001493`) and q-value are read from the hit meta values when the primary score is a search score. With peptide-level FDR (`Percolator:peptide_level_fdrs`) they are the peptide's: `feature.peptide_qvalue`/`posterior_error_probability` take the peptide's best PSM, `psm.posterior_error_probability` stays null, the PSM carries `peptide_qvalue` in `additional_scores`, and Percolator's 1.0 placeholders are not reported.
+
 - **OpenMS consensusXML empty PSM output** — both readers now warn and skip the PSM file when no exportable PSM records remain. Output paths and provenance exclude the skipped view, preventing a missing-file error during metadata generation while other views continue exporting.
 - **OpenMS consensusXML feature evidence** — preserve peptide positions using QPX's one-based coordinates — on the resolved protein group's members, or on every evidence protein for a peptide shared across groups (whose group is null), and record the source run for direct identifications. The streaming reader retains per-protein coordinate lists; ambiguous identification origins remain null.
 - **OpenMS consensusXML protein properties** — preserve the anchor protein's recorded sequence coverage and posterior probability in the PG view, including through the streaming reader. Conflicting values for the same anchor remain null.
@@ -44,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DIA-NN blank `anchor_protein`**: empty/whitespace first accession from `Protein.Group` is written as NULL; validators treat blank anchors as unset.
 
 ### Added
+
+- **`convert openms-consensus` accepts several consensusXML files** — `--consensusxml a.consensusXML,b.consensusXML` writes one dataset (e.g. one consensusXML per sample group); inputs that share a run are rejected ([#PR](https://github.com/bigbio/qpx/pull/PR)).
 
 - **`convert diann` / `convert openms-consensus` write the MuData view** — `--mudata/--no-mudata` (default on), using the same guarded writer as `convert openms`, so a MuData missing a required quantification modality is refused rather than written. Callers no longer need their own build step; the nf-modules qpx modules can drop the embedded Python once they pin a release with this.
 - **Protein properties from an optional FASTA** — `qpxc transform protein-properties` and `--fasta` on `convert diann` / `convert openms-consensus` fill null `pg.sequence_coverage`, `pg.molecular_weight` and `feature.pg_positions` for target rows from the search database. Producer values are never overwritten; proteins absent from the FASTA (e.g. DIA-NN internal decoys) stay null and are reported; the FASTA SHA-256 is recorded in provenance. Validated on PXD000612 against OpenMS-recorded values: molecular weight 290,229/290,229 identical, positions a superset of every recorded one, coverage median difference 0.0 points (corr 0.9995). Fills DIA PXD017199 and TMT MSV000085836 from 0% to 100%.

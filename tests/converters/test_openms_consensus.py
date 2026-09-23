@@ -487,8 +487,8 @@ def test_consensus_psm_unknown_nativeid_uses_surrogate_scan(tmp_path):
 
 
 def test_streaming_retains_all_protein_identification_run_paths(tmp_path):
-    """Multiple ProteinIdentification blocks contribute to id_merge_index in
-    document order; the streaming reader must not retain only the last block."""
+    """Every ProteinIdentification block keeps its own id_merge_index run list,
+    keyed by identifier; the streaming reader must not retain only the last block."""
     from qpx.converters.openms_consensus.psm_adapter import _merge_index_runs
     from qpx.converters.openms_consensus.streaming import StreamingConsensusMap
 
@@ -515,7 +515,7 @@ def test_streaming_retains_all_protein_identification_run_paths(tmp_path):
 
     consensus_map = StreamingConsensusMap(str(path))
     assert len(consensus_map.getProteinIdentifications()) == 2
-    assert _merge_index_runs(consensus_map) == ["run_A", "run_B"]
+    assert _merge_index_runs(consensus_map) == {"PI_0": ["run_A"], "PI_1": ["run_B"]}
 
 
 def _write_multi_reference_consensusxml(path):

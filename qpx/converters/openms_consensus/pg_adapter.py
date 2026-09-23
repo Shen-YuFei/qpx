@@ -24,8 +24,8 @@ from typing import Optional
 
 from qpx.converters.channel_labels import fraction_groups_from_sdrf
 from qpx.converters.openms_consensus.feature_adapter import (
-    _map_label,
-    _run_stem,
+    column_runs,
+    feature_map_info,
     load_consensus_map,
     to_proforma,
 )
@@ -98,8 +98,7 @@ def accumulate_unassigned_maps(pid, resolve_run, m: _ProteinMaps) -> None:
 
 def _protein_maps(cm) -> _ProteinMaps:
     """Index peptide/feature/run evidence by accession (see :class:`_ProteinMaps`)."""
-    headers = cm.getColumnHeaders()
-    map_run = {i: _run_stem(headers[i].filename) for i in headers}
+    map_run = column_runs(cm)
     resolve_run = _run_resolver(cm)
     m = _ProteinMaps()
     for cf in cm:  # assigned IDs: runs are the consensus feature's member maps
@@ -107,6 +106,16 @@ def _protein_maps(cm) -> _ProteinMaps:
     for pid in cm.getUnassignedPeptideIdentifications():  # run from map_index or id_merge_index (merge order)
         accumulate_unassigned_maps(pid, resolve_run, m)
     return m
+
+
+def accumulate_consensus_map(cm, map_info, resolve_run, m: _ProteinMaps, pep_intensity: dict) -> None:
+    """Fold a whole consensus map's evidence and intensities into shared accumulators."""
+    map_run = {idx: run for idx, (run, _label) in map_info.items()}
+    for cf in cm:
+        accumulate_cf_maps(cf, map_run, m)
+        accumulate_cf_intensity(cf, map_info, pep_intensity)
+    for pid in cm.getUnassignedPeptideIdentifications():
+        accumulate_unassigned_maps(pid, resolve_run, m)
 
 
 def _is_decoy_accession(acc: str) -> bool:
@@ -295,8 +304,7 @@ def _map_info(cm) -> dict[int, tuple[str, str]]:
     ``TMT126``); everything else is ``LFQ``. ``experiment_type`` is not used — it
     is ``"label-free"`` even for real quantms TMT output.
     """
-    headers = cm.getColumnHeaders()
-    return {i: (_run_stem(headers[i].filename), _map_label(headers[i].label)) for i in headers}
+    return feature_map_info(cm)
 
 
 def _peptide_intensities(cm, map_info: dict[int, tuple[str, str]]) -> dict[tuple[str, str, str], float]:

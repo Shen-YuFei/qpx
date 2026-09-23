@@ -3,10 +3,12 @@
 Each ``PeptideIdentification`` (assigned to a consensus feature or unassigned) is
 one spectrum match. We emit one psm record per hit with PK
 ``[peptidoform, charge, run_file_name, scan]``. The run is resolved from the
-identification's global ``map_index`` (→ the map's file), the parent consensus
-feature's element runs, or — for an unassigned ID in a merged multi-run
-consensusXML — its ``id_merge_index`` (→ the i-th merged MS run, see
-:func:`_merge_index_runs`); falling back to the sole run of a single-run file.
+identification's global ``map_index`` (→ the map's file) unless it is a copy of
+merged identifications whose ``id_merge_index`` places the spectrum in another
+map run, the parent consensus feature's element runs, or — for an unassigned ID
+in a merged multi-run consensusXML — its ``id_merge_index`` (→ the i-th merged
+MS run, see :func:`_merge_index_runs`); falling back to the sole run of a
+single-run file.
 """
 
 from __future__ import annotations
@@ -15,12 +17,15 @@ import hashlib
 import logging
 import math
 import re
+from collections import Counter
 
 from qpx.converters.openms_consensus.feature_adapter import (
-    _run_stem,
+    _map_label,
+    column_runs,
     feature_map_info,
     load_consensus_map,
     localization_scores,
+    primary_run_stems,
     to_modifications,
     to_proforma,
 )
@@ -30,6 +35,10 @@ from qpx.converters.openms_consensus.feature_adapter import (
 from qpx.converters.openms_consensus.feature_adapter import (
     pep_of as _pep_of,
 )
+from qpx.converters.openms_consensus.feature_adapter import (
+    qvalue_meta_of as _qvalue_meta_of,
+)
+from qpx.converters.openms_consensus.protein_groups import identification_identifier
 from qpx.converters.utils import safe_float
 from qpx.core.cleavage import count_missed_cleavages
 
@@ -125,28 +134,29 @@ def _cf_element_runs(cf, map_info: dict[int, tuple[str, str]]) -> set[str]:
     return runs
 
 
-def _merge_index_runs(cm) -> list[str]:
-    """Run stems indexed by ``id_merge_index`` (the merged-run ordering).
+def _identifier_of(identification) -> str:
+    """Identification run identifier, or ``""`` for objects that carry none."""
+    try:
+        return identification_identifier(identification) or ""
+    except AttributeError:
+        return ""
 
-    When OpenMS merges several identification runs into one consensusXML, each
-    moved PeptideIdentification is tagged with ``id_merge_index`` = the position
-    of its ORIGINAL MS run in the merge order — NOT a map-column index. OpenMS
-    records that order as the merged ProteinIdentification's primary MS run paths
-    (the ``spectra_data`` StringList), so concatenating those paths across the
-    ProteinIdentifications, in document order, yields ``id_merge_index -> run``.
 
-    Returns an empty list when no primary MS run path is recorded (e.g. a bare
-    single-run file), in which case the resolver falls back to the sole run.
+def _merge_index_runs(cm) -> dict[str, list[str]]:
+    """Run stems indexed by ``id_merge_index``, per ProteinIdentification identifier.
+
+    When OpenMS merges several identification runs, each moved PeptideIdentification
+    is tagged with ``id_merge_index`` = the position of its ORIGINAL MS run in the
+    primary MS run paths (the ``spectra_data`` StringList) of the ProteinIdentification
+    it references — NOT a map-column index. Resolving through the PID's own
+    ProteinIdentification (matched by identifier) mirrors OpenMS'
+    ``IdentifierMSRunMapper``. Identifiers without recorded run paths are omitted.
     """
-    runs: list[str] = []
+    runs: dict[str, list[str]] = {}
     for prot in cm.getProteinIdentifications():
-        get_paths = getattr(prot, "getPrimaryMSRunPath", None)
-        if get_paths is None:
-            continue
-        paths: list = []
-        get_paths(paths)
-        for p in paths:
-            runs.append(_run_stem(p.decode() if isinstance(p, (bytes, bytearray)) else str(p)))
+        stems = primary_run_stems(prot)
+        if stems:
+            runs.setdefault(_identifier_of(prot), []).extend(stems)
     return runs
 
 
@@ -154,36 +164,57 @@ def _run_resolver(cm):
     """Build a callable mapping a PeptideIdentification to its run_file_name.
 
     ``map_index`` is a global map-column index (label-free: one map per run, so it
-    is authoritative). ``id_merge_index``, however, is a per-run MERGE index in a
-    multi-run consensusXML (isobaric TMT/iTRAQ, or any merged file) — it selects
-    the i-th original MS run, not the i-th map column — so it is resolved through
-    the merged-run ordering (:func:`_merge_index_runs`), never the map-column dict.
-    Callers with a consensus feature pass ``cf_runs`` (the runs its
-    positive-intensity elements map to); with exactly one such run it is
-    authoritative for that feature's PIDs.
+    is authoritative) — except when merged identifications were copied into every
+    run's map (FeatureFinderIdentification fed a group-merged idXML, then linked).
+    Then several ProteinIdentifications record the same multi-run ``spectra_data``
+    (OpenMS' ``IdentifierMSRunMapper`` rejects that layout, so quantms output never
+    has it), ``map_index`` names the map the copy landed in, and ``id_merge_index``
+    names the spectrum's run. That run wins when it is one of the label-free map
+    runs; when the two agree nothing changes.
+
+    ``id_merge_index`` is otherwise only used without a ``map_index``: through the
+    PID's own ProteinIdentification (:func:`_merge_index_runs`), falling back to
+    all run paths in document order when the own list cannot hold the index
+    (e.g. one ProteinIdentification per run). Callers with a consensus feature
+    pass ``cf_runs`` (the runs its positive-intensity elements map to); with
+    exactly one such run it is authoritative for that feature's PIDs.
     """
     headers = cm.getColumnHeaders()
-    map_run = {idx: _run_stem(headers[idx].filename) for idx in headers}
-    distinct = sorted(set(map_run.values()))
-    sole_run = distinct[0] if len(distinct) == 1 else None
-    merge_runs = _merge_index_runs(cm)
+    map_run = column_runs(cm)
+    map_runs = set(map_run.values())
+    label_free_maps = {idx for idx in headers if _map_label(getattr(headers[idx], "label", "")) == "LFQ"}
+    sole_run = next(iter(map_runs)) if len(map_runs) == 1 else None
+    runs_by_identifier = _merge_index_runs(cm)
+    run_lists = [primary_run_stems(prot) for prot in cm.getProteinIdentifications()]
+    all_runs = [run for runs in run_lists for run in runs]
+    list_counts = Counter(tuple(runs) for runs in run_lists if len(runs) > 1)
+    copied_lists = {runs for runs, count in list_counts.items() if count > 1}
+
+    def merged_run(pid) -> tuple[str | None, bool]:
+        """The id_merge_index run, and whether it comes from a copied multi-run list."""
+        if not pid.metaValueExists("id_merge_index"):
+            return None, False
+        idx = int(pid.getMetaValue("id_merge_index"))
+        own = runs_by_identifier.get(_identifier_of(pid), [])
+        if 0 <= idx < len(own):
+            return own[idx], tuple(own) in copied_lists
+        return (all_runs[idx] if 0 <= idx < len(all_runs) else None), False
 
     def resolve(pid, cf_runs=None) -> str | None:
-        # Global map index, when present, is always authoritative.
+        origin, copied_ids = merged_run(pid)
         if pid.metaValueExists("map_index"):
-            run = map_run.get(int(pid.getMetaValue("map_index")))
+            idx = int(pid.getMetaValue("map_index"))
+            run = map_run.get(idx)
             if run:
-                return run
+                moved = copied_ids and idx in label_free_maps and origin in map_runs
+                return origin if moved else run
         # Assigned PID: fall back to the consensus feature's single element run.
         if cf_runs and len(cf_runs) == 1:
             return next(iter(cf_runs))
         # Unassigned PID in a merged multi-run consensusXML: id_merge_index selects
-        # the i-th original MS run (merge order), resolved via the merged
-        # ProteinIdentification's primary MS run paths — NOT the map-column dict.
-        if pid.metaValueExists("id_merge_index"):
-            idx = int(pid.getMetaValue("id_merge_index"))
-            if 0 <= idx < len(merge_runs):
-                return merge_runs[idx]
+        # the original MS run, NOT a map column.
+        if origin:
+            return origin
         return sole_run
 
     return resolve
@@ -208,7 +239,7 @@ def consensus_psms_to_records(consensusxml_path: str | None = None, cm=None) -> 
     return records
 
 
-def _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, higher_better):
+def _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, higher_better, peptide_level=False):
     """Assemble one PSM's ``additional_scores`` and its localisation site scores.
 
     Extracted from :func:`psm_records_for_pid` to keep that function within the
@@ -224,6 +255,11 @@ def _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, hi
         # has no dedicated q-value column.
         name = "q-value" if score_is_qvalue else (score_type or "search_score")
         additional_scores.append({"score_name": name, "score_value": score, "higher_better": higher_better})
+    if not score_is_qvalue and not peptide_level:
+        # A search-score primary (e.g. COMET:xcorr) leaves the Percolator q-value in the hit meta values.
+        qvalue = _qvalue_meta_of(primary)
+        if qvalue is not None:
+            additional_scores.append({"score_name": "q-value", "score_value": qvalue, "higher_better": False})
     # Preserve the other colliding hits' (i.e. the other engines') search scores
     # so a comet+msgf merged spectrum does not lose either engine's score.
     for other in hits:
@@ -247,8 +283,17 @@ def _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, hi
     return additional_scores, site_scores
 
 
-def psm_records_for_pid(pid, resolve_run, seen: set[tuple], cf_runs=None, enzyme=None) -> list[dict]:
+def psm_records_for_pid(
+    pid, resolve_run, seen: set[tuple], cf_runs=None, enzyme=None, duplicates=None, confidence=None
+) -> list[dict]:
     """PSM records for one PeptideIdentification (deduped via the shared ``seen`` set).
+
+    ``duplicates``, when a list, receives ``(key, rt, observed_mz)`` for every hit
+    whose key was already emitted, so the caller can weigh this copy's feature link.
+
+    ``confidence`` (a :class:`PeptideLevelConfidence`) marks peptide-level Percolator
+    runs: their PEP/q-value belong to the peptide, so the PSM PEP stays null and the
+    peptide q-value goes to ``additional_scores`` as ``peptide_qvalue``.
 
     ``cf_runs`` is the consensus feature's element-run set (passed for assigned
     PIDs); it lets :func:`_run_resolver` attribute a PID whose ``id_merge_index``
@@ -291,6 +336,8 @@ def psm_records_for_pid(pid, resolve_run, seen: set[tuple], cf_runs=None, enzyme
     higher_better = bool(pid.isHigherScoreBetter())
     for key in order:
         if key in seen:
+            if duplicates is not None:
+                duplicates.append((key, float(pid.getRT()) if pid.getRT() else None, obs_mz))
             continue
         seen.add(key)
         hits = groups[key]
@@ -303,9 +350,16 @@ def psm_records_for_pid(pid, resolve_run, seen: set[tuple], cf_runs=None, enzyme
         charge = int(primary.getCharge() or 0)
         calc_mz = float(seq_obj.getMZ(charge)) if charge > 0 else None
         is_decoy = primary.metaValueExists("target_decoy") and "decoy" in str(primary.getMetaValue("target_decoy")).lower()
-        pep = _pep_of(primary)
+        peptide_level = confidence is not None and confidence.applies(pid)
+        pep = None if peptide_level else _pep_of(primary)
         score = safe_float(primary.getScore())
-        additional_scores, site_scores = _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, higher_better)
+        additional_scores, site_scores = _psm_additional_scores(
+            primary, hits, score, score_type, score_is_qvalue, higher_better, peptide_level=peptide_level
+        )
+        if peptide_level:
+            peptide_qvalue = confidence.of(to_proforma(seq_obj))[1]
+            if peptide_qvalue is not None:
+                additional_scores.append({"score_name": "peptide_qvalue", "score_value": peptide_qvalue, "higher_better": False})
         modifications = to_modifications(seq_obj, site_scores)
         records.append(
             {

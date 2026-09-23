@@ -28,10 +28,16 @@ _log = logging.getLogger(__name__)
 _CHANNEL_RE = re.compile(r"(tmt|itraq)\d*plex?_(\d+[NC]?)", re.IGNORECASE)
 
 # Meta values OpenMS uses for the posterior error probability, best first.
-_PEP_META_KEYS = ("Posterior Error Probability_score", "PEP", "pep")
+_PEP_META_KEYS = ("Posterior Error Probability_score", "PEP", "pep", "MS:1001493")
 
 # Score types that mean the PeptideIdentification's primary score IS a q-value.
 _QVALUE_SCORE_TYPES = ("q-value", "qvalue", "fdr")
+
+# Hit meta values carrying the Percolator q-value when the primary score is a search score.
+_QVALUE_META_KEYS = ("q-value", "MS:1001491")
+
+# SearchParameters flag PercolatorAdapter records when its q-values are peptide-level.
+_PEPTIDE_LEVEL_FDR_KEY = "Percolator:peptide_level_fdrs"
 
 
 def mass_error_ppm(calculated_mz, observed_mz) -> float | None:
@@ -134,6 +140,31 @@ def pep_of(hit) -> float | None:
     return None
 
 
+def qvalue_meta_of(hit) -> float | None:
+    """The q-value a hit carries as a meta value (Percolator output), or ``None``."""
+    for mv in _QVALUE_META_KEYS:
+        if hit.metaValueExists(mv):
+            return safe_float(hit.getMetaValue(mv))
+    return None
+
+
+def peptide_level_fdr_identifiers(cm) -> set[str]:
+    """Identifiers of the identification runs whose Percolator q-values are peptide-level."""
+    identifiers = set()
+    for prot in cm.getProteinIdentifications():
+        get_params = getattr(prot, "getSearchParameters", None)
+        if get_params is None:
+            continue
+        params = get_params()
+        if params.metaValueExists(_PEPTIDE_LEVEL_FDR_KEY) and str(params.getMetaValue(_PEPTIDE_LEVEL_FDR_KEY)) in (
+            "1",
+            "true",
+            "True",
+        ):
+            identifiers.add(identification_identifier(prot) or "")
+    return identifiers
+
+
 def qvalue_of(hit, score_type: str) -> float | None:
     """Peptide-level q-value for a PeptideHit, or ``None`` when unavailable.
 
@@ -146,6 +177,65 @@ def qvalue_of(hit, score_type: str) -> float | None:
     if str(score_type or "").lower() not in _QVALUE_SCORE_TYPES:
         return None
     return safe_float(hit.getScore())
+
+
+class PeptideLevelConfidence:
+    """Peptide-level Percolator q-value and PEP per peptidoform, from runs that record peptide-level FDR.
+
+    With peptide-level FDR Percolator scores each peptide once: its best PSM carries the
+    peptide's q-value and PEP, every other PSM of that peptide gets 1.0. Those 1.0 values
+    are placeholders, not confidences: they are skipped, and a peptide whose best PSM is
+    not in the map keeps a null q-value and PEP rather than 1.0.
+    """
+
+    def __init__(self, cm):
+        self.identifiers = peptide_level_fdr_identifiers(cm)
+        self._best: dict[str, tuple[float | None, float | None]] = {}
+
+    def __bool__(self) -> bool:
+        return bool(self.identifiers)
+
+    def applies(self, pid) -> bool:
+        return (identification_identifier(pid) or "") in self.identifiers
+
+    def add(self, pids) -> None:
+        for pid in pids:
+            if not self.applies(pid):
+                continue
+            for hit in pid.getHits():
+                key = to_proforma(hit.getSequence())
+                pep, qvalue = self._best.get(key, (None, None))
+                self._best[key] = (_min_or(pep, _scored(pep_of(hit))), _min_or(qvalue, _scored(qvalue_meta_of(hit))))
+
+    def of(self, peptidoform: str) -> tuple[float | None, float | None]:
+        """``(PEP, q-value)`` of a peptidoform's best PSM."""
+        return self._best.get(peptidoform, (None, None))
+
+
+def peptide_level_confidence(cm) -> PeptideLevelConfidence:
+    """Collect the peptide-level confidence of every identification in ``cm`` (one extra pass when streamed)."""
+    confidence = PeptideLevelConfidence(cm)
+    if not confidence:
+        return confidence
+    if hasattr(cm, "iter_all"):
+        for kind, obj in cm.iter_all():
+            confidence.add(obj.getPeptideIdentifications() if kind == "element" else [obj])
+    else:
+        for cf in cm:
+            confidence.add(cf.getPeptideIdentifications())
+        confidence.add(cm.getUnassignedPeptideIdentifications())
+    return confidence
+
+
+def _scored(value: float | None) -> float | None:
+    """Drop Percolator's peptide-level placeholder 1.0."""
+    return None if value is None or value >= 1.0 else value
+
+
+def _min_or(current: float | None, value: float | None) -> float | None:
+    if value is None:
+        return current
+    return value if current is None else min(current, value)
 
 
 def _canonical_channel(label: Optional[str]) -> str:
@@ -418,6 +508,7 @@ def _confidence_by_run(
     map_info: dict[int, tuple[str, str]],
     cf_runs: Optional[set[str]] = None,
     resolve_run=None,
+    confidence: Optional[PeptideLevelConfidence] = None,
 ) -> dict[str, tuple[float | None, float | None]]:
     """Return the first identification's PEP and q-value for each run."""
     confidence_by_run: dict[str, tuple[float | None, float | None]] = {}
@@ -428,7 +519,10 @@ def _confidence_by_run(
             continue
         hit = hits[0]
         score_type = str(pid.getScoreType() or "")
-        confidence_by_run[pid_run] = (pep_of(hit), qvalue_of(hit, score_type))
+        if confidence is not None and confidence.applies(pid):
+            confidence_by_run[pid_run] = confidence.of(to_proforma(hit.getSequence()))
+        else:
+            confidence_by_run[pid_run] = (pep_of(hit), qvalue_of(hit, score_type))
     return confidence_by_run
 
 
@@ -478,12 +572,49 @@ def consensus_features_to_records(
     from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 
     resolve_run = _run_resolver(cm)
+    removed = removed_identifications_index(cm.getUnassignedPeptideIdentifications())
+    confidence = peptide_level_confidence(cm)
     records: list[dict] = []
     for cf in cm:
         records.extend(
-            feature_records_for_cf(cf, map_info, group_map, enzyme=enzyme, group_meta=group_meta, resolve_run=resolve_run)
+            feature_records_for_cf(
+                cf,
+                map_info,
+                group_map,
+                enzyme=enzyme,
+                group_meta=group_meta,
+                resolve_run=resolve_run,
+                removed_pids=removed_same_peptide_ids(cf, removed),
+                confidence=confidence,
+            )
         )
     return records
+
+
+def primary_run_stems(protein_identification) -> list[str]:
+    """Run stems of one ProteinIdentification's primary MS run paths (``spectra_data``), in order."""
+    get_paths = getattr(protein_identification, "getPrimaryMSRunPath", None)
+    if get_paths is None:
+        return []
+    paths: list = []
+    get_paths(paths)
+    return [_run_stem(p.decode() if isinstance(p, (bytes, bytearray)) else str(p)) for p in paths]
+
+
+def column_runs(cm) -> dict[int, str]:
+    """Map index -> run_file_name from the consensusXML column headers.
+
+    The single source of the column -> run mapping for every adapter. A lone column
+    without a filename (a single-run map promoted by FileConverter) takes the one
+    primary MS run all ProteinIdentifications record, when there is exactly one.
+    """
+    headers = cm.getColumnHeaders()
+    runs = {idx: _run_stem(headers[idx].filename) for idx in headers}
+    if len(runs) == 1 and not next(iter(runs.values())):
+        id_runs = {run for prot in cm.getProteinIdentifications() for run in primary_run_stems(prot)}
+        if len(id_runs) == 1:
+            runs = dict.fromkeys(runs, id_runs.pop())
+    return runs
 
 
 def feature_map_info(cm) -> dict[int, tuple[str, str]]:
@@ -493,7 +624,8 @@ def feature_map_info(cm) -> dict[int, tuple[str, str]]:
     LFQ) — experiment_type is unreliable (quantms writes "label-free" for TMT).
     """
     headers = cm.getColumnHeaders()
-    return {idx: (_run_stem(headers[idx].filename), _map_label(headers[idx].label)) for idx in headers}
+    runs = column_runs(cm)
+    return {idx: (runs[idx], _map_label(headers[idx].label)) for idx in headers}
 
 
 def _protein_group_fields(pid, group_map, group_meta) -> dict:
@@ -589,22 +721,93 @@ def _feature_identification_fields(run, protein_fields, evidence_by_run, all_pos
     }
 
 
+# IDConflictResolver moves the identifications it drops from a consensus feature to
+# the unassigned list and records the feature's unique id under this meta value.
+_RESOLVED_FROM_KEY = "feature_id"
+
+
+def _cf_unique_id(cf) -> str | None:
+    getter = getattr(cf, "getUniqueId", None)
+    uid = getter() if getter is not None else None
+    return str(uid) if uid else None
+
+
+def removed_identifications_index(unassigned_pids) -> dict[str, list]:
+    """Unassigned identifications IDConflictResolver removed, keyed by consensus feature unique id."""
+    index: dict[str, list] = {}
+    for pid in unassigned_pids:
+        if not pid.metaValueExists(_RESOLVED_FROM_KEY):
+            continue
+        uid = str(pid.getMetaValue(_RESOLVED_FROM_KEY))
+        if uid.isdigit():
+            index.setdefault(uid, []).append(pid)
+    return index
+
+
+def _same_peptide(pid, sequence) -> bool:
+    hits = pid.getHits()
+    return bool(hits) and hits[0].getSequence() == sequence
+
+
+def removed_same_peptide_ids(cf, removed_index) -> list:
+    """Identifications removed from ``cf`` that name the peptide it kept; conflicting ones stay unassigned."""
+    if not removed_index:
+        return []
+    pids = cf.getPeptideIdentifications()
+    uid = _cf_unique_id(cf)
+    if not pids or not pids[0].getHits() or uid is None:
+        return []
+    sequence = pids[0].getHits()[0].getSequence()
+    return [pid for pid in removed_index.pop(uid, []) if _same_peptide(pid, sequence)]
+
+
+def _best_first(pids) -> list:
+    def key(pid):
+        score = float(pid.getHits()[0].getScore())
+        return -score if pid.isHigherScoreBetter() else score
+
+    return sorted(pids, key=key)
+
+
+def _best_removed_per_run(pids, removed, map_info, cf_runs, resolve_run) -> list:
+    """Best removed identification of each run not already identified by a kept one."""
+    covered = {_pid_run(pid, map_info, cf_runs, resolve_run) for pid in pids}
+    best: list = []
+    for pid in _best_first(removed):
+        run = _pid_run(pid, map_info, cf_runs, resolve_run)
+        if run is not None and run not in covered:
+            covered.add(run)
+            best.append(pid)
+    return best
+
+
 def feature_records_for_cf(
-    cf, map_info: dict[int, tuple[str, str]], group_map=None, enzyme=None, group_meta=None, resolve_run=None
+    cf,
+    map_info: dict[int, tuple[str, str]],
+    group_map=None,
+    enzyme=None,
+    group_meta=None,
+    resolve_run=None,
+    removed_pids=None,
+    confidence=None,
 ) -> list[dict]:
     """Feature records for one consensus feature (one per run, channels as intensities).
 
     ``pg_accessions`` carries the full protein-group membership; the feature->pg
     association is computed on read via the ``Dataset`` softlink (bigbio/qpx#269),
-    so ``pg_ids`` is left unset here.
+    so ``pg_ids`` is left unset here. ``removed_pids`` are same-peptide
+    identifications IDConflictResolver dropped from this feature; the best one of
+    each run without a kept identification supplies that run's scan and confidence.
     """
     pids = cf.getPeptideIdentifications()
     if not pids or not pids[0].getHits():
         return []
     by_run = _group_subfeatures_by_run(cf, map_info)
     cf_runs = set(by_run)
+    if removed_pids:
+        pids = list(pids) + _best_removed_per_run(pids, removed_pids, map_info, cf_runs, resolve_run)
     scan_by_run = _scan_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run)
-    confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run)
+    confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run, confidence=confidence)
     evidence_by_run, all_positions = _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run)
     hit = pids[0].getHits()[0]
     seq_obj = hit.getSequence()

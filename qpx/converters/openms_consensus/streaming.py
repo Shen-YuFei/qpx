@@ -144,17 +144,25 @@ class _SubFeature:
 
 
 class _ConsensusFeature:
-    __slots__ = ("_charge", "_mz", "_rt", "_subs", "_pids")
+    __slots__ = ("_charge", "_mz", "_rt", "_subs", "_pids", "_quality", "_uid")
 
-    def __init__(self, charge, mz, rt, subs, pids):
+    def __init__(self, charge, mz, rt, subs, pids, quality=0.0, uid=0):
+        self._uid = uid
         self._charge = charge
         self._mz = mz
         self._rt = rt
         self._subs = subs
         self._pids = pids
+        self._quality = quality
 
     def getCharge(self):
         return self._charge
+
+    def getQuality(self):
+        return self._quality
+
+    def getUniqueId(self) -> int:
+        return self._uid
 
     def getMZ(self):
         return self._mz
@@ -178,15 +186,31 @@ class _Group:
         self.accessions = accessions
 
 
-class _ProteinIdentification:
-    __slots__ = ("_hits", "_groups", "_score_type", "_run_paths", "_identifier")
+class _SearchParameters:
+    """The SearchParameters UserParams, with the pyopenms meta value accessors."""
 
-    def __init__(self, hits, groups, score_type, run_paths=None, identifier=""):
+    __slots__ = ("_meta",)
+
+    def __init__(self, meta):
+        self._meta = meta or {}
+
+    def metaValueExists(self, name):
+        return name in self._meta
+
+    def getMetaValue(self, name):
+        return self._meta.get(name)
+
+
+class _ProteinIdentification:
+    __slots__ = ("_hits", "_groups", "_score_type", "_run_paths", "_identifier", "_search_meta")
+
+    def __init__(self, hits, groups, score_type, run_paths=None, identifier="", search_meta=None):
         self._hits = hits
         self._groups = groups
         self._score_type = score_type
         self._run_paths = run_paths or []
         self._identifier = identifier
+        self._search_meta = search_meta or {}
 
     @property
     def identifier(self):
@@ -201,6 +225,9 @@ class _ProteinIdentification:
 
     def getScoreType(self):
         return self._score_type
+
+    def getSearchParameters(self):
+        return _SearchParameters(self._search_meta)
 
     def getPrimaryMSRunPath(self, output):
         # Mirror pyopenms: append the merged run's spectra_data (as bytes) so the
@@ -293,7 +320,9 @@ def _parse_consensus_element(el, ph_to_acc: dict[str, str]) -> _ConsensusFeature
                     )
         elif tag == "PeptideIdentification":
             pids.append(_parse_peptide_id(child, ph_to_acc))
-    return _ConsensusFeature(charge, mz, rt, subs, pids)
+    # quality is a C++ float in OpenMS, like the sub-feature intensities
+    uid = el.attrib.get("id", "").removeprefix("e_")
+    return _ConsensusFeature(charge, mz, rt, subs, pids, _f32(el.attrib.get("quality") or 0.0), int(uid) if uid.isdigit() else 0)
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +353,7 @@ class StreamingConsensusMap:
         ph_meta: dict[str, str] = {}  # ProteinIdentification-level UserParams (groups live here)
         prot_score_type = ""
         identifier = ""
+        search_meta: dict[str, str] = {}
         for event, el in iterparse(self._path, events=("start", "end")):
             tag = _localname(el.tag)
             if event == "end" and tag == "map":
@@ -335,9 +365,11 @@ class StreamingConsensusMap:
                 enzyme = el.attrib.get("enzyme", "")
                 if enzyme and not self._enzyme:
                     self._enzyme = enzyme
+                search_meta = _user_params(el)
                 el.clear()
             elif event == "start" and tag == "IdentificationRun":
                 identifier = el.attrib.get("id", "")
+                search_meta = {}
             elif event == "start" and tag == "ProteinIdentification":
                 ph_hits = []
                 ph_meta = {}
@@ -355,7 +387,12 @@ class StreamingConsensusMap:
                 ph_meta = _user_params(el)
                 self._prots.append(
                     _ProteinIdentification(
-                        ph_hits, self._build_groups(ph_meta), prot_score_type, _parse_spectra_data(ph_meta), identifier
+                        ph_hits,
+                        self._build_groups(ph_meta),
+                        prot_score_type,
+                        _parse_spectra_data(ph_meta),
+                        identifier,
+                        search_meta,
                     )
                 )
                 el.clear()
