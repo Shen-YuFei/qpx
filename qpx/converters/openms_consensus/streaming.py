@@ -158,10 +158,12 @@ class _ConsensusFeature:
     def getCharge(self):
         return self._charge
 
-    def getQuality(self):
+    def getQuality(self):  # pylint: disable=invalid-name
+        """Consensus feature quality (pyopenms accessor name)."""
         return self._quality
 
-    def getUniqueId(self) -> int:
+    def getUniqueId(self) -> int:  # pylint: disable=invalid-name
+        """Consensus feature unique id (pyopenms accessor name)."""
         return self._uid
 
     def getMZ(self):
@@ -194,10 +196,12 @@ class _SearchParameters:
     def __init__(self, meta):
         self._meta = meta or {}
 
-    def metaValueExists(self, name):
+    def metaValueExists(self, name):  # pylint: disable=invalid-name
+        """Whether the search parameters carry ``name`` (pyopenms accessor name)."""
         return name in self._meta
 
-    def getMetaValue(self, name):
+    def getMetaValue(self, name):  # pylint: disable=invalid-name
+        """Value of search parameter ``name`` (pyopenms accessor name)."""
         return self._meta.get(name)
 
 
@@ -226,7 +230,8 @@ class _ProteinIdentification:
     def getScoreType(self):
         return self._score_type
 
-    def getSearchParameters(self):
+    def getSearchParameters(self):  # pylint: disable=invalid-name
+        """SearchParameters UserParams (pyopenms accessor name)."""
         return _SearchParameters(self._search_meta)
 
     def getPrimaryMSRunPath(self, output):

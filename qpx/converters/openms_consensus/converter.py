@@ -189,6 +189,7 @@ class _FeatureDeduplicator:
         return fid
 
     def log(self) -> None:
+        """Warn once with the number of dropped rows."""
         if self.dropped:
             _log.warning(
                 "Dropped %d duplicate feature row(s): one peak in one run reported by two consensus features "
@@ -198,7 +199,7 @@ class _FeatureDeduplicator:
             )
 
 
-class _PsmKeys:
+class _PsmKeys:  # pylint: disable=too-many-instance-attributes
     """PSM identity keys already emitted (the dedup ``seen`` set shared by both paths).
 
     OpenMS writes unassigned identifications before the consensus features, while the
@@ -231,6 +232,7 @@ class _PsmKeys:
         return True
 
     def add(self, key) -> None:
+        """Register an emitted key at the next output row."""
         if self.unassigned and self.before_features:
             self._claimable[key] = self.rows
         elif not self.unassigned:
@@ -251,6 +253,7 @@ class _PsmKeys:
             self.feature_id_patch[row] = feature_id
 
     def start_file(self) -> None:
+        """Reset the per-file state before the next input."""
         # Runs never span inputs, so no later file can offer a link for these keys.
         self._claimable.clear()
         self._links.clear()
@@ -294,7 +297,7 @@ def _rewrite_parquet_rows(
     os.replace(tmp, path)
 
 
-class _RowPruning:
+class _RowPruning:  # pylint: disable=too-few-public-methods
     """Writer mixin: drop ``drop_rows`` and apply ``feature_id_patch`` (output positions) before validation."""
 
     drop_rows: frozenset = frozenset()
@@ -302,6 +305,7 @@ class _RowPruning:
     remap_feature_id = None
 
     def _validate_identity_uniqueness(self) -> None:
+        # pylint: disable=no-member  # mixed into FeatureWriter / PsmWriter, which define these
         if self.drop_rows or self.feature_id_patch or self.remap_feature_id is not None:
             _rewrite_parquet_rows(
                 self._validation_path,
@@ -345,10 +349,12 @@ class _PgAccumulator:
         self._protein_ids.extend(cm.getProteinIdentifications())
         self._inputs += 1
 
-    def getProteinIdentifications(self) -> list:
+    def getProteinIdentifications(self) -> list:  # pylint: disable=invalid-name
+        """ProteinIdentifications of every input (pyopenms accessor name)."""
         return self._protein_ids
 
     def build(self, sdrf_path, top) -> list[dict]:
+        """pg records over all inputs."""
         from qpx.converters.openms_consensus.pg_adapter import build_pg_records
 
         return build_pg_records(self, self.map_info, self.maps, self.pep_intensity, sdrf_path, top)

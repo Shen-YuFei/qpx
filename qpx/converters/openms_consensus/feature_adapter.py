@@ -196,9 +196,11 @@ class PeptideLevelConfidence:
         return bool(self.identifiers)
 
     def applies(self, pid) -> bool:
+        """Whether ``pid`` comes from a peptide-level FDR run."""
         return (identification_identifier(pid) or "") in self.identifiers
 
     def add(self, pids) -> None:
+        """Take the best q-value and PEP of each peptidoform from ``pids``."""
         for pid in pids:
             if not self.applies(pid):
                 continue
