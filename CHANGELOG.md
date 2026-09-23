@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`convert openms-consensus` on FeatureFinderIdentification maps built from group-merged IDs** (nf-core/mhcquant) ([#PR](https://github.com/bigbio/qpx/pull/PR)):
+- **`convert openms-consensus` on FeatureFinderIdentification maps built from group-merged IDs** (nf-core/mhcquant) ([#334](https://github.com/bigbio/qpx/pull/334)):
   - PSM run: copies of one identification in every run's map resolve to the spectrum's run via `id_merge_index` (per ProteinIdentification) instead of `map_index`, and collapse to one PSM. Output for quantms ProteomicsLFQ/IsobaricWorkflow maps is unchanged.
   - A single-run map with an empty column header (FileConverter featureXML → consensusXML) takes the run from the identification metadata instead of writing `run_file_name = ""`.
   - One peak in one run reported by two consensus features (isobaric targets sharing a peak, then FeatureLinker + IDConflictResolver) is written once: the row of the consensus feature with more runs, then higher quality. PSM links follow the kept row.
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`convert openms-consensus` accepts several consensusXML files** — `--consensusxml a.consensusXML,b.consensusXML` writes one dataset (e.g. one consensusXML per sample group); inputs that share a run are rejected ([#PR](https://github.com/bigbio/qpx/pull/PR)).
+- **`convert openms-consensus` accepts several consensusXML files** — `--consensusxml a.consensusXML,b.consensusXML` writes one dataset (e.g. one consensusXML per sample group); inputs that share a run are rejected ([#334](https://github.com/bigbio/qpx/pull/334)).
 
 - **`convert diann` / `convert openms-consensus` write the MuData view** — `--mudata/--no-mudata` (default on), using the same guarded writer as `convert openms`, so a MuData missing a required quantification modality is refused rather than written. Callers no longer need their own build step; the nf-modules qpx modules can drop the embedded Python once they pin a release with this.
 - **Protein properties from an optional FASTA** — `qpxc transform protein-properties` and `--fasta` on `convert diann` / `convert openms-consensus` fill null `pg.sequence_coverage`, `pg.molecular_weight` and `feature.pg_positions` for target rows from the search database. Producer values are never overwritten; proteins absent from the FASTA (e.g. DIA-NN internal decoys) stay null and are reported; the FASTA SHA-256 is recorded in provenance. Validated on PXD000612 against OpenMS-recorded values: molecular weight 290,229/290,229 identical, positions a superset of every recorded one, coverage median difference 0.0 points (corr 0.9995). Fills DIA PXD017199 and TMT MSV000085836 from 0% to 100%.
