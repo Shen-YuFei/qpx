@@ -412,10 +412,13 @@ def _cf_feature_psm_records(
     dedup=None,
     removed_index=None,
     confidence=None,
+    include_unassigned_psms=True,
 ):
     """Feature + PSM records for one consensus feature, cross-linked when both views
     are emitted. Shared by the streaming and in-memory paths so their output matches.
     ``dedup`` (a :class:`_FeatureDeduplicator`) filters duplicate feature rows.
+    ``include_unassigned_psms`` controls whether recovered source-unassigned IDs
+    are emitted as PSM rows; they remain available for Feature metadata recovery.
     """
     from qpx.converters.openms_consensus.feature_adapter import feature_records_for_cf, removed_same_peptide_ids
     from qpx.converters.openms_consensus.psm_adapter import _cf_element_runs, psm_records_for_pid
@@ -442,7 +445,10 @@ def _cf_feature_psm_records(
         # Multi-run isobaric PIDs carry a local id_merge_index; the feature's
         # element runs disambiguate which run they belong to.
         cf_runs = _cf_element_runs(cf, map_info)
-        for pid in list(cf.getPeptideIdentifications()) + removed:
+        pids = list(cf.getPeptideIdentifications())
+        if include_unassigned_psms:
+            pids.extend(removed)
+        for pid in pids:
             cf_psms.extend(
                 psm_records_for_pid(
                     pid, resolve_run, seen, enzyme=enzyme, cf_runs=cf_runs, duplicates=duplicates, confidence=confidence
@@ -530,6 +536,7 @@ def _stream_feature_psm(
                 dedup=dedup,
                 removed_index=removed_index,
                 confidence=confidence,
+                include_unassigned_psms=include_unassigned_psms,
             )
             feat_buf.extend(cf_feats)
             feature_count += len(cf_feats)
@@ -1008,6 +1015,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                         dedup=dedup,
                         removed_index=removed_index,
                         confidence=confidence,
+                        include_unassigned_psms=include_unassigned_psms,
                     )
                     feat_recs.extend(cf_feats)
                     psm_recs.extend(cf_psms)

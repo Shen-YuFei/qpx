@@ -425,6 +425,20 @@ def test_conflict_resolved_own_run_identification_is_recovered(tmp_path, streami
     _assert_valid(out, ("feature", "psm"))
 
 
+@pytest.mark.parametrize("streaming", [False, True], ids=["memory", "streaming"])
+def test_no_include_unassigned_psms_excludes_recovered_source_ids(tmp_path, streaming):
+    """The opt-out excludes recovered source-unassigned PSMs but keeps Feature metadata recovery."""
+    source = tmp_path / "resolved-no-unassigned.consensusXML"
+    source.write_text(_conflict_resolved_xml())
+
+    _, written = _convert(tmp_path, str(source), streaming, include_unassigned_psms=False)
+
+    psms = _rows(written, "psm")
+    assert sorted(row["scan"][0] for row in psms) == [10, 50]
+    features = {(row["peptidoform"], row["run_file_name"]): row for row in _rows(written, "feature")}
+    assert features[("PEPTIDEK", "run_B")]["scan"] == [20]
+
+
 def _percolator_run(run_id, spectra_data, peptide_level):
     """An identification run as PercolatorAdapter writes it, with its FDR level in the search parameters."""
     flag = "1" if peptide_level else "0"
