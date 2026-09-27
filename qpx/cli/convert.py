@@ -885,13 +885,28 @@ def convert_openms_cmd(**kwargs):
 # ---------------------------------------------------------------------------
 
 
+def _consensusxml_list(ctx, param, value) -> tuple[Path, ...]:
+    """Split a comma-separated list of consensusXML paths and check that each file exists."""
+    paths = tuple(Path(item.strip()) for item in value.split(",") if item.strip())
+    if not paths:
+        raise click.BadParameter("no consensusXML file given", ctx=ctx, param=param)
+    for path in paths:
+        if not path.is_file():
+            raise click.BadParameter(f"file '{path}' does not exist", ctx=ctx, param=param)
+    return paths
+
+
 @convert.command("openms-consensus")
 @click.option(
     "--consensusxml",
-    "consensusxml_path",
+    "consensusxml_paths",
     required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="OpenMS .consensusXML file (peptide feature intensities + IDs + protein inference).",
+    callback=_consensusxml_list,
+    help=(
+        "OpenMS .consensusXML file (peptide feature intensities + IDs + protein inference), or a "
+        "comma-separated list of files (e.g. one per sample group) to convert into one dataset; "
+        "no run may appear in more than one file."
+    ),
 )
 @click.option(
     "--sdrf-file",
@@ -978,7 +993,7 @@ def convert_openms_cmd(**kwargs):
     ),
 )
 def convert_openms_consensus_cmd(
-    consensusxml_path,
+    consensusxml_paths,
     sdrf_path,
     output_folder,
     output_prefix,
@@ -992,31 +1007,34 @@ def convert_openms_consensus_cmd(
     fasta,
     mudata,
 ):
-    """Convert an OpenMS consensusXML (+ SDRF) to QPX.
+    """Convert one or more OpenMS consensusXML files (+ SDRF) to one QPX dataset.
 
     Interim quantms path while OpenMS -out_qpx is pre-1.1. The feature view carries
     the per-run/channel peptide intensities from the consensusXML; the pg view
     carries an interim unnormalized unique-peptide-sum protein intensity (stamped
     with a quantification_method cv_param) until OpenMS provides the authoritative
-    protein quant.
+    protein quant. Several comma-separated --consensusxml inputs are written into the same views.
     """
     if verbose:
         logging.basicConfig(level=logging.INFO)
     from qpx.converters.openms_consensus.converter import OpenMSConsensusConverter
 
     structs = tuple(s.strip() for s in structures.split(",") if s.strip())
-    written = OpenMSConsensusConverter().convert(
-        consensusxml_path=str(consensusxml_path),
-        output_folder=str(output_folder),
-        output_prefix=output_prefix,
-        include_unassigned_psms=include_unassigned_psms,
-        sdrf_path=str(sdrf_path) if sdrf_path else None,
-        structures=structs,
-        pg_top=pg_top,
-        streaming=streaming,
-        project_accession=project_accession,
-        compression=compression,
-    )
+    try:
+        written = OpenMSConsensusConverter().convert(
+            consensusxml_path=[str(path) for path in consensusxml_paths],
+            output_folder=str(output_folder),
+            output_prefix=output_prefix,
+            include_unassigned_psms=include_unassigned_psms,
+            sdrf_path=str(sdrf_path) if sdrf_path else None,
+            structures=structs,
+            pg_top=pg_top,
+            streaming=streaming,
+            project_accession=project_accession,
+            compression=compression,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if written:
         _annotate_protein_properties(Path(output_folder), fasta, output_prefix)
     _write_mudata(Path(output_folder), output_prefix, mudata and bool(written))
