@@ -431,16 +431,20 @@ class StreamingConsensusMap:
         return list(self._prots)
 
     def getUnassignedPeptideIdentifications(self) -> list[_PeptideIdentification]:
-        # Streamed fresh; unassigned IDs are few relative to the element list.
-        out: list[_PeptideIdentification] = []
+        return [pid for _, pid in self.iter_identifications(include_assigned=False)]
+
+    def iter_identifications(self, *, include_assigned: bool = True):
+        """Stream identification context without constructing feature/sub-feature objects."""
         for _, el in iterparse(self._path, events=("end",)):
             tag = _localname(el.tag)
             if tag == "UnassignedPeptideIdentification":
-                out.append(_parse_peptide_id(el, self._ph_to_acc))
+                yield "unassigned", _parse_peptide_id(el, self._ph_to_acc)
+                el.clear()
+            elif tag == "PeptideIdentification" and include_assigned:
+                yield "assigned", _parse_peptide_id(el, self._ph_to_acc)
                 el.clear()
             elif tag == "consensusElement":
                 el.clear()
-        return out
 
     def __iter__(self):
         for kind, obj in self.iter_all():
@@ -449,8 +453,8 @@ class StreamingConsensusMap:
 
     def iter_all(self):
         """Single pass yielding ``("element", ConsensusFeature)`` then, in file
-        order, ``("unassigned", PeptideIdentification)`` — for the single-pass
-        streaming converter (one parse builds feature/psm/pg)."""
+        order, ``("unassigned", PeptideIdentification)``. The converter uses
+        one traversal for identification context and another for all output views."""
         depth_in_list = False
         for event, el in iterparse(self._path, events=("start", "end")):
             tag = _localname(el.tag)

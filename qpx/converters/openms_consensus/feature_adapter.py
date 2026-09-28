@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import logging
 import re
+from itertools import chain
 from typing import Optional
 
 from qpx.converters.channel_labels import normalize_label
@@ -574,8 +575,7 @@ def consensus_features_to_records(
     from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 
     resolve_run = _run_resolver(cm)
-    removed = removed_identifications_index(cm.getUnassignedPeptideIdentifications())
-    confidence = peptide_level_confidence(cm)
+    removed, confidence = identification_context(cm)
     records: list[dict] = []
     for cf in cm:
         records.extend(
@@ -744,6 +744,32 @@ def removed_identifications_index(unassigned_pids) -> dict[str, list]:
         if uid.isdigit():
             index.setdefault(uid, []).append(pid)
     return index
+
+
+def identification_context(cm) -> tuple[dict[str, list], PeptideLevelConfidence]:
+    """Collect recovered IDs and source-scoped confidence in one complete traversal.
+
+    Unassigned IDs may precede or follow the features. Only IDs carrying a
+    resolver feature reference are retained; ordinary unassigned PSMs are read
+    again during output instead of keeping all of them in memory.
+    """
+    removed: dict[str, list] = {}
+    confidence = PeptideLevelConfidence(cm)
+    if hasattr(cm, "iter_identifications"):
+        entries = cm.iter_identifications(include_assigned=bool(confidence))
+    else:
+        assigned = (pid for cf in cm for pid in cf.getPeptideIdentifications()) if confidence else ()
+        entries = chain(
+            (("assigned", pid) for pid in assigned),
+            (("unassigned", pid) for pid in cm.getUnassignedPeptideIdentifications()),
+        )
+    for kind, pid in entries:
+        if confidence:
+            confidence.add([pid])
+        if kind == "unassigned":
+            for uid, recovered in removed_identifications_index([pid]).items():
+                removed.setdefault(uid, []).extend(recovered)
+    return removed, confidence
 
 
 def _same_peptide(pid, sequence) -> bool:

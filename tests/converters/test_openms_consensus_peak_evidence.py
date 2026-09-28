@@ -1,7 +1,9 @@
 """Regression coverage for confidence scopes and duplicate measured-peak evidence."""
 
 import pytest
+from defusedxml import ElementTree
 
+from qpx.converters.openms_consensus import streaming as stream_reader
 from tests.converters.test_openms_consensus_merged_ids import (
     _HEADER,
     _assert_valid,
@@ -9,6 +11,7 @@ from tests.converters.test_openms_consensus_merged_ids import (
     _element,
     _maps,
     _percolator_run,
+    _percolator_xml,
     _rows,
     _score,
     _xcorr_pid,
@@ -47,3 +50,28 @@ def test_confidence_stays_with_its_fdr_source(tmp_path, streaming, same_source, 
     psm = next(rec for rec in _rows(written, "psm") if rec["run_file_name"] == "run_B")
     assert _score(psm, "peptide_qvalue") == pytest.approx(expected_q)
     _assert_valid(out, ("feature", "psm"))
+
+
+@pytest.mark.parametrize("peptide_level", [False, True])
+@pytest.mark.parametrize("unassigned_last", [False, True])
+def test_streaming_uses_one_context_pass_and_one_output_pass(tmp_path, monkeypatch, peptide_level, unassigned_last):
+    """Recovered IDs and peptide confidence share a pre-pass, even with trailing unassigned IDs."""
+    source = tmp_path / "passes.consensusXML"
+    root = ElementTree.fromstring(_percolator_xml(peptide_level))
+    if unassigned_last:
+        pid = root.find("UnassignedPeptideIdentification")
+        root.remove(pid)
+        root.append(pid)
+    source.write_text(ElementTree.tostring(root, encoding="unicode"))
+    parse = stream_reader.iterparse
+    completed = []
+
+    def count_complete_parses(*args, **kwargs):
+        yield from parse(*args, **kwargs)
+        completed.append(True)
+
+    monkeypatch.setattr(stream_reader, "iterparse", count_complete_parses)
+    _, written = _convert(tmp_path, str(source), True)
+    assert len(completed) == 2
+    feature = next(rec for rec in _rows(written, "feature") if rec["peptidoform"] == "PEPTIDEK")
+    assert feature["posterior_error_probability"] == pytest.approx(0.01 if peptide_level else 0.004)

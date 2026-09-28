@@ -503,8 +503,7 @@ def _stream_feature_psm(
     """One ordered element/unassigned pass: write feature/psm in batches and
     accumulate the pg maps in place. Return the number of emitted feature records."""
     from qpx.converters.openms_consensus.feature_adapter import (
-        peptide_level_confidence,
-        removed_identifications_index,
+        identification_context,
     )
     from qpx.converters.openms_consensus.pg_adapter import (
         accumulate_cf_intensity,
@@ -517,8 +516,7 @@ def _stream_feature_psm(
     psm_buf: list[dict] = []
     feature_count = 0
     track = isinstance(seen, _PsmKeys)
-    removed_index = removed_identifications_index(cm.getUnassignedPeptideIdentifications())
-    confidence = peptide_level_confidence(cm)
+    removed_index, confidence = identification_context(cm)
     for kind, obj in cm.iter_all():
         if kind == "element":
             if track:
@@ -579,13 +577,13 @@ def _convert_streaming(
     compression="zstd",
     include_unassigned_psms=True,
 ) -> dict:
-    """Single-pass, low-memory feature/psm/pg from streamed consensusXML input(s).
+    """Two-pass, low-memory feature/psm/pg from streamed consensusXML input(s).
 
-    One ordered ``iter_all()`` pass per input over the elements + unassigned IDs feeds
+    A pre-pass indexes recovered IDs and peptide confidence together. An output pass feeds
     the same per-element builders the in-memory adapters use (so output is identical),
     writing feature/psm in batches into one set of writers and accumulating the pg
     maps; pg records are built at the end. No input map is held whole, and each file
-    is parsed once. Rows that a later record supersedes (a better duplicate feature,
+    has two complete XML traversals. Rows that a later record supersedes (a better duplicate feature,
     or an assigned copy of an unassigned PSM) are pruned from the staged files.
     """
     from contextlib import ExitStack
@@ -826,9 +824,8 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         if {"feature", "psm", "pg"}.intersection(structures):
             use_stream = streaming if streaming is not None else any(_should_stream(p) for p in consensusxml_paths)
             if use_stream:
-                # Low-memory path: a single ordered pass over the consensusXML builds
-                # feature/psm/pg together and writes in batches, so the whole map is
-                # never in memory and the file is parsed once (not once per view).
+                # A shared identification pre-pass precedes batched output of all
+                # views; the complete XML map is never retained in memory.
                 written.update(
                     _convert_streaming(
                         consensusxml_paths,
@@ -968,8 +965,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         """feature/psm/pg via in-memory pyopenms maps (each input loaded once, iterated cheaply)."""
         from qpx.converters.openms_consensus.feature_adapter import (
             feature_map_info,
-            peptide_level_confidence,
-            removed_identifications_index,
+            identification_context,
             resolve_enzyme,
         )
         from qpx.converters.openms_consensus.pg_adapter import accumulate_consensus_map
@@ -999,8 +995,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                 # feature.pg_accessions match pg (unambiguous even for shared leaders).
                 group_map, group_meta = protein_group_maps(cm) if want_feature else (None, None)
                 enzyme = resolve_enzyme(cm, sdrf_path)
-                removed_index = removed_identifications_index(cm.getUnassignedPeptideIdentifications())
-                confidence = peptide_level_confidence(cm)
+                removed_index, confidence = identification_context(cm)
                 for cf in cm:
                     cf_feats, cf_psms = _cf_feature_psm_records(
                         cf,
