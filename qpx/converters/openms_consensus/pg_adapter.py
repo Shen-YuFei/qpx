@@ -26,9 +26,13 @@ from qpx.converters.channel_labels import fraction_groups_from_sdrf
 from qpx.converters.openms_consensus.feature_adapter import (
     column_runs,
     feature_map_info,
+    feature_records_for_cf,
+    identification_context,
     load_consensus_map,
+    removed_same_peptide_ids,
     to_proforma,
 )
+from qpx.converters.openms_consensus.feature_dedup import FeatureDeduplicator, feature_ids
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 from qpx.converters.utils import is_contaminant_accession, safe_float, uniprot_entry_name
@@ -108,12 +112,11 @@ def _protein_maps(cm) -> _ProteinMaps:
     return m
 
 
-def accumulate_consensus_map(cm, map_info, resolve_run, m: _ProteinMaps, pep_intensity: dict) -> None:
-    """Fold a whole consensus map's evidence and intensities into shared accumulators."""
+def accumulate_consensus_map(cm, map_info, resolve_run, m: _ProteinMaps) -> None:
+    """Fold all identification evidence into the shared maps, including duplicate peaks."""
     map_run = {idx: run for idx, (run, _label) in map_info.items()}
     for cf in cm:
         accumulate_cf_maps(cf, map_run, m)
-        accumulate_cf_intensity(cf, map_info, pep_intensity)
     for pid in cm.getUnassignedPeptideIdentifications():
         accumulate_unassigned_maps(pid, resolve_run, m)
 
@@ -316,24 +319,22 @@ def _peptide_intensities(cm, map_info: dict[int, tuple[str, str]]) -> dict[tuple
     of one sequence roll up together.
     """
     pep_intensity: dict[tuple[str, str, str], float] = defaultdict(float)
+    dedup = FeatureDeduplicator(pep_intensity)
+    removed, confidence = identification_context(cm)
+    resolve_run = _run_resolver(cm)
+    group_map, group_meta = protein_group_maps(cm)
     for cf in cm:
-        accumulate_cf_intensity(cf, map_info, pep_intensity)
+        records = feature_records_for_cf(
+            cf,
+            map_info,
+            group_map,
+            group_meta=group_meta,
+            resolve_run=resolve_run,
+            removed_pids=removed_same_peptide_ids(cf, removed),
+            confidence=confidence,
+        )
+        dedup.keep(records, feature_ids(records), float(cf.getQuality()))
     return pep_intensity
-
-
-def accumulate_cf_intensity(cf, map_info: dict[int, tuple[str, str]], pep_intensity: dict) -> None:
-    """Sum one consensus feature's per-map intensities into ``(seq, run, label)`` (per-cf)."""
-    pids = cf.getPeptideIdentifications()
-    if not pids or not pids[0].getHits():
-        return
-    seq = pids[0].getHits()[0].getSequence().toUnmodifiedString()
-    for sub in cf.getFeatureList():
-        inten = float(sub.getIntensity())
-        if inten <= 0:
-            continue
-        run, label = map_info.get(sub.getMapIndex(), (None, None))
-        if run is not None:
-            pep_intensity[(seq, run, label)] += inten
 
 
 def _protein_intensity(group_peps, group_accs, unit, label, pep_intensity, pep_accs, top) -> Optional[float]:
@@ -405,7 +406,7 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
     """Build pg records from already-accumulated maps + peptide intensities.
 
     Separated from the accumulation so both the multi-pass adapter and the
-    single-pass streaming driver share the exact record-building logic.
+    streaming driver share the exact record-building logic.
     """
     # One pg row per (protein group, unit, label): the isobaric channels, or "LFQ".
     units, labels = pg_units_and_labels(map_info, sdrf_path)
