@@ -357,7 +357,7 @@ def psm_records_for_pid(
             primary, hits, score, score_type, score_is_qvalue, higher_better, peptide_level=peptide_level
         )
         if peptide_level:
-            peptide_qvalue = confidence.of(to_proforma(seq_obj))[1]
+            peptide_qvalue = confidence.of(pid, to_proforma(seq_obj))[1]
             if peptide_qvalue is not None:
                 additional_scores.append({"score_name": "peptide_qvalue", "score_value": peptide_qvalue, "higher_better": False})
         modifications = to_modifications(seq_obj, site_scores)

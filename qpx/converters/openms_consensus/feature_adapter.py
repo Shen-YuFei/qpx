@@ -180,7 +180,7 @@ def qvalue_of(hit, score_type: str) -> float | None:
 
 
 class PeptideLevelConfidence:
-    """Peptide-level Percolator q-value and PEP per peptidoform, from runs that record peptide-level FDR.
+    """Peptide-level Percolator confidence per identification source and peptidoform.
 
     With peptide-level FDR Percolator scores each peptide once: its best PSM carries the
     peptide's q-value and PEP, every other PSM of that peptide gets 1.0. Those 1.0 values
@@ -190,7 +190,7 @@ class PeptideLevelConfidence:
 
     def __init__(self, cm):
         self.identifiers = peptide_level_fdr_identifiers(cm)
-        self._best: dict[str, tuple[float | None, float | None]] = {}
+        self._best: dict[tuple[str, str], tuple[float | None, float | None]] = {}
 
     def __bool__(self) -> bool:
         return bool(self.identifiers)
@@ -200,18 +200,18 @@ class PeptideLevelConfidence:
         return (identification_identifier(pid) or "") in self.identifiers
 
     def add(self, pids) -> None:
-        """Take the best q-value and PEP of each peptidoform from ``pids``."""
+        """Collect confidence within each source's FDR analysis, never across sources."""
         for pid in pids:
             if not self.applies(pid):
                 continue
             for hit in pid.getHits():
-                key = to_proforma(hit.getSequence())
+                key = (identification_identifier(pid) or "", to_proforma(hit.getSequence()))
                 pep, qvalue = self._best.get(key, (None, None))
                 self._best[key] = (_min_or(pep, _scored(pep_of(hit))), _min_or(qvalue, _scored(qvalue_meta_of(hit))))
 
-    def of(self, peptidoform: str) -> tuple[float | None, float | None]:
-        """``(PEP, q-value)`` of a peptidoform's best PSM."""
-        return self._best.get(peptidoform, (None, None))
+    def of(self, pid, peptidoform: str) -> tuple[float | None, float | None]:
+        """``(PEP, q-value)`` of the peptide's best PSM in ``pid``'s source."""
+        return self._best.get((identification_identifier(pid) or "", peptidoform), (None, None))
 
 
 def peptide_level_confidence(cm) -> PeptideLevelConfidence:
@@ -522,7 +522,7 @@ def _confidence_by_run(
         hit = hits[0]
         score_type = str(pid.getScoreType() or "")
         if confidence is not None and confidence.applies(pid):
-            confidence_by_run[pid_run] = confidence.of(to_proforma(hit.getSequence()))
+            confidence_by_run[pid_run] = confidence.of(pid, to_proforma(hit.getSequence()))
         else:
             confidence_by_run[pid_run] = (pep_of(hit), qvalue_of(hit, score_type))
     return confidence_by_run
