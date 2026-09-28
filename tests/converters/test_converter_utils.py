@@ -25,6 +25,11 @@ from qpx.core.files import run_file_stem
         (r"C:\data\run.part.1.wiff", "run.part.1"),
         ("run.part.1.dia", "run.part.1"),
         ("run.part.1", "run.part.1"),
+        ("A549_R1_S2-A1_1_10090.d", "A549_R1_S2-A1_1_10090"),
+        ("A549_R1_S2-A1_1_10090.d.zip", "A549_R1_S2-A1_1_10090"),
+        ("/data/run.part.1.d.tar.gz", "run.part.1"),
+        ("run.part.1.d.tgz", "run.part.1"),
+        ("run.part.1.zip", "run.part.1.zip"),
     ],
 )
 def test_run_file_stem_preserves_meaningful_dots(value, expected):
