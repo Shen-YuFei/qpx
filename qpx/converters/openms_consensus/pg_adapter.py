@@ -58,6 +58,35 @@ class _ProteinMaps:
         self.feat_to_accs: dict[tuple, set[str]] = defaultdict(set)
 
 
+class ProteinGroupAccumulator:
+    """Protein-group evidence and peptide intensities accumulated over every input map.
+
+    Also serves as the protein-identification source for ``build_pg_records``, so
+    groups, decoy flags, q-values and properties span all inputs.
+    """
+
+    def __init__(self):
+        self.maps = _ProteinMaps()
+        self.pep_intensity: dict = defaultdict(float)
+        self.map_info: dict = {}
+        self._protein_ids: list = []
+        self._inputs = 0
+
+    def add_source(self, cm, map_info) -> None:
+        """Register one input's protein identifications and map columns."""
+        self.map_info.update({(self._inputs, idx): info for idx, info in map_info.items()})
+        self._protein_ids.extend(cm.getProteinIdentifications())
+        self._inputs += 1
+
+    def getProteinIdentifications(self) -> list:  # pylint: disable=invalid-name
+        """ProteinIdentifications of every input (pyopenms accessor name)."""
+        return self._protein_ids
+
+    def build(self, sdrf_path, top) -> list[dict]:
+        """pg records over all inputs."""
+        return build_pg_records(self, self.map_info, self.maps, self.pep_intensity, sdrf_path, top)
+
+
 def _evidence_accession(ev) -> str | None:
     acc = ev.getProteinAccession()
     if not acc:

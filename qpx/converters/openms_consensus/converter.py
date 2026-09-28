@@ -34,7 +34,7 @@ from qpx.converters.openms_consensus.feature_dedup import (
 from qpx.converters.openms_consensus.feature_dedup import (
     feature_ids as _feature_ids,
 )
-from qpx.converters.openms_consensus.pg_adapter import protein_group_maps
+from qpx.converters.openms_consensus.pg_adapter import ProteinGroupAccumulator, protein_group_maps
 from qpx.converters.orchestrator import BaseOrchestrator
 from qpx.core.constants import DATASET, FEATURE, ONTOLOGY, PG, PROVENANCE, PSM, RUN, SAMPLE
 from qpx.writers.base import parquet_write_options
@@ -268,41 +268,6 @@ class _PrunablePsmWriter(_RowPruning, PsmWriter):
     pass
 
 
-class _PgAccumulator:
-    """Protein-group evidence and peptide intensities accumulated over every input map.
-
-    Also serves as the protein-identification source for ``build_pg_records``, so
-    groups, decoy flags, q-values and properties span all inputs.
-    """
-
-    def __init__(self):
-        from collections import defaultdict
-
-        from qpx.converters.openms_consensus.pg_adapter import _ProteinMaps
-
-        self.maps = _ProteinMaps()
-        self.pep_intensity: dict = defaultdict(float)
-        self.map_info: dict = {}
-        self._protein_ids: list = []
-        self._inputs = 0
-
-    def add_source(self, cm, map_info) -> None:
-        """Register one input's protein identifications and map columns."""
-        self.map_info.update({(self._inputs, idx): info for idx, info in map_info.items()})
-        self._protein_ids.extend(cm.getProteinIdentifications())
-        self._inputs += 1
-
-    def getProteinIdentifications(self) -> list:  # pylint: disable=invalid-name
-        """ProteinIdentifications of every input (pyopenms accessor name)."""
-        return self._protein_ids
-
-    def build(self, sdrf_path, top) -> list[dict]:
-        """pg records over all inputs."""
-        from qpx.converters.openms_consensus.pg_adapter import build_pg_records
-
-        return build_pg_records(self, self.map_info, self.maps, self.pep_intensity, sdrf_path, top)
-
-
 def _as_paths(consensusxml_path) -> list[str]:
     """Normalise one path or a sequence of paths to a non-empty list of strings."""
     if isinstance(consensusxml_path, (str, os.PathLike)):
@@ -426,6 +391,14 @@ def _write_view(writer_cls, path, records, *, creator, compression, identity_com
     return path
 
 
+def _flush_records(writer, records: list[dict], min_size: int = 1) -> list[dict]:
+    """Write a complete batch or a nonempty final remainder, returning the pending records."""
+    if writer is not None and len(records) >= min_size:
+        writer.write_batch(records)
+        return []
+    return records
+
+
 def _stream_feature_psm(
     cm,
     fw,
@@ -495,16 +468,10 @@ def _stream_feature_psm(
                 # not the PSM rows are emitted: dropping evidence would change the
                 # protein groups, which is not what this option is for.
                 accumulate_unassigned_maps(obj, resolve_run, maps)
-        if fw is not None and len(feat_buf) >= batch:
-            fw.write_batch(feat_buf)
-            feat_buf = []
-        if pw is not None and len(psm_buf) >= batch:
-            pw.write_batch(psm_buf)
-            psm_buf = []
-    if fw is not None and feat_buf:
-        fw.write_batch(feat_buf)
-    if pw is not None and psm_buf:
-        pw.write_batch(psm_buf)
+        feat_buf = _flush_records(fw, feat_buf, batch)
+        psm_buf = _flush_records(pw, psm_buf, batch)
+    _flush_records(fw, feat_buf)
+    _flush_records(pw, psm_buf)
     return feature_count
 
 
@@ -535,7 +502,7 @@ def _convert_streaming(
     from qpx.converters.openms_consensus.streaming import StreamingConsensusMap
 
     want_feature, want_psm, want_pg = ("feature" in structures, "psm" in structures, "pg" in structures)
-    pg = _PgAccumulator() if want_pg else None
+    pg = ProteinGroupAccumulator() if want_pg else None
     seen = _PsmKeys()
     dedup = _FeatureDeduplicator(pg.pep_intensity if pg is not None else None)
     run_owner: dict[str, str] = {}
@@ -932,7 +899,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
 
         written: dict[str, Path] = {}
         want_feature, want_psm, want_pg = "feature" in structures, "psm" in structures, "pg" in structures
-        pg = _PgAccumulator() if want_pg else None
+        pg = ProteinGroupAccumulator() if want_pg else None
         seen = _PsmKeys()
         dedup = _FeatureDeduplicator(pg.pep_intensity if pg is not None else None)
         run_owner: dict[str, str] = {}
