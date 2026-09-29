@@ -25,6 +25,11 @@ from qpx.core.files import run_file_stem
         (r"C:\data\run.part.1.wiff", "run.part.1"),
         ("run.part.1.dia", "run.part.1"),
         ("run.part.1", "run.part.1"),
+        ("A549_R1_S2-A1_1_10090.d", "A549_R1_S2-A1_1_10090"),
+        ("A549_R1_S2-A1_1_10090.d.zip", "A549_R1_S2-A1_1_10090"),
+        ("/data/run.part.1.d.tar.gz", "run.part.1"),
+        ("run.part.1.d.tgz", "run.part.1"),
+        ("run.part.1.zip", "run.part.1.zip"),
     ],
 )
 def test_run_file_stem_preserves_meaningful_dots(value, expected):
@@ -295,9 +300,35 @@ def test_uniprot_entry_name_only_for_three_field_ids():
     assert uniprot_entry_name("sp|P12345|") is None
 
 
-def test_is_contaminant_accession():
+@pytest.mark.parametrize(
+    ("accession", "expected"),
+    [
+        ("Cont_Q7SIH1", True),
+        ("cont_p05783", True),
+        ("CONT_Q7SIH1", True),
+        ("sp|Cont_Q7SIH1|A2MG_BOVIN", True),
+        ("Sp|cOnT_P05783|K1C18_HUMAN", True),
+        ("tr|Cont_Q7SIH1|A2MG_BOVIN", True),
+        ("TR|CONT_P05783|K1C18_HUMAN", True),
+        ("sp|CONTAM_P19001|CONTAM_K1C19_MOUSE", True),
+        ("CONTAM_P02769", True),
+        ("contam_p02769", True),
+        ("P12345_CONTAM", True),
+        ("sp|P19001|CONTAM_K1C19_MOUSE", True),
+        (None, False),
+        (pd.NA, False),
+        ("", False),
+        ("P12345", False),
+        ("sp|P12345|PROT_HUMAN", False),
+        ("CONTROL", False),
+        ("CONTQ7SIH1", False),
+        ("P_CONT_Q7SIH1", False),
+        ("sp|P12345|CONT_DOMAIN", False),
+        ("tr|P_CONT_Q7SIH1|PROT_HUMAN", False),
+    ],
+)
+def test_is_contaminant_accession(accession, expected):
+    """Recognize quantms contaminant markers without matching unrelated CONT text."""
     from qpx.converters.utils import is_contaminant_accession
 
-    assert is_contaminant_accession("sp|CONTAM_P19001|CONTAM_K1C19_MOUSE")
-    assert is_contaminant_accession("CONTAM_P02769")
-    assert not is_contaminant_accession("sp|P12345|PROT_HUMAN")
+    assert is_contaminant_accession(accession) is expected

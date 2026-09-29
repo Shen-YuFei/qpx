@@ -39,6 +39,29 @@ def _log_summary(output_folder) -> None:
     log_conversion_summary(output_folder, logger=logger)
 
 
+def _write_mudata(output_folder: Path, prefix: str, enabled: bool) -> None:
+    """Refresh or remove the dataset's MuData view after a conversion.
+
+    Uses qpx's own writer, which refuses a MuData missing a required
+    quantification modality rather than writing a partial view, and is
+    best-effort: the parquet views are the dataset's source of truth, so a view
+    that cannot be built is reported and the conversion still succeeds.
+    """
+    if not enabled:
+        try:
+            (Path(output_folder) / f"{prefix}.h5mu").unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not remove stale MuData for %s: %s", prefix, exc)
+        return
+    from qpx.mudata import write_dataset_mudata
+
+    written = write_dataset_mudata(Path(output_folder), prefix)
+    if written is None:
+        click.echo("WARNING: no MuData view was written (see the log); the Parquet views are complete")
+    else:
+        click.echo(f"MuData view: {written.name}")
+
+
 def _annotate_protein_properties(output_folder: Path, fasta: Optional[Path], prefix: Optional[str] = None) -> None:
     """Fill null protein properties from an optional FASTA after a conversion.
 
@@ -197,6 +220,16 @@ def convert():
     default=None,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--mudata/--no-mudata",
+    default=True,
+    show_default=True,
+    help=(
+        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
+        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
+        "the build on very large datasets."
+    ),
+)
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
 def convert_diann_cmd(
     report_path: Path,
@@ -217,6 +250,7 @@ def convert_diann_cmd(
     compression: str,
     diann_log: Optional[Path],
     fasta: Optional[Path],
+    mudata: bool,
     verbose: bool,
 ):
     """Convert DIA-NN report to QPX format.
@@ -285,6 +319,7 @@ def convert_diann_cmd(
 
     _annotate_protein_properties(output_folder, fasta, prefix)
     _maybe_enrich_pride(output_folder, project_accession, enrich_pride)
+    _write_mudata(output_folder, prefix, mudata)
 
     _log_summary(output_folder)
     click.echo(f"DIA-NN conversion complete. Output: {output_folder}")
@@ -850,13 +885,28 @@ def convert_openms_cmd(**kwargs):
 # ---------------------------------------------------------------------------
 
 
+def _consensusxml_list(ctx, param, value) -> tuple[Path, ...]:
+    """Split a comma-separated list of consensusXML paths and check that each file exists."""
+    paths = tuple(Path(item.strip()) for item in value.split(",") if item.strip())
+    if not paths:
+        raise click.BadParameter("no consensusXML file given", ctx=ctx, param=param)
+    for path in paths:
+        if not path.is_file():
+            raise click.BadParameter(f"file '{path}' does not exist", ctx=ctx, param=param)
+    return paths
+
+
 @convert.command("openms-consensus")
 @click.option(
     "--consensusxml",
-    "consensusxml_path",
+    "consensusxml_paths",
     required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="OpenMS .consensusXML file (peptide feature intensities + IDs + protein inference).",
+    callback=_consensusxml_list,
+    help=(
+        "OpenMS .consensusXML file (peptide feature intensities + IDs + protein inference), or a "
+        "comma-separated list of files (e.g. one per sample group) to convert into one dataset; "
+        "no run may appear in more than one file."
+    ),
 )
 @click.option(
     "--sdrf-file",
@@ -932,8 +982,18 @@ def convert_openms_cmd(**kwargs):
     default=None,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
+@click.option(
+    "--mudata/--no-mudata",
+    default=True,
+    show_default=True,
+    help=(
+        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
+        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
+        "the build on very large datasets."
+    ),
+)
 def convert_openms_consensus_cmd(
-    consensusxml_path,
+    consensusxml_paths,
     sdrf_path,
     output_folder,
     output_prefix,
@@ -945,34 +1005,39 @@ def convert_openms_consensus_cmd(
     include_unassigned_psms,
     compression,
     fasta,
+    mudata,
 ):
-    """Convert an OpenMS consensusXML (+ SDRF) to QPX.
+    """Convert one or more OpenMS consensusXML files (+ SDRF) to one QPX dataset.
 
     Interim quantms path while OpenMS -out_qpx is pre-1.1. The feature view carries
     the per-run/channel peptide intensities from the consensusXML; the pg view
     carries an interim unnormalized unique-peptide-sum protein intensity (stamped
     with a quantification_method cv_param) until OpenMS provides the authoritative
-    protein quant.
+    protein quant. Several comma-separated --consensusxml inputs are written into the same views.
     """
     if verbose:
         logging.basicConfig(level=logging.INFO)
     from qpx.converters.openms_consensus.converter import OpenMSConsensusConverter
 
     structs = tuple(s.strip() for s in structures.split(",") if s.strip())
-    written = OpenMSConsensusConverter().convert(
-        consensusxml_path=str(consensusxml_path),
-        output_folder=str(output_folder),
-        output_prefix=output_prefix,
-        include_unassigned_psms=include_unassigned_psms,
-        sdrf_path=str(sdrf_path) if sdrf_path else None,
-        structures=structs,
-        pg_top=pg_top,
-        streaming=streaming,
-        project_accession=project_accession,
-        compression=compression,
-    )
+    try:
+        written = OpenMSConsensusConverter().convert(
+            consensusxml_path=[str(path) for path in consensusxml_paths],
+            output_folder=str(output_folder),
+            output_prefix=output_prefix,
+            include_unassigned_psms=include_unassigned_psms,
+            sdrf_path=str(sdrf_path) if sdrf_path else None,
+            structures=structs,
+            pg_top=pg_top,
+            streaming=streaming,
+            project_accession=project_accession,
+            compression=compression,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if written:
         _annotate_protein_properties(Path(output_folder), fasta, output_prefix)
+    _write_mudata(Path(output_folder), output_prefix, mudata and bool(written))
     _log_summary(output_folder)
     click.echo(f"consensusXML conversion complete. Wrote: {sorted(written)}")
 

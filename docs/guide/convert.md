@@ -184,6 +184,7 @@ Output files generated:
 
 - **Feature**: `{output-prefix}-{uuid}.feature.parquet` (always produced)
 - **Protein Group**: `{output-prefix}-{uuid}.pg.parquet` (produced when `--pg-matrix-path` is provided)
+- **MuData**: `{output-prefix}.h5mu` (written by default; `--no-mudata` skips it)
 
 ### Common Issues {#diann-issues}
 
@@ -810,6 +811,23 @@ QPX format 1.1. The consensusXML carries per-run peptide-feature intensities,
 PSMs, and the protein-inference graph; the SDRF supplies sample/label/fraction
 metadata and the `grouped_runs` quantification units.
 
+Several consensusXML files (for example one per sample group, as nf-core/mhcquant
+writes them) can be converted into one dataset by giving `--consensusxml` a
+comma-separated list.
+Each file is read with its own column-to-run mapping and identification
+metadata; feature, PSM and pg rows go into the same views, pg spans all inputs,
+and provenance lists every input file. No run may appear in more than one input.
+
+Runs are taken from the consensusXML column headers. A single-run map promoted
+by FileConverter has no column filename; when the identifications record
+exactly one primary MS run, that run's name is used. When the same group-merged
+identifications were copied into every run's map (FeatureFinderIdentification
+given a merged idXML, then linked), each copy is attributed to the run its
+spectrum came from (`id_merge_index` into its own ProteinIdentification's
+`spectra_data`), so every spectrum yields one PSM. Consensus features that are
+identical in every feature identity column (two isobaric targets linked to the
+same peak) yield one feature row, from the higher-quality consensus feature.
+
 If PSM output is requested but no exportable PSM records remain (for example,
 the identifications lack spectrum references), the converter logs a warning and
 does not create `psm.parquet` or register it in the returned outputs or provenance.
@@ -862,7 +880,7 @@ peptide assignments keep this field null.
 
 | Option | Required | Description |
 | ------ | -------- | ----------- |
-| `--consensusxml` | yes | OpenMS `.consensusXML` file. |
+| `--consensusxml` | yes | OpenMS `.consensusXML` file, or a comma-separated list of files to write into one dataset. |
 | `--sdrf-file` | no | SDRF metadata (run/sample views + `grouped_runs` fraction grouping). |
 | `--output-folder` | yes | Output directory for the QPX views. |
 | `--output-prefix` | no | Prefix for output file names (default `openms`). |
@@ -879,12 +897,24 @@ qpxc convert openms-consensus \
   --output-prefix PXD001819
 ```
 
+Several consensusXML files into one dataset:
+
+```bash
+qpxc convert openms-consensus \
+  --consensusxml PBMC007_1_resolved.consensusXML,PBMC009_1_resolved.consensusXML \
+  --sdrf-file PXD011628.sdrf.tsv \
+  --structures feature,psm,run,sample \
+  --output-folder ./qpx_output \
+  --output-prefix PXD011628
+```
+
 ### Output Files {#openms-consensus-output}
 
 - `<prefix>.feature.parquet` — one row per `(peptidoform, charge, run, rt)` with per-run/channel intensities.
 - `<prefix>.psm.parquet` — one row per spectrum match (scan, PEP, q-value, decoy).
 - `<prefix>.pg.parquet` — protein groups (`pg_accessions`, `grouped_runs`, peptide/feature counts, `global_qvalue`, decoy, genes); one row per channel with a populated `label` and an interim `intensity` = unnormalized sum of the group's unique peptides (stamped with a `quantification_method` cv_param; null where a group has no unique-peptide signal). See `--pg-top`.
 - `<prefix>.run.parquet`, `<prefix>.sample.parquet` — from the SDRF (when provided).
+- `<prefix>.h5mu` — the dataset's MuData view, written by default; disable with `--no-mudata`. Best-effort: a view that cannot be built is reported and the conversion still succeeds, because the Parquet views are the dataset's source of truth.
 
 ---
 

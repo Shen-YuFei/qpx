@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
-_RUN_FILE_SUFFIX = re.compile(r"(?i)\.(?:mzml(?:\.gz)?|mzxml|raw|d|wiff|mgf|dia)$")
+# Bruker ``.d`` directories are usually shipped archived (``run.d.zip``,
+# ``run.d.tar``, ``run.d.tar.gz``); DIA-NN reports the bare stem, so the archive
+# suffix must be stripped together with ``.d``.
+_RUN_FILE_SUFFIX = re.compile(r"(?i)\.(?:mzml(?:\.gz)?|mzxml|raw|d(?:\.(?:zip|tar(?:\.gz)?|tgz))?|wiff|mgf|dia)$")
 
 
 def run_file_stem(value: str) -> str:

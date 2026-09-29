@@ -105,6 +105,13 @@ def _normalize_char_name(sdrf_col: str) -> str:
     return name.strip("_")
 
 
+def _merge_characteristic_values(group: pd.DataFrame, columns: list[str]) -> str | None:
+    """Merge unique values, retaining sentinels only when no real value exists."""
+    vals = pd.unique(group[columns].values.flatten()).tolist()
+    meaningful = [v for v in vals if pd.notna(v) and not _is_sentinel(v)]
+    return _join_values(meaningful or vals)
+
+
 def _add_unique_run_label(
     seen_labels: dict[str, tuple[str, str]],
     run_file: str,
@@ -192,6 +199,8 @@ class SdrfConverter(BaseConverter):
 
         All ``characteristics[X]`` columns become individual string columns.
         Multi-valued fields are joined with ``"; "``.
+        Repeated extra characteristics are merged; sentinel placeholders are
+        ignored when meaningful values are present for that sample.
 
         Args:
             sdrf_df: Loaded SDRF DataFrame.
@@ -243,9 +252,11 @@ class SdrfConverter(BaseConverter):
         extra_char_cols = [
             c for c in sdrf_df.columns if c.startswith("characteristics[") and not any(c.startswith(k) for k in known_prefixes)
         ]
-        # Map SDRF column name -> normalized snake_case name
-        extra_col_map = {col: _normalize_char_name(col) for col in extra_char_cols}
-        extra_column_names = sorted(set(extra_col_map.values()))
+        # Group all SDRF columns that map to the same output characteristic.
+        extra_col_map: dict[str, list[str]] = {}
+        for col in extra_char_cols:
+            extra_col_map.setdefault(_normalize_char_name(col), []).append(col)
+        extra_column_names = sorted(extra_col_map)
 
         sample_groups = sdrf_df.groupby(_COL_SOURCE_NAME)
 
@@ -265,9 +276,8 @@ class SdrfConverter(BaseConverter):
                 rec["sample_description"] = _join_values(desc_vals)
 
             # Extra characteristics -> individual columns
-            for sdrf_col, norm_name in extra_col_map.items():
-                vals = pd.unique(group[sdrf_col].dropna().values).tolist()
-                rec[norm_name] = _join_values(vals)
+            for norm_name, sdrf_cols in extra_col_map.items():
+                rec[norm_name] = _merge_characteristic_values(group, sdrf_cols)
 
             records.append(rec)
 

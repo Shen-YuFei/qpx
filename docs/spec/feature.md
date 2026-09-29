@@ -109,6 +109,8 @@ Each entry in `pg_positions` contains:
 
     Other producer-specific q-values may also appear in `additional_scores`; use the documented score name and level rather than treating every q-value as peptide-level confidence.
 
+    Percolator with peptide-level FDR scores each peptide once: its best PSM carries the peptide's q-value and PEP, every other PSM gets 1.0. The OpenMS converters report the best PSM's values and never the 1.0 placeholders; `peptide_qvalue` is null when the best PSM is not in the input.
+
     A value belongs in `peptide_qvalue` **only** when the producer states it is a q-value. Writing a raw search-engine score (a Percolator SVM score, an E-value) into this column makes it indistinguishable from an FDR downstream — leave the field null instead.
 
 ### Spectra Reference

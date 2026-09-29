@@ -24,11 +24,15 @@ from typing import Optional
 
 from qpx.converters.channel_labels import fraction_groups_from_sdrf
 from qpx.converters.openms_consensus.feature_adapter import (
-    _map_label,
-    _run_stem,
+    column_runs,
+    feature_map_info,
+    feature_records_for_cf,
+    identification_context,
     load_consensus_map,
+    removed_same_peptide_ids,
     to_proforma,
 )
+from qpx.converters.openms_consensus.feature_dedup import FeatureDeduplicator, feature_ids
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.openms_consensus.psm_adapter import _run_resolver
 from qpx.converters.utils import is_contaminant_accession, safe_float, uniprot_entry_name
@@ -52,6 +56,35 @@ class _ProteinMaps:
         self.acc_to_feat: dict[str, set[tuple]] = defaultdict(set)
         self.pep_to_accs: dict[str, set[str]] = defaultdict(set)
         self.feat_to_accs: dict[tuple, set[str]] = defaultdict(set)
+
+
+class ProteinGroupAccumulator:
+    """Protein-group evidence and peptide intensities accumulated over every input map.
+
+    Also serves as the protein-identification source for ``build_pg_records``, so
+    groups, decoy flags, q-values and properties span all inputs.
+    """
+
+    def __init__(self):
+        self.maps = _ProteinMaps()
+        self.pep_intensity: dict = defaultdict(float)
+        self.map_info: dict = {}
+        self._protein_ids: list = []
+        self._inputs = 0
+
+    def add_source(self, cm, map_info) -> None:
+        """Register one input's protein identifications and map columns."""
+        self.map_info.update({(self._inputs, idx): info for idx, info in map_info.items()})
+        self._protein_ids.extend(cm.getProteinIdentifications())
+        self._inputs += 1
+
+    def getProteinIdentifications(self) -> list:  # pylint: disable=invalid-name
+        """ProteinIdentifications of every input (pyopenms accessor name)."""
+        return self._protein_ids
+
+    def build(self, sdrf_path, top) -> list[dict]:
+        """pg records over all inputs."""
+        return build_pg_records(self, self.map_info, self.maps, self.pep_intensity, sdrf_path, top)
 
 
 def _evidence_accession(ev) -> str | None:
@@ -98,8 +131,7 @@ def accumulate_unassigned_maps(pid, resolve_run, m: _ProteinMaps) -> None:
 
 def _protein_maps(cm) -> _ProteinMaps:
     """Index peptide/feature/run evidence by accession (see :class:`_ProteinMaps`)."""
-    headers = cm.getColumnHeaders()
-    map_run = {i: _run_stem(headers[i].filename) for i in headers}
+    map_run = column_runs(cm)
     resolve_run = _run_resolver(cm)
     m = _ProteinMaps()
     for cf in cm:  # assigned IDs: runs are the consensus feature's member maps
@@ -107,6 +139,15 @@ def _protein_maps(cm) -> _ProteinMaps:
     for pid in cm.getUnassignedPeptideIdentifications():  # run from map_index or id_merge_index (merge order)
         accumulate_unassigned_maps(pid, resolve_run, m)
     return m
+
+
+def accumulate_consensus_map(cm, map_info, resolve_run, m: _ProteinMaps) -> None:
+    """Fold all identification evidence into the shared maps, including duplicate peaks."""
+    map_run = {idx: run for idx, (run, _label) in map_info.items()}
+    for cf in cm:
+        accumulate_cf_maps(cf, map_run, m)
+    for pid in cm.getUnassignedPeptideIdentifications():
+        accumulate_unassigned_maps(pid, resolve_run, m)
 
 
 def _is_decoy_accession(acc: str) -> bool:
@@ -295,8 +336,7 @@ def _map_info(cm) -> dict[int, tuple[str, str]]:
     ``TMT126``); everything else is ``LFQ``. ``experiment_type`` is not used — it
     is ``"label-free"`` even for real quantms TMT output.
     """
-    headers = cm.getColumnHeaders()
-    return {i: (_run_stem(headers[i].filename), _map_label(headers[i].label)) for i in headers}
+    return feature_map_info(cm)
 
 
 def _peptide_intensities(cm, map_info: dict[int, tuple[str, str]]) -> dict[tuple[str, str, str], float]:
@@ -308,24 +348,22 @@ def _peptide_intensities(cm, map_info: dict[int, tuple[str, str]]) -> dict[tuple
     of one sequence roll up together.
     """
     pep_intensity: dict[tuple[str, str, str], float] = defaultdict(float)
+    dedup = FeatureDeduplicator(pep_intensity)
+    removed, confidence = identification_context(cm)
+    resolve_run = _run_resolver(cm)
+    group_map, group_meta = protein_group_maps(cm)
     for cf in cm:
-        accumulate_cf_intensity(cf, map_info, pep_intensity)
+        records = feature_records_for_cf(
+            cf,
+            map_info,
+            group_map,
+            group_meta=group_meta,
+            resolve_run=resolve_run,
+            removed_pids=removed_same_peptide_ids(cf, removed),
+            confidence=confidence,
+        )
+        dedup.keep(records, feature_ids(records), float(cf.getQuality()))
     return pep_intensity
-
-
-def accumulate_cf_intensity(cf, map_info: dict[int, tuple[str, str]], pep_intensity: dict) -> None:
-    """Sum one consensus feature's per-map intensities into ``(seq, run, label)`` (per-cf)."""
-    pids = cf.getPeptideIdentifications()
-    if not pids or not pids[0].getHits():
-        return
-    seq = pids[0].getHits()[0].getSequence().toUnmodifiedString()
-    for sub in cf.getFeatureList():
-        inten = float(sub.getIntensity())
-        if inten <= 0:
-            continue
-        run, label = map_info.get(sub.getMapIndex(), (None, None))
-        if run is not None:
-            pep_intensity[(seq, run, label)] += inten
 
 
 def _protein_intensity(group_peps, group_accs, unit, label, pep_intensity, pep_accs, top) -> Optional[float]:
@@ -397,7 +435,7 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
     """Build pg records from already-accumulated maps + peptide intensities.
 
     Separated from the accumulation so both the multi-pass adapter and the
-    single-pass streaming driver share the exact record-building logic.
+    streaming driver share the exact record-building logic.
     """
     # One pg row per (protein group, unit, label): the isobaric channels, or "LFQ".
     units, labels = pg_units_and_labels(map_info, sdrf_path)
