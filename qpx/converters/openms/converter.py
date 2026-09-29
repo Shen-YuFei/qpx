@@ -66,7 +66,7 @@ FRACTION_GROUP_CV_NAME = "fraction_group"
 # Run-file extensions stripped when matching consensusXML ``<map name>`` values
 # against pg ``grouped_runs`` / feature ``run_file_name`` (which -out_qpx may
 # write with or without an extension).
-_RUN_EXTENSIONS = (".mzml", ".raw", ".mzxml", ".d", ".wiff", ".dia")
+_RUN_EXTENSIONS = (".mzml", ".raw", ".mzxml", ".d.zip", ".d.tar.gz", ".d.tar", ".d", ".wiff", ".dia")
 
 
 def _run_key_candidates(name: str | None) -> list[str]:
