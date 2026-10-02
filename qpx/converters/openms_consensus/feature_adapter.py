@@ -600,7 +600,10 @@ def primary_run_stems(protein_identification) -> list[str]:
     if get_paths is None:
         return []
     paths: list = []
-    get_paths(paths)
+    try:
+        get_paths(paths)  # pyopenms < 3.6 fills an output list
+    except TypeError:
+        paths = get_paths()  # pyopenms >= 3.6 returns the paths
     return [_run_stem(p.decode() if isinstance(p, (bytes, bytearray)) else str(p)) for p in paths]
 
 
