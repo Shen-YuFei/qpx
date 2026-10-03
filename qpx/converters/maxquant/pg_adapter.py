@@ -442,6 +442,7 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
             for exp, ch_cols in experiments.items():
                 intensities: list[dict] = []
                 additional_intensities: list[dict] = []
+                identified = (safe_float(row.get(f"MS/MS count {exp}")) or 0) > 0
                 channels = tmt_channels or []
                 dropped_channels: list[str] = []
                 for seq_idx, channel_name in enumerate(channels):
@@ -453,9 +454,9 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
                     if not col_name:
                         dropped_channels.append(str(channel_name))
                         continue
-                    val = safe_float(row.get(col_name))
-                    if val and val > 0:
-                        intensities.append({"label": channel_name, "intensity": float(val)})
+                    val = safe_float(row.get(col_name)) or 0.0
+                    if val > 0 or identified:
+                        intensities.append({"label": channel_name, "intensity": val if val > 0 else None})
                         corr_col = col_name.replace("Reporter intensity", "Reporter intensity corrected")
                         corr_val = safe_float(row.get(corr_col))
                         if corr_val is not None:
@@ -476,7 +477,10 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
                 run_name = intensity_col.removeprefix("Intensity ")
                 intensity_val = safe_float(row.get(intensity_col)) or 0.0
                 if intensity_val <= 0:
-                    continue
+                    if (safe_float(row.get(f"MS/MS count {run_name}")) or 0) <= 0:
+                        continue
+                    # Global counts cannot establish identification in this unit.
+                    intensity_val = None
                 lfq_val = safe_float(row.get(f"LFQ intensity {run_name}"))
                 ibaq_val = safe_float(row.get(f"iBAQ {run_name}"))
                 extra_vals = []
@@ -488,7 +492,7 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
                 records.append(
                     _make_rec(
                         self._runs_for(run_name),
-                        [{"label": "LFQ", "intensity": float(intensity_val)}],
+                        [{"label": "LFQ", "intensity": intensity_val}],
                         add_int,
                     )
                 )

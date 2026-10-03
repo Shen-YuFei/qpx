@@ -37,6 +37,7 @@ from qpx.converters.openms_consensus.feature_dedup import (
 from qpx.converters.openms_consensus.pg_adapter import ProteinGroupAccumulator, protein_group_maps
 from qpx.converters.orchestrator import BaseOrchestrator
 from qpx.core.constants import DATASET, FEATURE, ONTOLOGY, PG, PROVENANCE, PSM, RUN, SAMPLE
+from qpx.core.scan import scan_format_from_native_id
 from qpx.writers.base import parquet_write_options
 from qpx.writers.feature import FeatureWriter
 from qpx.writers.pg import PgWriter
@@ -260,12 +261,14 @@ class _RowPruning:  # pylint: disable=too-few-public-methods
         super()._validate_identity_uniqueness()
 
 
-class _PrunableFeatureWriter(_RowPruning, FeatureWriter):
-    pass
+def _prunable_writer(writer_cls):
+    """Build a pruning writer from the currently configured view writer class.
 
-
-class _PrunablePsmWriter(_RowPruning, PsmWriter):
-    pass
+    Creating the small mixin class at use time keeps test and downstream writer
+    substitutions effective while retaining the row-pruning hook required by the
+    streaming deduplication path.
+    """
+    return type(f"_Prunable{writer_cls.__name__}", (_RowPruning, writer_cls), {})
 
 
 def _as_paths(consensusxml_path) -> list[str]:
@@ -380,9 +383,35 @@ def _cf_feature_psm_records(
     return cf_feats if want_feature else [], cf_psms
 
 
-def _write_view(writer_cls, path, records, *, creator, compression, identity_composite=None):
+def _collect_psm_scan_formats(identifications, formats: set[str | None], *, enabled=True) -> None:
+    """Accumulate explicit PID formats; unknown references prevent a file declaration."""
+    if not enabled:
+        return
+    for pid in identifications:
+        if not pid.getHits():
+            continue
+        reference = pid.getSpectrumReference() if hasattr(pid, "getSpectrumReference") else ""
+        if not reference and pid.metaValueExists("spectrum_reference"):
+            reference = pid.getMetaValue("spectrum_reference")
+        if reference:
+            formats.add(scan_format_from_native_id(str(reference)))
+
+
+def _uniform_scan_format(formats: set[str | None]) -> str | None:
+    """Return the declaration only after the full input confirms one known format."""
+    return next(iter(formats)) if len(formats) == 1 else None
+
+
+def _declare_psm_scan_format(writer, formats: set[str | None]) -> None:
+    """Finalize a streamed PSM writer's confirmed declaration before it closes."""
+    scan_format = _uniform_scan_format(formats)
+    if writer is not None and scan_format is not None:
+        writer.set_scan_format(scan_format)
+
+
+def _write_view(writer_cls, path, records, *, creator, compression, identity_composite=None, scan_format=None):
     """Write records via a view writer; empty input does not create a file."""
-    kwargs = {"creator": creator, "compression": compression}
+    kwargs = {"creator": creator, "compression": compression, "scan_format": scan_format}
     if identity_composite is not None:
         kwargs["identity_composite"] = identity_composite
     with writer_cls(str(path), **kwargs) as w:
@@ -429,6 +458,7 @@ def _stream_feature_psm(
 
     feat_buf: list[dict] = []
     psm_buf: list[dict] = []
+    scan_formats: set[str | None] = set()
     feature_count = 0
     track = isinstance(seen, _PsmKeys)
     removed_index, confidence = identification_context(cm)
@@ -455,6 +485,7 @@ def _stream_feature_psm(
             feat_buf.extend(cf_feats)
             feature_count += len(cf_feats)
             psm_buf.extend(cf_psms)
+            _collect_psm_scan_formats(obj.getPeptideIdentifications(), scan_formats, enabled=pw is not None)
             if maps is not None:
                 accumulate_cf_maps(obj, map_run, maps)
         else:  # unassigned peptide identification
@@ -463,6 +494,7 @@ def _stream_feature_psm(
             if pw is not None and include_unassigned_psms:
                 # Unassigned PSMs map to no feature -> feature_id stays null.
                 psm_buf.extend(psm_records_for_pid(obj, resolve_run, seen, enzyme=enzyme, confidence=confidence))
+                _collect_psm_scan_formats([obj], scan_formats)
             if maps is not None:
                 # Protein inference always sees every identification, whether or
                 # not the PSM rows are emitted: dropping evidence would change the
@@ -472,6 +504,7 @@ def _stream_feature_psm(
         psm_buf = _flush_records(pw, psm_buf, batch)
     _flush_records(fw, feat_buf)
     _flush_records(pw, psm_buf)
+    _declare_psm_scan_format(pw, scan_formats)
     return feature_count
 
 
@@ -512,7 +545,7 @@ def _convert_streaming(
         fw = pw = None
         if want_feature:
             fw = stack.enter_context(
-                _PrunableFeatureWriter(
+                _prunable_writer(FeatureWriter)(
                     str(out / f"{output_prefix}.feature.parquet"),
                     creator=creator,
                     identity_composite=_FEATURE_IDENTITY_COMPOSITE,
@@ -521,7 +554,7 @@ def _convert_streaming(
             )
         if want_psm:
             pw = stack.enter_context(
-                _PrunablePsmWriter(
+                _prunable_writer(PsmWriter)(
                     str(out / f"{output_prefix}.psm.parquet"),
                     creator=creator,
                     identity_composite=_PSM_IDENTITY_COMPOSITE,
@@ -905,6 +938,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
         run_owner: dict[str, str] = {}
         feat_recs: list[dict] = []
         psm_recs: list[dict] = []
+        scan_formats: set[str | None] = set()
         for path in consensusxml_paths:
             cm = load_consensus_map(path)
             _claim_runs(run_owner, path, cm)
@@ -941,10 +975,12 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                     )
                     feat_recs.extend(cf_feats)
                     psm_recs.extend(cf_psms)
+                    _collect_psm_scan_formats(cf.getPeptideIdentifications(), scan_formats, enabled=want_psm)
                 seen.unassigned = True
                 if want_psm and include_unassigned_psms:
                     for pid in cm.getUnassignedPeptideIdentifications():
                         psm_recs.extend(psm_records_for_pid(pid, resolve_run, seen, enzyme=enzyme, confidence=confidence))
+                        _collect_psm_scan_formats([pid], scan_formats)
             if pg is not None:
                 pg.add_source(cm, map_info)
                 accumulate_consensus_map(cm, map_info, resolve_run, pg.maps)
@@ -967,6 +1003,7 @@ class OpenMSConsensusConverter(BaseOrchestrator):  # pylint: disable=too-few-pub
                 creator=creator,
                 compression=compression,
                 identity_composite=_PSM_IDENTITY_COMPOSITE,
+                scan_format=_uniform_scan_format(scan_formats),
             )
         if pg is not None:
             recs = pg.build(sdrf_path, pg_top)
