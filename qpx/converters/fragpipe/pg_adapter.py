@@ -353,7 +353,8 @@ class FragPipePgAdapter(BaseConverter):
             # Additional intensities pre-computed by FragPipe (MaxLFQ)
             additional_intensities = []
             extra_vals = []
-            if maxlfq_val is not None:
+            # Without a primary quantity, MaxLFQ can only hold FragPipe's zero sentinel.
+            if maxlfq_val is not None and primary_intensity is not None:
                 extra_vals.append({"intensity_name": "maxlfq", "intensity_value": float(maxlfq_val)})
             if extra_vals:
                 additional_intensities.append({"label": label, "intensities": extra_vals})

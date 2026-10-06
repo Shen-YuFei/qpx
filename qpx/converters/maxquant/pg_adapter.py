@@ -25,6 +25,7 @@ from qpx.converters.mappings import get_field_mappings
 from qpx.converters.maxquant.base_adapter import MaxQuantBaseAdapter
 from qpx.converters.maxquant.constants import TMT_LABEL_TO_MQ_COL
 from qpx.converters.utils import mq_flag_to_bool, safe_float
+from qpx.core.files import run_file_stem
 from qpx.writers.pg import PgWriter
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
         self._sdrf_experiment_to_runs: dict[str, list[str]] | None = None
         # Dropped-TMT-channel warnings already emitted (once per experiment).
         self._warned_tmt_channels: set = set()
+        # Upper-cased SDRF sample keys ("<run>-<label>" for TMT/iTRAQ).
+        self._sample_keys: set[str] = set()
 
     def convert(
         self,
@@ -97,7 +100,8 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
         self._resolved = resolve_columns(_PG_MAP, actual_cols)
 
         # Step 3: Load SDRF mapping
-        _, experiment_type, tmt_channels = self._load_sdrf(sdrf_path)
+        sample_map, experiment_type, tmt_channels = self._load_sdrf(sdrf_path)
+        self._sample_keys = {key.upper() for key in sample_map}
 
         # Step 4: Detect intensity columns in the data
         intensity_cols = self._detect_intensity_columns(experiment_type)
@@ -201,6 +205,11 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
             if runs:
                 return runs
         return None
+
+    def _has_sample(self, experiment: str, label: str) -> bool:
+        """Whether the SDRF assigns ``label`` a sample in any run of ``experiment``."""
+        runs = self._lookup_runs(experiment) or []
+        return any(f"{run_file_stem(run)}-{label}".upper() in self._sample_keys for run in runs)
 
     def _runs_for(self, experiment: str) -> list[str]:
         """Expand an Experiment token to its member run files.
@@ -455,11 +464,13 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
                         dropped_channels.append(str(channel_name))
                         continue
                     val = safe_float(row.get(col_name)) or 0.0
-                    if val > 0 or identified:
+                    # A plex-level identification covers only the channels the SDRF assigns there.
+                    if val > 0 or (identified and self._has_sample(exp, channel_name)):
                         intensities.append({"label": channel_name, "intensity": val if val > 0 else None})
                         corr_col = col_name.replace("Reporter intensity", "Reporter intensity corrected")
                         corr_val = safe_float(row.get(corr_col))
-                        if corr_val is not None:
+                        # Beside a missing reporter intensity, a zero is MaxQuant's sentinel.
+                        if corr_val is not None and (val > 0 or corr_val != 0):
                             additional_intensities.append(
                                 {
                                     "label": channel_name,
@@ -483,6 +494,9 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
                     intensity_val = None
                 lfq_val = safe_float(row.get(f"LFQ intensity {run_name}"))
                 ibaq_val = safe_float(row.get(f"iBAQ {run_name}"))
+                if intensity_val is None:
+                    # Beside a missing intensity, zero LFQ and iBAQ are MaxQuant's sentinels.
+                    lfq_val, ibaq_val = lfq_val or None, ibaq_val or None
                 extra_vals = []
                 if lfq_val is not None:
                     extra_vals.append({"intensity_name": "lfq", "intensity_value": float(lfq_val)})
