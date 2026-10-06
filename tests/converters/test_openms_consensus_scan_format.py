@@ -78,3 +78,27 @@ def test_unassigned_identifications_participate_when_included(tmp_path, streamin
         include_unassigned_psms=include_unassigned,
     )
     assert pq.read_schema(written["psm"]).metadata.get(b"scan_format") == (None if include_unassigned else b"scan")
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    ("second", "expected"),
+    [(["scan=44"], b"scan"), (["index=0"], None), (["uuid=opaque"], None)],
+)
+def test_multiple_inputs_declare_one_format_for_all_files(tmp_path, streaming, second, expected):
+    """A later input file neither replaces nor hides an earlier file's format."""
+    paths = []
+    for run, references in (("run_01", ["scan=42", "scan=43"]), ("run_02", second)):
+        root = fromstring(_TMT_CONSENSUSXML.replace("run_01", run))
+        feature = root.find(".//consensusElement")
+        template = feature.find("PeptideIdentification")
+        feature.remove(template)
+        for reference in references:
+            identification = deepcopy(template)
+            identification.set("spectrum_reference", reference)
+            feature.append(identification)
+        path = tmp_path / f"{run}.consensusXML"
+        path.write_bytes(tostring(root, encoding="utf-8", xml_declaration=True))
+        paths.append(str(path))
+    written = converter.OpenMSConsensusConverter().convert(paths, str(tmp_path / "out"), structures=("psm",), streaming=streaming)
+    assert pq.read_schema(written["psm"]).metadata.get(b"scan_format") == expected

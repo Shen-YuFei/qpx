@@ -440,13 +440,15 @@ def _stream_feature_psm(
     map_run,
     seen,
     batch,
+    scan_formats: set[str | None],
     include_unassigned_psms=True,
     enzyme=None,
     group_meta=None,
     dedup=None,
 ) -> int:
     """One ordered element/unassigned pass: write feature/psm in batches and
-    accumulate the pg maps in place. Return the number of emitted feature records."""
+    accumulate the pg maps and PSM scan formats in place. Return the number of
+    emitted feature records."""
     from qpx.converters.openms_consensus.feature_adapter import (
         identification_context,
     )
@@ -458,7 +460,6 @@ def _stream_feature_psm(
 
     feat_buf: list[dict] = []
     psm_buf: list[dict] = []
-    scan_formats: set[str | None] = set()
     feature_count = 0
     track = isinstance(seen, _PsmKeys)
     removed_index, confidence = identification_context(cm)
@@ -504,7 +505,6 @@ def _stream_feature_psm(
         psm_buf = _flush_records(pw, psm_buf, batch)
     _flush_records(fw, feat_buf)
     _flush_records(pw, psm_buf)
-    _declare_psm_scan_format(pw, scan_formats)
     return feature_count
 
 
@@ -540,6 +540,8 @@ def _convert_streaming(
     dedup = _FeatureDeduplicator(pg.pep_intensity if pg is not None else None)
     run_owner: dict[str, str] = {}
     written: dict[str, Path] = {}
+    # One PSM writer spans every input, so its format is declared once for all of them.
+    scan_formats: set[str | None] = set()
 
     with ExitStack() as stack:
         fw = pw = None
@@ -581,11 +583,13 @@ def _convert_streaming(
                 map_run=column_runs(cm),
                 seen=seen,
                 batch=100_000,
+                scan_formats=scan_formats,
                 include_unassigned_psms=include_unassigned_psms,
                 enzyme=resolve_enzyme(cm, sdrf_path),
                 group_meta=group_meta,
                 dedup=dedup,
             )
+        _declare_psm_scan_format(pw, scan_formats)
         dedup.log()
         if fw is not None:
             fw.drop_rows = frozenset(dedup.superseded)
