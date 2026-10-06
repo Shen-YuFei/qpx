@@ -874,11 +874,14 @@ def convert_openms_cmd(**kwargs):
         consensusxml_path=kwargs.get("consensusxml_path"),
         compression=compression,
     )
-    converter.convert(
-        output_folder=output_folder,
-        output_prefix=output_prefix,
-        project_accession=project_accession,
-    )
+    try:
+        converter.convert(
+            output_folder=output_folder,
+            output_prefix=output_prefix,
+            project_accession=project_accession,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     _maybe_enrich_pride(output_folder, project_accession, enrich_pride)
 
