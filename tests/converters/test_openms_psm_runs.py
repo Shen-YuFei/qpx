@@ -238,3 +238,29 @@ def test_public_enrichment_match_failure_preserves_existing_output(tmp_path, fai
 
     assert destination.read_bytes() == previous
     assert list(output.iterdir()) == [destination]
+
+
+def test_cli_reports_a_match_failure_as_a_usage_error(tmp_path):
+    """`convert openms` turns companion-match failures into a CLI error, not a traceback."""
+    from click.testing import CliRunner
+
+    from qpx.cli.main import qpx_main
+
+    source, _ = _write_native_psms(tmp_path, [{"scan": [43]}], provided_ids=True)
+    companion = _write_xml(tmp_path, [(0, "scan=42", 10.123456789, 500.123456789)])
+    sdrf = tmp_path / "input.sdrf.tsv"
+    sdrf.write_text(
+        "source name\tcharacteristics[organism]\tcharacteristics[organism part]\tcomment[data file]\tcomment[label]\n"
+        "sample_1\tHomo sapiens\tliver\trun_a.mzML\tlabel free sample\n"
+    )
+    result = CliRunner().invoke(
+        qpx_main,
+        [
+            *("convert", "openms", "--qpx-dir", str(source), "--sdrf-file", str(sdrf)),
+            *("--consensusxml", str(companion), "--output-folder", str(tmp_path / "out")),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "no exact companion XML match" in result.output
+    assert not isinstance(result.exception, ValueError)
