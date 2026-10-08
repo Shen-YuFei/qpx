@@ -169,3 +169,19 @@ def test_inverse_ion_mobility_comes_from_the_selected_ion(tmp_path):
     mobility = {row["run_file_name"]: row["inverse_ion_mobility"] for row in rows}
     assert mobility["run_g"] == pytest.approx(0.88)
     assert mobility["run_h"] is None
+
+
+def test_peak_arrays_use_byte_stream_split(tmp_path):
+    """Spectrum m/z and intensity leaves are written with BYTE_STREAM_SPLIT."""
+    from qpx.transforms.spectra_mapping import SpectraMappingTransform
+
+    d = tmp_path / "mzml"
+    d.mkdir()
+    _make_mini_mzml(d / "run_f.mzML", [(1, 1, 60.0), (2, 2, 60.5)])
+    out = tmp_path / "out.mz.parquet"
+    SpectraMappingTransform(mzml_directory=d).write_mz_parquet_from_dir(out)
+
+    row_group = pq.ParquetFile(str(out)).metadata.row_group(0)
+    encodings = {row_group.column(i).path_in_schema: row_group.column(i).encodings for i in range(row_group.num_columns)}
+    assert "BYTE_STREAM_SPLIT" in encodings["mz.list.element"]
+    assert "BYTE_STREAM_SPLIT" in encodings["intensity.list.element"]
