@@ -20,9 +20,19 @@ modification handling is byte-identical.
 
 from __future__ import annotations
 
+import gzip
+
 import numpy as np
 import pyopenms as oms
 from defusedxml.ElementTree import iterparse
+
+
+def _iterparse(path: str, events: tuple[str, ...]):
+    """``iterparse`` over a consensusXML file, decompressing gzip transparently."""
+    with open(path, "rb") as handle:
+        gzipped = handle.read(2) == b"\x1f\x8b"
+    with gzip.open(path, "rb") if gzipped else open(path, "rb") as source:
+        yield from iterparse(source, events=events)
 
 
 def _localname(tag: str) -> str:
@@ -359,7 +369,7 @@ class StreamingConsensusMap:
         prot_score_type = ""
         identifier = ""
         search_meta: dict[str, str] = {}
-        for event, el in iterparse(self._path, events=("start", "end")):
+        for event, el in _iterparse(self._path, events=("start", "end")):
             tag = _localname(el.tag)
             if event == "end" and tag == "map":
                 self._headers[int(el.attrib["id"])] = _ColHeader(el.attrib.get("name", ""), el.attrib.get("label", ""))
@@ -435,7 +445,7 @@ class StreamingConsensusMap:
 
     def iter_identifications(self, *, include_assigned: bool = True):
         """Stream identification context without constructing feature/sub-feature objects."""
-        for _, el in iterparse(self._path, events=("end",)):
+        for _, el in _iterparse(self._path, events=("end",)):
             tag = _localname(el.tag)
             if tag == "UnassignedPeptideIdentification":
                 yield "unassigned", _parse_peptide_id(el, self._ph_to_acc)
@@ -456,7 +466,7 @@ class StreamingConsensusMap:
         order, ``("unassigned", PeptideIdentification)``. The converter uses
         one traversal for identification context and another for all output views."""
         depth_in_list = False
-        for event, el in iterparse(self._path, events=("start", "end")):
+        for event, el in _iterparse(self._path, events=("start", "end")):
             tag = _localname(el.tag)
             if event == "start" and tag == "consensusElementList":
                 depth_in_list = True
