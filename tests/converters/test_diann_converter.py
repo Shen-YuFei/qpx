@@ -1513,3 +1513,55 @@ def test_nearest_ms2_picks_the_precursor_window_among_spectra_sharing_a_time():
     nearest = _nearest_ms2(left, right).set_index("_merge_row")["_matched_scan"]
 
     assert nearest.to_dict() == {0: 2.0, 1: 1.0, 2: 1.0}
+
+
+@pytest.mark.parametrize("with_ms_info", [False, True])
+def test_diann_ms2_scan_position_becomes_a_scan_only_through_ms_info(tmp_path, with_ms_info):
+    """DIA-NN 1.8 MS2.Scan counts the run's MS2 spectra from 0. Without MS info it
+    names no native scan, so feature.scan stays empty; with it, the position selects
+    the scan. The MS-info precursor m/z is a DIA window centre and never fills
+    observed_mz."""
+    from qpx.converters.diann.feature_adapter import DiannFeatureAdapter
+
+    report_path = tmp_path / "report.tsv"
+    pd.DataFrame(
+        [
+            {
+                "Run": "run_A",
+                "Protein.Group": "P1",
+                "Genes": "G1",
+                "Modified.Sequence": "PEPTIDEK",
+                "Stripped.Sequence": "PEPTIDEK",
+                "Precursor.Charge": 2,
+                "Q.Value": 0.002,
+                "Precursor.Quantity": 100.0,
+                "RT": 10.0,
+                "MS2.Scan": 2,
+            }
+        ]
+    ).to_csv(report_path, sep="\t", index=False)
+    ms_info = tmp_path / "ms_info"
+    ms_info.mkdir()
+    # Native scan 2 would read as "MS2.Scan is a scan number"; the RT alone points at scan 3.
+    pd.DataFrame(
+        {
+            "scan": ["1", "2", "3", "4"],
+            "ms_level": [1, 2, 2, 2],
+            "rt": [599.0, 599.5, 600.0, 600.5],
+            "precursor_mz": [None, 412.5, 437.5, 462.5],
+        }
+    ).to_parquet(ms_info / "run_A_ms_info.parquet", index=False)
+
+    output_path = tmp_path / "report.feature.parquet"
+    with DiannFeatureAdapter() as adapter:
+        adapter.convert(
+            diann_report=str(report_path),
+            output_path=str(output_path),
+            mzml_info_folder=str(ms_info) if with_ms_info else None,
+            qvalue_threshold=0.01,
+        )
+
+    row = pq.read_table(output_path).to_pylist()[0]
+    assert row["scan"] == ([4] if with_ms_info else [])
+    assert row["observed_mz"] is None
+    assert row["mass_error_ppm"] is None
