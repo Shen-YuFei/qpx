@@ -26,7 +26,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import Optional, Union
 
@@ -45,6 +44,17 @@ NATIVE_ID_PATTERNS = [
     "index=(?<SCAN>\\d+)",  # Generic index format
     "spectrum=(?<SCAN>\\d+)",  # Alternative format
 ]
+
+# PSI-MS "ion injection time"; pyopenms keeps it on the scan's acquisition.
+_ION_INJECTION_TIME = "MS:1000927"
+
+
+def _ion_injection_time(spectrum) -> float:
+    """Ion injection time (ms) of the scan, 0.0 when the mzML does not report it."""
+    for acquisition in spectrum.getAcquisitionInfo():
+        if acquisition.metaValueExists(_ION_INJECTION_TIME):
+            return float(acquisition.getMetaValue(_ION_INJECTION_TIME))
+    return 0.0
 
 
 class _MzMLCache:
@@ -513,8 +523,6 @@ class SpectraMappingTransform:
         mz_array, intensity_array = spectrum.get_peaks()
         native_id = spectrum.getNativeID()
         scan_id = f"{run_name}:{native_id}" if native_id else f"{run_name}:index={index}"
-        scan_match = re.search(r"scan=(\d+)", native_id) if native_id else None
-        scan_num = int(scan_match.group(1)) if scan_match else None
 
         ms_level = spectrum.getMSLevel()
         precursors = None
@@ -544,16 +552,17 @@ class SpectraMappingTransform:
         return {
             "id": scan_id,
             "run_file_name": run_name,
-            "scan": scan_num,
+            "scan": scan_from_native_id(native_id) or None,
             "ms_level": ms_level,
             "centroid": spectrum.getType() == oms.SpectrumSettings.SpectrumType.CENTROID,
             "scan_start_time": float(spectrum.getRT() / 60.0),  # Convert seconds to minutes
-            "inverse_ion_mobility": None,
-            "ion_injection_time": (
-                float(spectrum.getInstrumentSettings().getMetaValue("ion injection time"))
-                if spectrum.getInstrumentSettings().metaValueExists("ion injection time")
-                else 0.0
+            # timsTOF PASEF MS2 carries its precursor's 1/K0; frames and DIA windows have none.
+            "inverse_ion_mobility": (
+                float(spectrum.getDriftTime())
+                if spectrum.getDriftTimeUnit() == oms.DriftTimeUnit.VSSC and spectrum.getDriftTime() >= 0
+                else None
             ),
+            "ion_injection_time": _ion_injection_time(spectrum),
             "total_ion_current": (float(sum(intensity_array)) if len(intensity_array) > 0 else 0.0),
             "precursors": precursors,
             "mz": mz_array.tolist(),
