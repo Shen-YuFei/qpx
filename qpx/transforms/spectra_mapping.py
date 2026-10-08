@@ -31,6 +31,7 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 from qpx.core.scan import scan_from_native_id
 
@@ -47,6 +48,66 @@ NATIVE_ID_PATTERNS = [
 
 # PSI-MS "ion injection time"; pyopenms keeps it on the scan's acquisition.
 _ION_INJECTION_TIME = "MS:1000927"
+
+
+# Peaks per written batch: bounds memory whatever the file size, while keeping row
+# groups large enough to compress well.
+_MZ_BATCH_PEAKS = 10_000_000
+
+
+class _MzRecordWriter:
+    """pyopenms mzML consumer that writes QPX mz records in peak-bounded batches."""
+
+    def __init__(self, writer, build_record, ms_levels):
+        self._writer = writer
+        self._build_record = build_record
+        self._ms_levels = ms_levels
+        self._records: list[dict] = []
+        self._peaks = 0
+        self._index = 0
+        self.written = 0
+
+    def consume_spectrum(self, spectrum) -> None:
+        """Buffer one spectrum's record; write the batch once it holds enough peaks."""
+        index = self._index
+        self._index += 1
+        if self._ms_levels is not None and spectrum.getMSLevel() not in self._ms_levels:
+            return
+        record = self._build_record(spectrum, index)
+        self._records.append(record)
+        self._peaks += len(record["mz"])
+        if self._peaks >= _MZ_BATCH_PEAKS:
+            self.flush()
+
+    def flush(self) -> None:
+        """Write the buffered records."""
+        if self._records:
+            self._writer.write_table(pa.Table.from_pylist(self._records, schema=self._writer.arrow_schema))
+            self.written += len(self._records)
+            self._records, self._peaks = [], 0
+
+    def ignore(self, *_args) -> None:
+        """Experiment settings, expected sizes and chromatograms are not written."""
+
+    # pyopenms MzMLFile.transform calls camelCase consumer hooks; route them here.
+    _HOOKS = {
+        "consumeSpectrum": "consume_spectrum",
+        "consumeChromatogram": "ignore",
+        "setExperimentalSettings": "ignore",
+        "setExpectedSize": "ignore",
+    }
+
+    def __getattr__(self, name):
+        if name in self._HOOKS:
+            return getattr(self, self._HOOKS[name])
+        raise AttributeError(name)
+
+
+def _total_ion_current(spectrum, intensity) -> float:
+    """The scan's reported TIC (MS:1000285); the summed peak intensity when the mzML has none."""
+    if spectrum.metaValueExists("total ion current"):
+        return float(spectrum.getMetaValue("total ion current"))
+    return float(intensity.sum()) if len(intensity) else 0.0
 
 
 def _ion_injection_time(spectrum) -> float:
@@ -483,7 +544,7 @@ class SpectraMappingTransform:
         return mzml_path.stem
 
     def _write_mzml_spectra(self, mzml_path, run_name, writer, ms_levels) -> int:
-        """Load one mzML and write its spectra (optionally filtered by MS level).
+        """Stream one mzML and write its spectra (optionally filtered by MS level).
 
         Returns the number of spectra written.
         """
@@ -493,25 +554,14 @@ class SpectraMappingTransform:
             raise ImportError("pyopenms is required for mzML parsing. Install it with: pip install pyopenms")
 
         logger.info("Processing mzML: %s", mzml_path)
-        exp = oms.MSExperiment()
-        oms.MzMLFile().load(str(mzml_path), exp)
-
-        written = 0
-        records: list[dict] = []
-        for i in range(exp.getNrSpectra()):
-            spectrum = exp.getSpectrum(i)
-            ms_level = spectrum.getMSLevel()
-            if ms_levels is not None and ms_level not in ms_levels:
-                continue
-            records.append(self._build_mz_record(spectrum, run_name, i, oms))
-            if len(records) >= 10000:
-                writer.write_batch(records)
-                written += len(records)
-                records = []
-        if records:
-            writer.write_batch(records)
-            written += len(records)
-        return written
+        # Stream spectra rather than loading the whole experiment, so memory stays
+        # bounded by one peak-limited batch instead of growing with the file.
+        consumer = _MzRecordWriter(
+            writer, lambda spectrum, index: self._build_mz_record(spectrum, run_name, index, oms), ms_levels
+        )
+        oms.MzMLFile().transform(str(mzml_path), consumer)
+        consumer.flush()
+        return consumer.written
 
     @staticmethod
     def _build_mz_record(spectrum, run_name, index, oms) -> dict:
@@ -563,10 +613,10 @@ class SpectraMappingTransform:
                 else None
             ),
             "ion_injection_time": _ion_injection_time(spectrum),
-            "total_ion_current": (float(sum(intensity_array)) if len(intensity_array) > 0 else 0.0),
+            "total_ion_current": _total_ion_current(spectrum, intensity_array),
             "precursors": precursors,
-            "mz": mz_array.tolist(),
-            "intensity": intensity_array.tolist(),
+            "mz": mz_array,
+            "intensity": intensity_array,
             "cv_params": None,
         }
 

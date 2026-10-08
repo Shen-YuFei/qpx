@@ -16,7 +16,7 @@ pytest.importorskip("pyopenms")
 
 
 def _make_mini_mzml(
-    path, specs, native_id="controllerType=0 controllerNumber=1 scan={scan}", injection_time=None, ion_mobility=None
+    path, specs, native_id="controllerType=0 controllerNumber=1 scan={scan}", injection_time=None, ion_mobility=None, tic=None
 ):
     """Write a minimal mzML at *path*.
 
@@ -32,6 +32,8 @@ def _make_mini_mzml(
         spectrum.setMSLevel(ms_level)
         spectrum.setRT(rt)
         spectrum.setNativeID(native_id.format(scan=scan))
+        if tic is not None:
+            spectrum.setMetaValue("total ion current", tic)
         if ms_level >= 2:
             precursor = oms.Precursor()
             precursor.setMZ(500.0 + scan)
@@ -211,3 +213,18 @@ def test_legacy_int32_scan_reads_as_a_component_list(tmp_path):
     engine = create_engine()
     engine.register_parquet_files("mz", [legacy, legacy])
     assert engine.execute("SELECT scan FROM mz").fetchall() == [([1],), ([2],), ([1],), ([2],)]
+
+
+def test_total_ion_current_is_the_reported_tic(tmp_path):
+    """The mzML TIC (MS:1000285) is kept; summed peaks stand in only when it is absent."""
+    from qpx.transforms.spectra_mapping import SpectraMappingTransform
+
+    d = tmp_path / "mzml"
+    d.mkdir()
+    _make_mini_mzml(d / "run_j.mzML", [(1, 1, 60.0)], tic=1000.0)
+    _make_mini_mzml(d / "run_k.mzML", [(1, 1, 60.0)])
+    out = tmp_path / "out.mz.parquet"
+    SpectraMappingTransform(mzml_directory=d).write_mz_parquet_from_dir(out)
+
+    rows = pq.read_table(str(out), columns=["run_file_name", "total_ion_current"]).to_pylist()
+    assert {row["run_file_name"]: row["total_ion_current"] for row in rows} == {"run_j": 1000.0, "run_k": 60.0}
