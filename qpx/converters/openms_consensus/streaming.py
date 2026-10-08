@@ -21,18 +21,38 @@ modification handling is byte-identical.
 from __future__ import annotations
 
 import gzip
+from pathlib import Path
 
 import numpy as np
 import pyopenms as oms
 from defusedxml.ElementTree import iterparse
 
 
+def _is_gzip(path: str) -> bool:
+    with open(path, "rb") as handle:
+        return handle.read(2) == b"\x1f\x8b"
+
+
 def _iterparse(path: str, events: tuple[str, ...]):
     """``iterparse`` over a consensusXML file, decompressing gzip transparently."""
-    with open(path, "rb") as handle:
-        gzipped = handle.read(2) == b"\x1f\x8b"
-    with gzip.open(path, "rb") if gzipped else open(path, "rb") as source:
+    with gzip.open(path, "rb") if _is_gzip(path) else open(path, "rb") as source:
         yield from iterparse(source, events=events)
+
+
+def exceeds_xml_size(path: str, limit: int) -> bool:
+    """Whether the consensusXML, decompressed, is larger than *limit* bytes."""
+    if Path(path).stat().st_size > limit:
+        return True
+    if not _is_gzip(path):
+        return False
+    # gzip stores the decompressed size modulo 4 GiB, so count it up to the limit.
+    decompressed = 0
+    with gzip.open(path, "rb") as stream:
+        while chunk := stream.read(64 * 1024**2):
+            decompressed += len(chunk)
+            if decompressed > limit:
+                return True
+    return False
 
 
 def _localname(tag: str) -> str:

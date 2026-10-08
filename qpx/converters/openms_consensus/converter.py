@@ -296,15 +296,17 @@ def _warn_channel_mismatch(cm, sdrf_path) -> None:
             _log.warning("consensusXML/SDRF channel mismatch: %s", msg)
 
 
-# Above this consensusXML size, auto-select the streaming reader: the pyopenms
-# in-memory load needs ~0.8x the file in RAM, so ~4 GB (≈3 GB RAM) is a safe point
-# to switch to the low-memory path on a normal node.
+# Above this decompressed consensusXML size, auto-select the streaming reader: the
+# pyopenms in-memory load needs ~0.8x the file in RAM, so ~4 GB (≈3 GB RAM) is a safe
+# point to switch to the low-memory path on a normal node.
 _STREAM_THRESHOLD_BYTES = 4 * 1024**3
 
 
 def _should_stream(path: str) -> bool:
+    from qpx.converters.openms_consensus.streaming import exceeds_xml_size
+
     try:
-        return Path(path).stat().st_size > _STREAM_THRESHOLD_BYTES
+        return exceeds_xml_size(path, _STREAM_THRESHOLD_BYTES)
     except OSError:
         return False
 
