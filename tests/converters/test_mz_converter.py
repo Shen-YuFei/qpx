@@ -8,6 +8,7 @@ pyopenms so the tests are self-contained and fast.
 import gzip
 import shutil
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
@@ -185,3 +186,28 @@ def test_peak_arrays_use_byte_stream_split(tmp_path):
     encodings = {row_group.column(i).path_in_schema: row_group.column(i).encodings for i in range(row_group.num_columns)}
     assert "BYTE_STREAM_SPLIT" in encodings["mz.list.element"]
     assert "BYTE_STREAM_SPLIT" in encodings["intensity.list.element"]
+
+
+def test_legacy_int32_scan_reads_as_a_component_list(tmp_path):
+    """mz files written before mz.scan became list<int32> load and validate in the current shape."""
+    from qpx.core.data import MzSpectra
+    from qpx.core.engine import create_engine
+    from qpx.transforms.spectra_mapping import SpectraMappingTransform
+
+    d = tmp_path / "mzml"
+    d.mkdir()
+    _make_mini_mzml(d / "run_i.mzML", [(1, 1, 60.0), (2, 2, 60.5)])
+    current = tmp_path / "current.mz.parquet"
+    SpectraMappingTransform(mzml_directory=d).write_mz_parquet_from_dir(current)
+    table = pq.read_table(str(current))
+    scalar_scan = pa.array([scan[0] for scan in table.column("scan").to_pylist()], pa.int32())
+    legacy = tmp_path / "legacy.mz.parquet"
+    pq.write_table(table.set_column(table.schema.get_field_index("scan"), pa.field("scan", pa.int32()), scalar_scan), str(legacy))
+
+    spectra = MzSpectra.from_file(legacy)
+    assert spectra.to_arrow().column("scan").to_pylist() == [[1], [2]]
+    assert not [issue for issue in spectra.validate().issues if issue.column == "scan"]
+
+    engine = create_engine()
+    engine.register_parquet_files("mz", [legacy, legacy])
+    assert engine.execute("SELECT scan FROM mz").fetchall() == [([1],), ([2],), ([1],), ([2],)]
