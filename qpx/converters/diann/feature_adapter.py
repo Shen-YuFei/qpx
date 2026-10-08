@@ -23,6 +23,7 @@ from qpx.converters.diann.constants import to_modifications, to_proforma
 from qpx.converters.mappings import get_field_mappings
 from qpx.converters.ptm import compute_precursor_mz
 from qpx.core.cleavage import count_missed_cleavages
+from qpx.core.scan import scan_from_native_id
 from qpx.core.sql import sql_build, validate_identifier
 from qpx.writers.feature import FeatureWriter
 
@@ -77,6 +78,31 @@ def _safe_float_sql(column: str) -> str:
 def _safe_double_sql(column: str) -> str:
     """Build a SQL expression that converts a finite value to DOUBLE."""
     return f'CASE WHEN r."{column}" IS NOT NULL AND NOT isnan(CAST(r."{column}" AS DOUBLE)) THEN CAST(r."{column}" AS DOUBLE) END'
+
+
+def _ms_info_scans(values: pd.Series) -> pd.Series:
+    """Scan numbers of an MS-info table: numbers, or one-component native IDs such as ``index=5``."""
+    scans = pd.to_numeric(values, errors="coerce")
+    native = scans.isna() & values.notna()
+    if native.any():
+        components = values[native].map(lambda value: scan_from_native_id(str(value)))
+        scans[native] = components.map(lambda parts: parts[0] if len(parts) == 1 else None)
+    return scans
+
+
+def _nearest_ms2(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+    """Nearest MS2 entry by RT for each feature row.
+
+    DIA spectra acquired together (the windows of one diaPASEF frame) share one
+    time; among them the window centre nearest the precursor m/z is the feature's
+    fragment spectrum.
+    """
+    times = right[["_ms_rt"]].drop_duplicates()
+    nearest = pd.merge_asof(left, times, left_on="rt", right_on="_ms_rt", direction="nearest")
+    nearest = nearest.merge(right, on="_ms_rt", how="left")
+    gap = (nearest["_matched_mz"] - nearest["observed_mz"].where(nearest["observed_mz"] > 0)).abs()
+    nearest = nearest.assign(_gap=gap).sort_values(["_merge_row", "_gap"], kind="stable", na_position="last")
+    return nearest.drop_duplicates("_merge_row").drop(columns="_gap")
 
 
 class DiannFeatureAdapter(DiaNNBaseAdapter):
@@ -875,7 +901,7 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
         run_data["_merge_row"] = range(len(run_data))
         run_data["rt"] = run_data["rt"].astype("float64")
         run_data["observed_mz"] = pd.to_numeric(run_data["observed_mz"], errors="coerce").astype("float64")
-        target["scan"] = pd.to_numeric(target["scan"], errors="coerce")
+        target["scan"] = _ms_info_scans(target["scan"])
         target["precursor_mz"] = pd.to_numeric(target["precursor_mz"], errors="coerce")
         target["rt"] = target["rt"].astype("float64")
 
@@ -896,17 +922,18 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
         fill_exact_mz = (observed_mz.isna() | (observed_mz <= 0)) & exact_mz.notna()
         run_data.loc[fill_exact_mz, "observed_mz"] = exact_mz[fill_exact_mz]
 
-        # Older DIA-NN reports may not carry MS2.Scan.  For only those rows,
-        # select the nearest MS2 entry by RT, and never extend past the measured
-        # acquisition range.  Existing report scans remain authoritative.
+        # DIA-NN reports may not carry MS2.Scan.  For only those rows, select the
+        # nearest MS2 entry by RT (by window among entries sharing that time), and
+        # never extend past the measured acquisition range.  Existing report scans
+        # remain authoritative.
         missing_scan = report_scans.isna() & run_data["rt"].notna()
         rt_target = target.dropna(subset=["rt", "scan", "precursor_mz"]).sort_values("rt")
         if missing_scan.any() and not rt_target.empty:
-            left = run_data.loc[missing_scan, ["_merge_row", "rt"]].sort_values("rt")
+            left = run_data.loc[missing_scan, ["_merge_row", "rt", "observed_mz"]].sort_values("rt")
             right = rt_target[["rt", "scan", "precursor_mz"]].rename(
                 columns={"rt": "_ms_rt", "scan": "_matched_scan", "precursor_mz": "_matched_mz"}
             )
-            nearest = pd.merge_asof(left, right, left_on="rt", right_on="_ms_rt", direction="nearest")
+            nearest = _nearest_ms2(left, right)
             outside_acquisition = (nearest["rt"] < right["_ms_rt"].min()) | (nearest["rt"] > right["_ms_rt"].max())
             nearest.loc[outside_acquisition, ["_matched_scan", "_matched_mz"]] = None
 

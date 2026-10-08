@@ -1484,3 +1484,32 @@ def test_diann_convert_writes_the_mudata_view(tmp_path, mudata_flag, expect_h5mu
     assert result.exit_code == 0, result.output
     assert (out / "d.feature.parquet").is_file()
     assert (out / "d.h5mu").is_file() is expect_h5mu
+
+
+def test_ms_info_scans_accept_one_component_native_ids():
+    """tdf2mzml ``index=N`` IDs stay verbatim in MS-info tables and still give a scan number."""
+    from qpx.converters.diann.feature_adapter import _ms_info_scans
+
+    scans = _ms_info_scans(pd.Series(["7", "index=5", "controllerType=0 controllerNumber=1 scan=9", "frame=1 scan=2", None]))
+
+    assert scans.tolist()[:3] == [7, 5, 9]
+    assert scans.iloc[3:].isna().all()
+
+
+def test_nearest_ms2_picks_the_precursor_window_among_spectra_sharing_a_time():
+    """diaPASEF windows of one frame share a time; the window centre nearest the
+    precursor m/z identifies the spectrum, and a later time is not chosen."""
+    from qpx.converters.diann.feature_adapter import _nearest_ms2
+
+    right = pd.DataFrame(
+        {
+            "_ms_rt": [100.0, 100.0, 100.0, 100.1],
+            "_matched_scan": [1.0, 2.0, 3.0, 4.0],
+            "_matched_mz": [412.5, 437.5, 462.5, 437.5],
+        }
+    )
+    left = pd.DataFrame({"_merge_row": [0, 1, 2], "rt": [100.0, 100.0, 100.02], "observed_mz": [440.1, 410.0, None]})
+
+    nearest = _nearest_ms2(left, right).set_index("_merge_row")["_matched_scan"]
+
+    assert nearest.to_dict() == {0: 2.0, 1: 1.0, 2: 1.0}
