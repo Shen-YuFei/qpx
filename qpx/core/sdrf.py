@@ -68,7 +68,8 @@ def get_complex_value_sdrf_column(sdrf_table: DataFrame, column: str) -> list:
     :param column: column name
     """
     values = get_unique_from_column_substr(sdrf_table, column)
-    return [get_name_from_complex_sdrf_value(value) for value in values]
+    # Blank cells are read as NaN and carry no value.
+    return [get_name_from_complex_sdrf_value(value) for value in values if pd.notna(value)]
 
 
 class SDRFHandler:

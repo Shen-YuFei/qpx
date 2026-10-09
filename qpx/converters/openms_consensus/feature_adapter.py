@@ -72,15 +72,10 @@ def sdrf_enzyme(sdrf_path) -> str | None:
     """
     if not sdrf_path:
         return None
-    try:
-        from qpx.core.sdrf import SDRFHandler
+    from qpx.core.sdrf import SDRFHandler
 
-        enzymes = SDRFHandler(str(sdrf_path)).get_enzymes()
-        if enzymes:
-            return str(enzymes[0])
-    except (OSError, KeyError, TypeError, ValueError):
-        _log.debug("Could not load enzyme from SDRF %s", sdrf_path)
-    return None
+    enzymes = SDRFHandler(str(sdrf_path)).get_enzymes()
+    return str(enzymes[0]) if enzymes else None
 
 
 def resolve_enzyme(cm, sdrf_path=None) -> str | None:

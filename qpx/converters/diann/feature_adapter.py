@@ -220,16 +220,10 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
 
     def _load_sdrf_enzyme(self, sdrf_path: str) -> str | None:
         """Load the first enzyme name from SDRF for missed-cleavage computation."""
-        try:
-            from qpx.core.sdrf import SDRFHandler
+        from qpx.core.sdrf import SDRFHandler
 
-            handler = SDRFHandler(sdrf_path)
-            enzymes = handler.get_enzymes()
-            if enzymes:
-                return str(enzymes[0])
-        except (OSError, KeyError, TypeError, ValueError):
-            self.logger.debug("Could not load enzyme from SDRF")
-        return None
+        enzymes = SDRFHandler(sdrf_path).get_enzymes()
+        return str(enzymes[0]) if enzymes else None
 
     def _discover_runs(self, mzml_info_folder: Optional[str]) -> list[str]:
         """Discover run names from ms_info files or from the report."""
