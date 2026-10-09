@@ -179,8 +179,7 @@ def _converted_output(tmp_path_factory):
 def _feature_table(converted_output):
     """Read the feature.parquet produced by the converter."""
     path = converted_output / "diann_test.feature.parquet"
-    if not path.exists():
-        pytest.skip("feature.parquet was not produced")
+    assert path.exists(), "feature.parquet was not produced"
     return pq.read_table(str(path))
 
 
@@ -188,8 +187,7 @@ def _feature_table(converted_output):
 def pg_table(converted_output):
     """Read the pg.parquet produced by the converter."""
     path = converted_output / "diann_test.pg.parquet"
-    if not path.exists():
-        pytest.skip("pg.parquet was not produced")
+    assert path.exists(), "pg.parquet was not produced"
     return pq.read_table(str(path))
 
 
@@ -1025,16 +1023,14 @@ class TestDiaNNOntologyConversion:
 
     def test_ontology_file_exists_or_no_scores(self, converted_output):
         path = converted_output / "diann_test.ontology.parquet"
-        if not path.exists():
-            pytest.skip("ontology.parquet not written (no scores discovered)")
+        assert path.exists(), "ontology.parquet not written (no scores discovered)"
 
         table = pq.read_table(str(path))
         assert table.num_rows > 0, "ontology.parquet exists but is empty"
 
     def test_ontology_columns(self, converted_output):
         path = converted_output / "diann_test.ontology.parquet"
-        if not path.exists():
-            pytest.skip("ontology.parquet not written (no scores discovered)")
+        assert path.exists(), "ontology.parquet not written (no scores discovered)"
 
         table = pq.read_table(str(path))
         column_names = set(table.column_names)
@@ -1053,8 +1049,7 @@ class TestDiaNNOntologyConversion:
         from qpx.core.data import OntologySchema
 
         path = converted_output / "diann_test.ontology.parquet"
-        if not path.exists():
-            pytest.skip("ontology.parquet not written (no scores discovered)")
+        assert path.exists(), "ontology.parquet not written (no scores discovered)"
         table = pq.read_table(str(path))
         errors = OntologySchema.validate(table)
         assert not errors, f"Schema validation errors: {errors}"
@@ -1404,8 +1399,7 @@ def test_protein_properties_from_fasta_on_bare_diann_accessions(converted_output
     from qpx.cli.transform import transform
 
     feature = converted_output / "diann_test.feature.parquet"
-    if not (converted_output / "diann_test.pg.parquet").exists():
-        pytest.skip("pg.parquet was not produced")
+    assert (converted_output / "diann_test.pg.parquet").exists(), "pg.parquet was not produced"
     groups = (
         duckdb.connect()
         .execute(
