@@ -102,22 +102,6 @@ class SDRFHandler:
     def get_enzymes(self):
         return get_complex_value_sdrf_column(self.sdrf_table, self.ENZYME_COLUMN)
 
-    def get_factor_names(self) -> list:
-        """
-        Get all factor value column names from SDRF.
-
-        Returns:
-            List of factor names, e.g., ["organism part", "disease"].
-            Returns empty list if no factor value columns found.
-        """
-        factor_columns = [column for column in self.sdrf_table.columns if "factor value" in column]
-        factor_names = []
-        for col in factor_columns:
-            match = re.search(r"factor value\[(.+?)\]", col)
-            if match:
-                factor_names.append(match.group(1))
-        return factor_names
-
     def get_experiment_type_from_sdrf(self):
         """
         Using the SDRF file label column, we will try to extract the experiment type of an SDRF.

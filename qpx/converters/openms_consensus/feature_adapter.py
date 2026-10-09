@@ -215,21 +215,6 @@ class PeptideLevelConfidence:
         return self._best.get((identification_identifier(pid) or "", peptidoform), (None, None))
 
 
-def peptide_level_confidence(cm) -> PeptideLevelConfidence:
-    """Collect the peptide-level confidence of every identification in ``cm`` (one extra pass when streamed)."""
-    confidence = PeptideLevelConfidence(cm)
-    if not confidence:
-        return confidence
-    if hasattr(cm, "iter_all"):
-        for kind, obj in cm.iter_all():
-            confidence.add(obj.getPeptideIdentifications() if kind == "element" else [obj])
-    else:
-        for cf in cm:
-            confidence.add(cf.getPeptideIdentifications())
-        confidence.add(cm.getUnassignedPeptideIdentifications())
-    return confidence
-
-
 def _scored(value: float | None) -> float | None:
     """Drop Percolator's peptide-level placeholder 1.0."""
     return None if value is None or value >= 1.0 else value
@@ -638,8 +623,6 @@ def _protein_group_fields(pid, group_map, group_meta) -> dict:
     """Attach metadata only after resolving the identification's protein group."""
     accessions = {ev.getProteinAccession() for ev in pid.getHits()[0].getPeptideEvidences()}
     accessions = {acc.decode() if isinstance(acc, bytes) else acc for acc in accessions if acc}
-    if isinstance(group_map, dict):
-        group_map = ProteinGroupIndex.from_groups(group_map.values())
     group = group_map.resolve(accessions, identification_identifier(pid)) if group_map is not None else None
     qvalue, genes = (group_meta or {}).get(group, (None, None)) if group else (None, None)
     return {
