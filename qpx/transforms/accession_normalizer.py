@@ -10,10 +10,13 @@ Contaminant/entrapment prefixes (CONTAM_, ENTRAP_) are preserved.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import shutil
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
@@ -93,6 +96,11 @@ def normalize_parquet(
 ) -> dict:
     """Normalize accessions in a QPX parquet file.
 
+    The accession columns are scanned first and each distinct accession is
+    transformed once. A file with nothing to change is copied (or, in place,
+    left untouched); otherwise it is rewritten in bounded batches with the QPX
+    Parquet encoding.
+
     Args:
         parquet_path: Input parquet file (feature.parquet or pg.parquet).
         output_path: Where to write the normalized file.
@@ -102,53 +110,31 @@ def normalize_parquet(
     Returns:
         Dict with stats: {"rows", "accessions_changed", "file"}.
     """
+    from qpx.transforms.protein_properties import _rewrite_view
+
     if direction == "reverse" and not fasta_lookup:
         raise ValueError("FASTA lookup required for reverse normalization")
 
     transform_fn = to_bare if direction == "forward" else lambda a: to_full(a, fasta_lookup)
 
-    table = pq.read_table(str(parquet_path))
-    schema = table.schema
-    n_changed = 0
-    total_rows = len(table)
+    parquet_path, output_path = Path(parquet_path), Path(output_path)
+    parquet = pq.ParquetFile(str(parquet_path))
+    total_rows = parquet.metadata.num_rows
+    anchor_counts, accessions = _scan_accessions(parquet)
+    changes = {accession: new for accession in accessions if accession and (new := transform_fn(accession)) != accession}
+    n_changed = sum(count for accession, count in anchor_counts.items() if accession in changes)
 
-    # --- Normalize anchor_protein column ---
-    if "anchor_protein" in schema.names:
-        col = table.column("anchor_protein")
-        new_values = []
-        for val in col.to_pylist():
-            new_val = transform_fn(val) if val else val
-            if new_val != val:
-                n_changed += 1
-            new_values.append(new_val)
-        table = table.set_column(
-            schema.get_field_index("anchor_protein"),
-            "anchor_protein",
-            pa.array(new_values, type=pa.string()),
-        )
+    if not changes:
+        if output_path.resolve() != parquet_path.resolve():
+            shutil.copyfile(parquet_path, output_path)
+    else:
+        staging = output_path.with_name(f".{output_path.name}.normalizing")
+        try:
+            _rewrite_view(parquet_path, staging, lambda table: _normalize_table(table, changes))
+            os.replace(staging, output_path)
+        finally:
+            staging.unlink(missing_ok=True)
 
-    # --- Normalize pg_accessions column ---
-    if "pg_accessions" in schema.names:
-        pg_col = table.column("pg_accessions")
-        pg_type = pg_col.type
-
-        # Two formats: list<string> (pg.parquet) or list<struct{accession,...}> (feature.parquet)
-        if _is_list_of_strings(pg_type):
-            new_pg = _normalize_list_of_strings(pg_col, transform_fn)
-            table = table.set_column(
-                schema.get_field_index("pg_accessions"),
-                "pg_accessions",
-                new_pg,
-            )
-        elif _is_list_of_structs_with_accession(pg_type):
-            new_pg = _normalize_list_of_structs(pg_col, transform_fn)
-            table = table.set_column(
-                schema.get_field_index("pg_accessions"),
-                "pg_accessions",
-                new_pg,
-            )
-
-    pq.write_table(table, str(output_path))
     logger.info(
         "Normalized %s → %s (%d rows, %d anchor_protein changes)",
         parquet_path.name,
@@ -157,6 +143,75 @@ def normalize_parquet(
         n_changed,
     )
     return {"rows": total_rows, "accessions_changed": n_changed, "file": str(output_path)}
+
+
+def _scan_accessions(parquet: pq.ParquetFile) -> tuple[dict[str, int], set[str]]:
+    """Count each ``anchor_protein`` value and collect every distinct accession."""
+    names = parquet.schema_arrow.names
+    columns = [name for name in ("anchor_protein", "pg_accessions") if name in names]
+    anchor_counts: dict[str, int] = {}
+    accessions: set[str] = set()
+    if not columns:
+        return anchor_counts, accessions
+    for batch in parquet.iter_batches(columns=columns):
+        if "anchor_protein" in columns:
+            for entry in pc.call_function("value_counts", [batch.column("anchor_protein")]).to_pylist():
+                if entry["values"] is not None:
+                    anchor_counts[entry["values"]] = anchor_counts.get(entry["values"], 0) + entry["counts"]
+        if "pg_accessions" in columns:
+            members = _member_accessions(batch.column("pg_accessions"))
+            if members is not None:
+                accessions.update(pc.call_function("unique", [members]).to_pylist())
+    accessions.update(anchor_counts)
+    accessions.discard(None)
+    return anchor_counts, accessions
+
+
+def _member_accessions(column: pa.Array) -> pa.Array | None:
+    """The accession strings inside a ``pg_accessions`` list, or None for another layout."""
+    if _is_list_of_strings(column.type):
+        return column.values
+    if _is_list_of_structs_with_accession(column.type):
+        return column.values.field("accession")
+    return None
+
+
+def _normalize_table(table: pa.Table, changes: dict[str, str]) -> pa.Table:
+    """Apply *changes* to ``anchor_protein`` and the ``pg_accessions`` members of one batch."""
+    if "anchor_protein" in table.schema.names:
+        index = table.schema.get_field_index("anchor_protein")
+        column = table.column(index)
+        table = table.set_column(
+            index, table.schema.field(index), pa.chunked_array([_mapped(c, changes) for c in column.chunks], column.type)
+        )
+    if "pg_accessions" in table.schema.names:
+        index = table.schema.get_field_index("pg_accessions")
+        column = table.column(index)
+        if _is_list_of_strings(column.type) or _is_list_of_structs_with_accession(column.type):
+            chunks = [_normalize_members(chunk, changes) for chunk in column.chunks]
+            table = table.set_column(index, table.schema.field(index), pa.chunked_array(chunks, column.type))
+    return table
+
+
+def _normalize_members(chunk: pa.Array, changes: dict[str, str]) -> pa.Array:
+    """Rebuild one ``pg_accessions`` list chunk with its member accessions mapped."""
+    values = chunk.values
+    if _is_list_of_strings(chunk.type):
+        mapped = _mapped(values, changes)
+    else:
+        children = [
+            _mapped(values.field(i), changes) if field.name == "accession" else values.field(i)
+            for i, field in enumerate(values.type)
+        ]
+        mapped = pa.StructArray.from_arrays(children, fields=list(values.type), mask=values.is_null())
+    return type(chunk).from_arrays(chunk.offsets, mapped, type=chunk.type, mask=chunk.is_null())
+
+
+def _mapped(values: pa.Array, changes: dict[str, str]) -> pa.Array:
+    """Map each distinct string through *changes*, keeping unmapped values and nulls."""
+    encoded = pc.call_function("dictionary_encode", [values])
+    dictionary = [changes.get(value, value) for value in encoded.dictionary.to_pylist()]
+    return pa.array(dictionary, type=values.type).take(encoded.indices)
 
 
 def _is_list_of_strings(arrow_type: pa.DataType) -> bool:
@@ -174,31 +229,3 @@ def _is_list_of_structs_with_accession(arrow_type: pa.DataType) -> bool:
     if not pa.types.is_struct(vt):
         return False
     return any(f.name == "accession" for f in vt)
-
-
-def _normalize_list_of_strings(col: pa.ChunkedArray, transform_fn) -> pa.Array:
-    """Normalize a list<string> column."""
-    new_values = []
-    for row in col.to_pylist():
-        if row is None:
-            new_values.append(None)
-        else:
-            new_values.append([transform_fn(v) if v else v for v in row])
-    return pa.array(new_values, type=col.type)
-
-
-def _normalize_list_of_structs(col: pa.ChunkedArray, transform_fn) -> pa.Array:
-    """Normalize the 'accession' field in a list<struct{accession,...}> column."""
-    new_values = []
-    for row in col.to_pylist():
-        if row is None:
-            new_values.append(None)
-        else:
-            new_row = []
-            for item in row:
-                if item and "accession" in item:
-                    item = dict(item)
-                    item["accession"] = transform_fn(item["accession"]) if item["accession"] else item["accession"]
-                new_row.append(item)
-            new_values.append(new_row)
-    return pa.array(new_values, type=col.type)
