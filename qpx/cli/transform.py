@@ -925,11 +925,12 @@ def _qpx_feature_to_peptide_df(feature_path: Path, sdrf_path: Optional[Path] = N
         conditions = None
 
     intensity = entries["NormIntensity"]
-    # A feature without an anchor protein is keyed as the protein "None".
-    protein = pc.fill_null(entries["ProteinName"], "None")
+    protein = entries["ProteinName"]
+    # A feature without an anchor protein (a peptide shared by several groups)
+    # has no protein to be quantified under.
     keep = pc.and_kleene(
         pc.and_kleene(pc.is_valid(intensity), pc.greater(intensity, 0)),
-        pc.not_equal(protein, ""),
+        pc.not_equal(pc.fill_null(protein, ""), ""),
     )
     keep_rows = keep.to_numpy(zero_copy_only=False)
     result = (
