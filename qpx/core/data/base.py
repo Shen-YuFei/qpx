@@ -10,10 +10,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from qpx.core.convert import QueryResult
-from qpx.core.data.schema import ValidationResult
+from qpx.core.data.schema import ValidationResult, pg_referential_issues_from_query
 from qpx.core.engine import DuckDBEngine, create_engine
 from qpx.core.parquet_io import read_parquet_metadata
 from qpx.core.query import LazyQuery, _escape_sql_string
+from qpx.core.sql import sql_build, validate_identifier
+
+# Rows per Arrow batch while validating: bounds the memory a validation holds.
+_VALIDATE_BATCH_ROWS = 100_000
 
 
 class BaseStructure:
@@ -146,16 +150,32 @@ class BaseStructure:
         """Validate this structure's data against its schema.
 
         ``strict=True`` (used by ``qpxc validate``) promotes duplicate-PK and
-        required-null issues to errors; the default is lenient.
+        required-null issues to errors; the default is lenient. Rows are read in
+        batches; only the primary-key columns are held for the whole view.
         """
-        table = self.to_arrow()
+        view = self._schema_class
+        severity = "error" if strict else "warning"
+        query = self._query.build_sql()
+        schema = self._engine.execute(sql_build("SELECT * FROM ($query) LIMIT 0", query=query)).fetch_arrow_table().schema
         # DuckDB drops footer metadata. A single local PSM file has one format;
         # never apply the first shard's declaration to a union of several files.
-        if self._schema_class.view_name == "psm" and len(self._file_paths) == 1 and Path(self._file_path).is_file():
+        if view.view_name == "psm" and len(self._file_paths) == 1 and Path(self._file_path).is_file():
             scan_format = (pq.read_metadata(self._file_path).metadata or {}).get(b"scan_format")
             if scan_format:
-                table = table.replace_schema_metadata({**(table.schema.metadata or {}), b"scan_format": scan_format})
-        return self._schema_class.validate_full(table, strict=strict)
+                schema = schema.with_metadata({**(schema.metadata or {}), b"scan_format": scan_format})
+        # Whole-view queries run before the batches stream: a new query on the
+        # connection would end the stream.
+        keys = None
+        if set(view.primary_key) <= set(schema.names):
+            columns = ", ".join(validate_identifier(name) for name in view.primary_key)
+            keys = self._engine.execute(
+                sql_build("SELECT $columns FROM ($query)", columns=columns, query=query)
+            ).fetch_arrow_table()
+        referential = []
+        if view.view_name == "pg" and {"pg_accessions", "grouped_runs", "label"} <= set(schema.names):
+            referential = pg_referential_issues_from_query(self._engine, query, view.view_name, severity)
+        batches = self._engine.execute(query).fetch_record_batch(_VALIDATE_BATCH_ROWS)
+        return view.validate_batches(schema, batches, keys, referential, strict=strict)
 
     # --- Parquet metadata (delegates to core.parquet_io) ---
     @property
