@@ -449,7 +449,7 @@ class Dataset:
     # --- Cross-structure queries ---
     def sql(self, query: str) -> QueryResult:
         """Execute arbitrary SQL across registered structures."""
-        return QueryResult(self._engine.execute(query))
+        return QueryResult(self._engine.connection, query)
 
     # --- Feature <-> protein-group softlink (bigbio/qpx#269) ---
     #
@@ -536,7 +536,7 @@ class Dataset:
         self._require_feature_pg("link_feature_pg")
         self._register_feature_pg_link_view()
         return QueryResult(
-            self._engine.execute("SELECT feature_id, pg_id, label FROM qpx_feature_pg_link ORDER BY feature_id, pg_id")
+            self._engine.connection, "SELECT feature_id, pg_id, label FROM qpx_feature_pg_link ORDER BY feature_id, pg_id"
         )
 
     def features_without_pg_link(self) -> QueryResult:
@@ -550,11 +550,10 @@ class Dataset:
         self._require_feature_pg("features_without_pg_link")
         self._register_feature_pg_link_view()
         return QueryResult(
-            self._engine.execute(
-                "SELECT feature_id FROM feature "
-                "WHERE feature_id NOT IN (SELECT feature_id FROM qpx_feature_pg_link) "
-                "ORDER BY feature_id"
-            )
+            self._engine.connection,
+            "SELECT feature_id FROM feature "
+            "WHERE feature_id NOT IN (SELECT feature_id FROM qpx_feature_pg_link) "
+            "ORDER BY feature_id",
         )
 
     def _require_feature_pg(self, operation: str) -> None:
@@ -599,7 +598,7 @@ class Dataset:
             PSMs with no feature assignment (null ``feature_id``) produce no rows.
         """
         self._require_feature_psm("link_feature_psm")
-        return QueryResult(self._engine.execute(self._LINK_FEATURE_PSM_SQL))
+        return QueryResult(self._engine.connection, self._LINK_FEATURE_PSM_SQL)
 
     def psms_without_feature(self) -> QueryResult:
         """Return ``psm_id`` for PSMs not assigned to any feature.
@@ -609,7 +608,7 @@ class Dataset:
         quantified consensus feature.
         """
         self._require_feature_psm("psms_without_feature")
-        return QueryResult(self._engine.execute("SELECT psm_id FROM psm WHERE feature_id IS NULL ORDER BY psm_id"))
+        return QueryResult(self._engine.connection, "SELECT psm_id FROM psm WHERE feature_id IS NULL ORDER BY psm_id")
 
     def _require_feature_psm(self, operation: str) -> None:
         """Raise if the feature or psm view is not available for the softlink."""
@@ -788,7 +787,7 @@ class Dataset:
             ds.intensity("protein").to_arrow()  # Arrow is more compact than pandas
         """
         sql = self._abundance_sql(level)
-        return QueryResult(self._engine.execute(sql))
+        return QueryResult(self._engine.connection, sql)
 
     def design_matrix(
         self,
