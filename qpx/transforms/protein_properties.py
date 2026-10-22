@@ -171,29 +171,22 @@ def _note_unmatched(report: ProteinPropertiesReport, accession: str) -> None:
         report.unmatched_examples.append(accession)
 
 
-def _accession_lists(column: pa.ChunkedArray) -> list[tuple[str, ...] | None]:
-    """Per-row accession tuples from a ``list<struct<accession,...>>`` column.
+def _group_members(column: pa.ChunkedArray) -> pa.ListArray:
+    """Per-row ``pg_accessions`` accessions as ``list<string>``, without null or blank ones.
 
-    Vectorised: flattening the struct field avoids materialising every struct
-    as a Python dict, which dominates the cost on a 20M-row feature view.
+    A null group becomes an empty list, as does a group whose members are all blank.
     """
+    import numpy as np
     import pyarrow.compute as pc
 
-    out: list[tuple[str, ...] | None] = []
-    for chunk in column.chunks:
-        if len(chunk) == 0:
-            continue
-        offsets = chunk.offsets.to_numpy()
-        accessions = pc.struct_field(chunk.flatten(), "accession").to_pylist()  # pylint: disable=no-member
-        validity = chunk.is_valid().to_pylist()
-        base = offsets[0]
-        for row, valid in enumerate(validity):
-            if not valid:
-                out.append(None)
-                continue
-            lo, hi = offsets[row] - base, offsets[row + 1] - base
-            out.append(tuple(a for a in accessions[lo:hi] if a))
-    return out
+    groups = column.combine_chunks()
+    members = pc.call_function("list_flatten", [groups])
+    parents = pc.call_function("list_parent_indices", [groups])
+    accessions = pc.call_function("struct_field", [members], pc.StructFieldOptions("accession"))
+    keep = pc.fill_null(pc.not_equal(accessions, ""), False)
+    counts = np.bincount(parents.filter(keep).to_numpy(), minlength=len(groups))
+    offsets = np.concatenate([[0], np.cumsum(counts)]).astype(np.int32)
+    return pa.ListArray.from_arrays(pa.array(offsets), accessions.filter(keep))
 
 
 # Evidence column -> SQL expression yielding that row's protein accessions. Fixed
@@ -399,6 +392,9 @@ def _fill_pg_table(table: pa.Table, fasta: FastaSequences, protein_peptides, rep
 
 
 def _fill_feature_table(table: pa.Table, fasta: FastaSequences, report: ProteinPropertiesReport) -> pa.Table:
+    import numpy as np
+    import pyarrow.compute as pc
+
     names = table.schema.names
     report.feature_rows += table.num_rows
     if "pg_positions" not in names or "pg_accessions" not in names:
@@ -406,31 +402,39 @@ def _fill_feature_table(table: pa.Table, fasta: FastaSequences, report: ProteinP
     positions_column = table.column("pg_positions")
     if positions_column.null_count == 0:
         return table
-    positions = positions_column.to_pylist()
-    sequences = table.column("sequence").to_pylist()
-    decoys = table.column("is_decoy").to_pylist() if "is_decoy" in names else [False] * table.num_rows
-    groups = _accession_lists(table.column("pg_accessions"))
-    cache: dict[tuple, list[dict] | None] = {}
-    for row, existing in enumerate(positions):
-        group = groups[row]
-        if existing is not None or decoys[row] or not sequences[row] or not group:
-            continue
-        report.feature_rows_eligible += 1
-        key = (sequences[row], group)
-        if key not in cache:
-            found: list[dict] = []
-            for accession in group:
-                protein = fasta.get(accession)
-                for start, end in peptide_occurrences(sequences[row], protein):
-                    found.append({"protein_accession": accession, "start": start, "end": end})
-            cache[key] = found or None
-        if cache[key] is None:
-            report.feature_rows_without_match += 1
-            continue
-        positions[row] = cache[key]
-        report.feature_positions_filled += 1
+    sequences = table.column("sequence").combine_chunks()
+    groups = _group_members(table.column("pg_accessions"))
+    eligible = positions_column.is_null().to_numpy(zero_copy_only=False)
+    eligible &= pc.fill_null(pc.not_equal(sequences, ""), False).to_numpy(zero_copy_only=False)
+    eligible &= np.diff(groups.offsets.to_numpy()) > 0
+    if "is_decoy" in names:
+        eligible &= ~pc.fill_null(table.column("is_decoy"), False).to_numpy(zero_copy_only=False)
+    rows = np.flatnonzero(eligible)
+
+    # Rows repeat a few (sequence, group) pairs: search each pair once and take the
+    # result back to its rows. Accessions and sequences never hold these separators.
+    keys = pc.binary_join_element_wise(sequences.take(rows), pc.binary_join(groups.take(rows), "\x1f"), "\x1e")
+    codes = keys.dictionary_encode().indices.to_numpy()
+    representatives = rows[np.unique(codes, return_index=True)[1]]
+    found = [
+        [
+            {"protein_accession": accession, "start": start, "end": end}
+            for accession in group
+            for start, end in peptide_occurrences(sequence, fasta.get(accession))
+        ]
+        or None
+        for sequence, group in zip(sequences.take(representatives).to_pylist(), groups.take(representatives).to_pylist())
+    ]
     index = names.index("pg_positions")
-    return table.set_column(index, table.schema.field(index), pa.array(positions, type=table.schema.field(index).type))
+    filled = pa.array(found, type=table.schema.field(index).type)
+    matched = int(filled.is_valid().to_numpy(zero_copy_only=False)[codes].sum())
+    report.feature_rows_eligible += len(rows)
+    report.feature_positions_filled += matched
+    report.feature_rows_without_match += len(rows) - matched
+    take = np.arange(table.num_rows)
+    take[rows] = table.num_rows + codes
+    positions = pa.concat_arrays([positions_column.combine_chunks(), filled]).take(take)
+    return table.set_column(index, table.schema.field(index), positions)
 
 
 def _provenance_step(report: ProteinPropertiesReport, fasta_path: Path, views: list[str], step_order: int) -> dict:
