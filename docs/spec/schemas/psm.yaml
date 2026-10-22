@@ -69,6 +69,7 @@ fields:
     doc: "Retention time (seconds)"
   ion_mobility:
     type: float32
+    optional: true
     doc: "Ion mobility"
   missed_cleavages:
     type: int16
@@ -82,23 +83,29 @@ fields:
   # Cross-linking (XL-MS)
   cross_links:
     type: "list<cross_link>"
+    optional: true
     doc: "Cross-link information for XL-MS experiments"
 
   # Spectral data (optional - may be stored in mz.parquet instead)
   mz_array:
     type: "list<float32>"
+    optional: true
     doc: "Spectrum m/z values"
   intensity_array:
     type: "list<float32>"
+    optional: true
     doc: "Spectrum intensity values"
   charge_array:
     type: "list<int32>"
+    optional: true
     doc: "Fragment charge values"
   ion_type_array:
     type: "list<string>"
+    optional: true
     doc: "Fragment ion type annotations (e.g., b1, y2, a2)"
   ion_mobility_array:
     type: "list<float32>"
+    optional: true
     doc: "Fragment ion mobility values"
 
   # Optional cross-reference

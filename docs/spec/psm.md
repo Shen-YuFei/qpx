@@ -54,13 +54,13 @@ These fields are optional and may not exist in the file at all. They are include
 | Field | Description                                                                                                                                             | Type | Required |
 |-------|---------------------------------------------------------------------------------------------------------------------------------------------------------|------|----------|
 | `protein_accessions` | Protein accessions of all proteins that the peptide maps to. Optional because protein mapping can be recovered from the feature and protein group views | array[string], null | no |
-| `cross_links` | Cross-link information for XL-MS experiments. Each entry describes one cross-link site. `null` for non-cross-linked PSMs                                | array[struct], null | no |
-| `ion_mobility` | Ion mobility value for the precursor ion                                                                                                                | float32, null | no |
-| `mz_array` | Array of m/z values for the spectrum                                                                                                                    | array[float32], null | no |
-| `intensity_array` | Array of intensity values for the spectrum                                                                                                              | array[float32], null | no |
-| `charge_array` | Array of fragment ion charge values                                                                                                                     | array[int32], null | no |
-| `ion_type_array` | Array of fragment ion type annotations (e.g., b1, y2, a2)                                                                                               | array[string], null | no |
-| `ion_mobility_array` | Array of fragment ion mobility values                                                                                                                   | array[float32], null | no |
+| `cross_links` | Cross-link information for XL-MS experiments. Each entry describes one cross-link site. `null` for non-cross-linked PSMs                                | array[struct], null | optional |
+| `ion_mobility` | Ion mobility value for the precursor ion                                                                                                                | float32, null | optional |
+| `mz_array` | Array of m/z values for the spectrum                                                                                                                    | array[float32], null | optional |
+| `intensity_array` | Array of intensity values for the spectrum                                                                                                              | array[float32], null | optional |
+| `charge_array` | Array of fragment ion charge values                                                                                                                     | array[int32], null | optional |
+| `ion_type_array` | Array of fragment ion type annotations (e.g., b1, y2, a2)                                                                                               | array[string], null | optional |
+| `ion_mobility_array` | Array of fragment ion mobility values                                                                                                                   | array[float32], null | optional |
 | `feature_id` | **Authoritative** (optional) foreign key to the linked Feature row through `feature.feature_id`; the producer's assignment of this PSM to a consensus feature (null when unlinked). It is NOT recomputable from shared identification fields, so it is materialized. Its inverse, `feature.psm_ids`, is a **computed softlink** — `Dataset.link_feature_psm()` groups `(feature_id, psm_id)` by `feature_id`; qpx does not materialize it ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). | int64, null | optional |
 
 !!! note "Nullable vs Optional"
