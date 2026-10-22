@@ -46,6 +46,7 @@ step in `provenance.parquet`.
 | `scan` | Scan identifier as an array of integer components (e.g., `[43920]` for single-scan instruments, `[10, 1, 345]` for Waters function/process/scan) | array[int32] | yes |
 | `additional_scores` | List of score structures with name, value, and direction indicator | array[struct], null | no |
 | `cv_params` | Optional list of controlled vocabulary parameters for additional metadata | array[struct], null | no |
+| `protein_accessions` | Protein accessions of all proteins that the peptide maps to; null when the producer has no protein mapping, which can be recovered from the feature and protein group views | array[string], null | no |
 
 ### Optional Fields
 
@@ -53,7 +54,6 @@ These fields are optional and may not exist in the file at all. They are include
 
 | Field | Description                                                                                                                                             | Type | Required |
 |-------|---------------------------------------------------------------------------------------------------------------------------------------------------------|------|----------|
-| `protein_accessions` | Protein accessions of all proteins that the peptide maps to. Optional because protein mapping can be recovered from the feature and protein group views | array[string], null | no |
 | `cross_links` | Cross-link information for XL-MS experiments. Each entry describes one cross-link site. `null` for non-cross-linked PSMs                                | array[struct], null | optional |
 | `ion_mobility` | Ion mobility value for the precursor ion                                                                                                                | float32, null | optional |
 | `mz_array` | Array of m/z values for the spectrum                                                                                                                    | array[float32], null | optional |
@@ -64,7 +64,7 @@ These fields are optional and may not exist in the file at all. They are include
 | `feature_id` | **Authoritative** (optional) foreign key to the linked Feature row through `feature.feature_id`; the producer's assignment of this PSM to a consensus feature (null when unlinked). It is NOT recomputable from shared identification fields, so it is materialized. Its inverse, `feature.psm_ids`, is a **computed softlink** — `Dataset.link_feature_psm()` groups `(feature_id, psm_id)` by `feature_id`; qpx does not materialize it ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). | int64, null | optional |
 
 !!! note "Nullable vs Optional"
-    Core fields marked as "not required" are **nullable** -- the column always exists in the file but individual values may be null. Optional fields (protein accessions, spectral data) may be **absent from the file entirely**, depending on conversion settings. Protein mappings can be recovered by joining with the feature and protein group views.
+    Core fields marked as "not required" are **nullable** -- the column always exists in the file but individual values may be null. Optional fields (for example the spectral arrays) may be **absent from the file entirely**, depending on conversion settings.
 
 ### Cross-Linking Fields
 
