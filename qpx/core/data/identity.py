@@ -19,12 +19,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-
-def _normalize(value):
-    """Recursively normalize a composite value into a JSON-serializable form."""
-    if isinstance(value, (list, tuple)):
-        return [_normalize(v) for v in value]
-    return value
+# One encoder for every row: json.dumps with these options builds a new encoder per
+# call. JSON encodes a tuple exactly like a list, so values need no conversion.
+_CANONICAL_JSON = json.JSONEncoder(separators=(",", ":"), sort_keys=True, ensure_ascii=True)
 
 
 def canonical(values: list, *, unordered_list_indices: tuple[int, ...] = ()) -> bytes:
@@ -41,13 +38,13 @@ def canonical(values: list, *, unordered_list_indices: tuple[int, ...] = ()) -> 
     ``pg_accessions``; ordered identifiers such as a multi-component ``scan``
     keep their component order.
     """
-    normalized = [_normalize(value) for value in values]
+    normalized = list(values)
     for index in unordered_list_indices:
         value = normalized[index]
-        if isinstance(value, list):
-            by_encoding = {json.dumps(item, separators=(",", ":"), sort_keys=True, ensure_ascii=True): item for item in value}
+        if isinstance(value, (list, tuple)):
+            by_encoding = {_CANONICAL_JSON.encode(item): item for item in value}
             normalized[index] = [by_encoding[key] for key in sorted(by_encoding)]
-    return json.dumps(normalized, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")
+    return _CANONICAL_JSON.encode(normalized).encode("utf-8")
 
 
 def derive_id(values: list, *, unordered_list_indices: tuple[int, ...] = ()) -> int:
