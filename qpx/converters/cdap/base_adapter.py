@@ -23,7 +23,7 @@ from qpx.converters.cdap.constants import (
     DECOY_PREFIX,
 )
 from qpx.converters.cdap.peptidoform import cdap_to_proforma, strip_label_tags
-from qpx.converters.ptm import from_proforma
+from qpx.converters.ptm import compute_precursor_mz, from_proforma
 from qpx.core.sql import sql_build, validate_table
 
 if TYPE_CHECKING:
@@ -41,6 +41,13 @@ _CHANNEL_PREFIX_RE = re.compile(r"^(?:TMT\d+|TMTXX|iTRAQ)")
 
 class CdapBaseAdapter(BaseConverter):
     """Base adapter with CDAP-specific loading and parsing utilities."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Per-conversion memos: a study repeats each peptide over many rows and
+        # has more distinct peptides than the shared parser caches hold.
+        self._identities: dict[str, tuple[str, str, object] | None] = {}
+        self._precursor_mzs: dict[tuple[str, int], float | None] = {}
 
     # ------------------------------------------------------------------
     # Loading: many *.psm files -> single DuckDB table
@@ -220,21 +227,33 @@ class CdapBaseAdapter(BaseConverter):
     # Shared peptide identity parsing
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_peptide_identity(row: dict) -> tuple[str, str, object] | None:
+    def _parse_peptide_identity(self, row: dict) -> tuple[str, str, object] | None:
         """Parse peptide_raw from *row*, returning (sequence, peptidoform, modifications).
 
         Returns ``None`` if the row should be skipped (empty/invalid peptide).
+        Each distinct peptide string is parsed once per conversion.
         """
         peptide_raw = row.get("peptide_raw")
         if not isinstance(peptide_raw, str) or not peptide_raw:
             return None
-        sequence = strip_label_tags(peptide_raw)
-        if not sequence:
+        if peptide_raw not in self._identities:
+            sequence = strip_label_tags(peptide_raw)
+            if not sequence:
+                self._identities[peptide_raw] = None
+            else:
+                peptidoform = cdap_to_proforma(peptide_raw)
+                _, modifications = from_proforma(peptidoform, sequence) if peptidoform else (peptidoform, None)
+                self._identities[peptide_raw] = (sequence, peptidoform, modifications)
+        return self._identities[peptide_raw]
+
+    def _calculated_mz(self, peptidoform: str, charge: int) -> float | None:
+        """Theoretical precursor m/z, computed once per (peptidoform, charge) per conversion."""
+        if not peptidoform or not charge:
             return None
-        peptidoform = cdap_to_proforma(peptide_raw)
-        _, modifications = from_proforma(peptidoform, sequence) if peptidoform else (peptidoform, None)
-        return sequence, peptidoform, modifications
+        key = (peptidoform, charge)
+        if key not in self._precursor_mzs:
+            self._precursor_mzs[key] = compute_precursor_mz(peptidoform, charge)
+        return self._precursor_mzs[key]
 
     # ------------------------------------------------------------------
     # Stream-transform-write loop (shared across adapters)
