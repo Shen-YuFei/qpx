@@ -115,7 +115,7 @@ class BaseStructure:
 
     def to_arrow(self) -> pa.Table:
         """Execute query and return Arrow Table."""
-        return QueryResult(self._query.execute()).to_arrow()
+        return self._engine.connection.sql(self._query.build_sql()).to_arrow_table()
 
     def to_polars(self):
         """Execute query and return Polars DataFrame."""
@@ -156,7 +156,7 @@ class BaseStructure:
         view = self._schema_class
         severity = "error" if strict else "warning"
         query = self._query.build_sql()
-        schema = self._engine.execute(sql_build("SELECT * FROM ($query) LIMIT 0", query=query)).fetch_arrow_table().schema
+        schema = self._engine.connection.sql(sql_build("SELECT * FROM ($query) LIMIT 0", query=query)).to_arrow_table().schema
         # DuckDB drops footer metadata. A single local PSM file has one format;
         # never apply the first shard's declaration to a union of several files.
         if view.view_name == "psm" and len(self._file_paths) == 1 and Path(self._file_path).is_file():
@@ -168,13 +168,13 @@ class BaseStructure:
         keys = None
         if set(view.primary_key) <= set(schema.names):
             columns = ", ".join(validate_identifier(name) for name in view.primary_key)
-            keys = self._engine.execute(
+            keys = self._engine.connection.sql(
                 sql_build("SELECT $columns FROM ($query)", columns=columns, query=query)
-            ).fetch_arrow_table()
+            ).to_arrow_table()
         referential = []
         if view.view_name == "pg" and {"pg_accessions", "grouped_runs", "label"} <= set(schema.names):
             referential = pg_referential_issues_from_query(self._engine, query, view.view_name, severity)
-        batches = self._engine.execute(query).fetch_record_batch(_VALIDATE_BATCH_ROWS)
+        batches = self._engine.connection.sql(query).to_arrow_reader(_VALIDATE_BATCH_ROWS)
         return view.validate_batches(schema, batches, keys, referential, strict=strict)
 
     # --- Parquet metadata (delegates to core.parquet_io) ---

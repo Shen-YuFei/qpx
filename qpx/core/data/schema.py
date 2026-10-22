@@ -207,7 +207,7 @@ def _query_pg_referential_issues(
     dup_lists = con.execute(
         "SELECT COUNT(*) FROM pg_validate WHERE grouped_runs IS NOT NULL "
         "AND length(grouped_runs) <> length(list_distinct(grouped_runs))"
-    ).fetchone()[0]
+    ).fetchall()[0][0]
     if dup_lists:
         issues.append(
             ValidationIssue(
@@ -238,7 +238,7 @@ def _query_pg_referential_issues(
         )
         SELECT COALESCE(SUM(c - 1), 0) FROM repeated
         """
-    ).fetchone()[0]
+    ).fetchall()[0][0]
     if double:
         issues.append(
             ValidationIssue(
