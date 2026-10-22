@@ -233,6 +233,38 @@ class TestTransformQuantifyCLI:
         if result.loc[0, "Condition"] != "not available":
             raise AssertionError("Missing SDRF condition was not marked unavailable")
 
+    def test_quantify_flattens_quantified_target_entries(self, tmp_path):
+        """Every positive target intensity becomes one row keyed by run and label."""
+        import pandas as pd
+
+        from qpx.cli.transform import _qpx_feature_to_peptide_df
+
+        feature_path = tmp_path / "feature.parquet"
+        pd.DataFrame(
+            {
+                "sequence": ["AAK", "CCK", "DDK", "EEK"],
+                "anchor_protein": ["P1", "P2", "P3", "P4"],
+                "run_file_name": ["run1", "run2", "run1", "run2"],
+                "is_decoy": [False, False, True, False],
+                "intensities": [
+                    [{"label": "TMT126", "intensity": 10.0}, {"label": "TMT127N", "intensity": 0.0}],
+                    [{"label": "TMT127N", "intensity": None}, {"label": "TMT126", "intensity": 5.0}],
+                    [{"label": "TMT126", "intensity": 7.0}],
+                    [],
+                ],
+            }
+        ).to_parquet(feature_path, index=False)
+
+        result = _qpx_feature_to_peptide_df(feature_path)
+
+        observed = result[["ProteinName", "NormIntensity", "SampleID"]].to_dict("records")
+        expected = [
+            {"ProteinName": "P1", "NormIntensity": 10.0, "SampleID": "run1::TMT126"},
+            {"ProteinName": "P2", "NormIntensity": 5.0, "SampleID": "run2::TMT126"},
+        ]
+        if observed != expected:
+            raise AssertionError(f"Unexpected flattened rows: {observed!r}")
+
 
 class TestTransformNormalizeAccessionsCLI:
     def test_normalize_accessions_help_renders(self):

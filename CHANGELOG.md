@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An unloadable PSI-MS ontology stops the conversion** — score and field ontology entries and SDRF run terms use the PSI-MS ontology shipped with qpx. A failure to load it was swallowed, so `ontology.parquet` silently lost its PSI-MS accessions and versions; it now raises.
 - **`convert diann` and `convert maxquant` SDRF step** — any error while writing `sample` and `run` from the SDRF was logged and the two views were dropped. As in `convert spectronaut`, only value, key, OS and type errors are now treated as an incomplete SDRF; other errors stop the conversion.
 - **`mz.ion_injection_time` is nullable** — `convert diann`, whose MS-info tables carry no injection time, and `qpxc convert mz` for scans without `MS:1000927` wrote 0. Both now write null, and the mz schema no longer requires a value.
+- **`qpxc transform quantify` reads only the columns it uses** — it loaded every column of the feature view into pandas and expanded each row's intensity list in Python. It now reads the four columns it needs, flattens the intensities with Arrow kernels and resolves each distinct run and label to its sample once. On PXD056598 (5.29 million features) the peptide table is built in 1.2 s and 1.5 GiB instead of 53.4 s and 45.1 GiB. Output is unchanged.
 
 ### Removed
 
