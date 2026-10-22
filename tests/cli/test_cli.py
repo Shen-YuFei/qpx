@@ -242,15 +242,16 @@ class TestTransformQuantifyCLI:
         feature_path = tmp_path / "feature.parquet"
         pd.DataFrame(
             {
-                "sequence": ["AAK", "CCK", "DDK", "EEK"],
-                "anchor_protein": ["P1", "P2", "P3", "P4"],
-                "run_file_name": ["run1", "run2", "run1", "run2"],
-                "is_decoy": [False, False, True, False],
+                "sequence": ["AAK", "CCK", "DDK", "EEK", "FFK"],
+                "anchor_protein": ["P1", "P2", "P3", "P4", None],
+                "run_file_name": ["run1", "run2", "run1", "run2", "run1"],
+                "is_decoy": [False, False, True, False, False],
                 "intensities": [
                     [{"label": "TMT126", "intensity": 10.0}, {"label": "TMT127N", "intensity": 0.0}],
                     [{"label": "TMT127N", "intensity": None}, {"label": "TMT126", "intensity": 5.0}],
                     [{"label": "TMT126", "intensity": 7.0}],
                     [],
+                    [{"label": "TMT126", "intensity": 3.0}],
                 ],
             }
         ).to_parquet(feature_path, index=False)
