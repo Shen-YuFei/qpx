@@ -19,6 +19,7 @@ from scipy import sparse
 
 from qpx._version import __version__
 from qpx.core.files import run_file_stem
+from qpx.core.query import _escape_sql_string
 from qpx.core.sql import sql_build
 from qpx.version import QPX_SPEC_VERSION
 
@@ -188,14 +189,14 @@ _PRECURSOR_QUERIES: dict[str, str] = {
            f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
            i.intensity
     FROM feature f, UNNEST(f.intensities) AS _t(i)
-    WHERE i.channel = $1
+    WHERE i.channel = '$label'
     """,
     "label": """
     SELECT f.run_file_name,
            f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
            i.intensity
     FROM feature f, UNNEST(f.intensities) AS _t(i)
-    WHERE i.label = $1
+    WHERE i.label = '$label'
     """,
 }
 
@@ -235,7 +236,7 @@ _PROTEIN_QUERIES: dict[str, str] = {
            pg.intensity AS intensity
     FROM pg,
          UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
-    WHERE pg.label = $1
+    WHERE pg.label = '$label'
     """,
     "label": """
     SELECT gr AS run_file_name,
@@ -243,7 +244,7 @@ _PROTEIN_QUERIES: dict[str, str] = {
            pg.intensity AS intensity
     FROM pg,
          UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
-    WHERE pg.label = $1
+    WHERE pg.label = '$label'
     """,
 }
 
@@ -487,7 +488,8 @@ def _build_precursor_adata(
     if intensity_label is None:
         table = engine.connection.sql(_PRECURSOR_ALL_QUERIES[label_field]).to_arrow_table()
     else:
-        table = engine.connection.sql(_PRECURSOR_QUERIES[label_field], params=[intensity_label]).to_arrow_table()
+        sql = sql_build(_PRECURSOR_QUERIES[label_field], label=_escape_sql_string(intensity_label))
+        table = engine.connection.sql(sql).to_arrow_table()
 
     if table.num_rows == 0:
         return ad.AnnData()
@@ -519,7 +521,8 @@ def _build_protein_adata(
     if intensity_label is None:
         table = engine.connection.sql(_PROTEIN_ALL_QUERIES[label_field]).to_arrow_table()
     else:
-        table = engine.connection.sql(_PROTEIN_QUERIES[label_field], params=[intensity_label]).to_arrow_table()
+        sql = sql_build(_PROTEIN_QUERIES[label_field], label=_escape_sql_string(intensity_label))
+        table = engine.connection.sql(sql).to_arrow_table()
 
     if table.num_rows == 0:
         return ad.AnnData()
