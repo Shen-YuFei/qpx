@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from qpx.core.sql import sql_build
+
 # ---------------------------------------------------------------------------
 # Validation result types
 # ---------------------------------------------------------------------------
@@ -137,42 +139,48 @@ def _canonicalize_primary_key_column(column: pa.ChunkedArray) -> pa.Array | pa.C
     return pa.array(values, type=pa.string())
 
 
-def _scan_format_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
-    """Check a declared PSM format without guessing legacy or Feature encodings."""
-    if structure != "psm" or "scan" not in table.column_names:
-        return []
-    declared = (table.schema.metadata or {}).get(b"scan_format")
-    if not declared:
-        return []
-    scan_format = declared.decode(errors="replace")
-    if scan_format not in {"scan", "index", "nativeId"}:
-        return [
-            ValidationIssue(
-                structure, "scan_format", "warning", "scan", f"Unknown scan_format {scan_format!r}; cardinality not checked"
-            )
-        ]
-    scans = table.column("scan")
-    if not (pa.types.is_list(scans.type) or pa.types.is_large_list(scans.type)):
-        return []  # The existing type check reports this separately.
+_SCAN_FORMATS = ("scan", "index", "nativeId")
+
+
+def _declared_scan_format(schema: pa.Schema, structure: str) -> str | None:
+    """The scan_format a PSM view declares in its footer; None when there is nothing to check."""
+    if structure != "psm" or "scan" not in schema.names:
+        return None
+    declared = (schema.metadata or {}).get(b"scan_format")
+    return declared.decode(errors="replace") if declared else None
+
+
+def _scan_format_bounds(scan_format: str) -> tuple[int, int]:
+    return (2, 4) if scan_format == "nativeId" else (1, 1)
+
+
+def _scan_format_violations(scans: pa.Array | pa.ChunkedArray, scan_format: str) -> int:
+    """Non-empty scan arrays whose component count the declared format does not allow."""
+    if scan_format not in _SCAN_FORMATS or not (pa.types.is_list(scans.type) or pa.types.is_large_list(scans.type)):
+        return 0  # A non-list scan is reported by the type check.
     lengths = pc.call_function("list_value_length", [scans])
-    minimum, maximum = (2, 4) if scan_format == "nativeId" else (1, 1)
+    minimum, maximum = _scan_format_bounds(scan_format)
     outside = pc.call_function(
         "or",
         [pc.call_function("less", [lengths, pa.scalar(minimum)]), pc.call_function("greater", [lengths, pa.scalar(maximum)])],
     )
     invalid = pc.call_function("and", [pc.call_function("greater", [lengths, pa.scalar(0)]), outside])
-    count = pc.call_function("sum", [invalid]).as_py() or 0
+    return pc.call_function("sum", [invalid]).as_py() or 0
+
+
+def _scan_format_issues(scan_format: str | None, count: int, structure: str, severity: str) -> list[ValidationIssue]:
+    """Check a declared PSM format without guessing legacy or Feature encodings."""
+    if scan_format is None:
+        return []
+    if scan_format not in _SCAN_FORMATS:
+        return [
+            _issue(structure, "scan_format", "warning", "scan", f"Unknown scan_format {scan_format!r}; cardinality not checked")
+        ]
     if not count:
         return []
-    return [
-        ValidationIssue(
-            structure,
-            "scan_format",
-            severity,
-            "scan",
-            f"{count} non-empty PSM scan array(s) violate scan_format={scan_format!r}: expected {minimum}–{maximum} components",
-        )
-    ]
+    minimum, maximum = _scan_format_bounds(scan_format)
+    message = f"{count} non-empty PSM scan array(s) violate scan_format={scan_format!r}: expected {minimum}–{maximum} components"
+    return [_issue(structure, "scan_format", severity, "scan", message)]
 
 
 def _query_pg_referential_issues(
@@ -287,6 +295,15 @@ def pg_referential_issues_from_parquet(
         con.close()
 
 
+def pg_referential_issues_from_query(con, query: str, structure: str, severity: str) -> list[ValidationIssue]:
+    """Validate PG referential invariants over the rows of *query* on *con*."""
+    con.execute(sql_build("CREATE OR REPLACE TEMP VIEW pg_validate AS $query", query=query))
+    try:
+        return _query_pg_referential_issues(con, structure, severity)
+    finally:
+        con.execute("DROP VIEW pg_validate")
+
+
 # Unit-interval columns of the site and proteoform views: q-values,
 # probabilities and evidence fractions.
 _UNIT_INTERVAL_COLUMNS = {
@@ -317,18 +334,13 @@ def _issue(structure: str, check: str, severity: str, column: str, message: str)
     return ValidationIssue(structure=structure, check=check, severity=severity, column=column, message=message)
 
 
-def _unit_interval_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
+def _unit_interval_issues(counts: dict[str, int], structure: str, severity: str) -> list[ValidationIssue]:
     """Flag q-values, probabilities and evidence fractions outside [0, 1] or not finite."""
     issues = []
-    for name in _UNIT_INTERVAL_COLUMNS.get(structure, ()):
-        if name not in table.schema.names:
-            continue
-        bad = _out_of_range_count(table.column(name))
+    for name, bad in counts.items():
         if bad:
             message = f"{bad} value(s) of {name} are not finite numbers in [0, 1]"
             issues.append(_issue(structure, "value_out_of_range", severity, name, message))
-    if structure == "site":
-        issues.extend(_evidence_fraction_issues(table, structure, severity))
     return issues
 
 
@@ -345,17 +357,18 @@ def _alternative_fractions(table: pa.Table) -> list[list | None] | None:
     return [None if alts is None else [a and a.get("evidence_fraction") for a in alts] for alts in alternatives.to_pylist()]
 
 
-def _evidence_fraction_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
-    """A residue's evidence is one pool: a row's fraction and its alternatives' sum to 1.
+def _evidence_fraction_counts(table: pa.Table | pa.RecordBatch) -> tuple[int, int, int]:
+    """Alternatives out of [0, 1], rows not summing to 1, and rows listed out of order.
 
+    A residue's evidence is one pool: a row's fraction and its alternatives' sum to 1.
     Without alternatives, the row holds the whole pool, so its fraction must be 1
     (or null). Alternatives are listed largest first and are each in [0, 1].
     """
     fractions = _alternative_fractions(table)
     if fractions is None or "evidence_fraction" not in table.schema.names:
-        return []
+        return 0, 0, 0
     if not pa.types.is_floating(table.column("evidence_fraction").type):
-        return []
+        return 0, 0, 0
     own = table.column("evidence_fraction").to_pylist()
     out_of_range = unsummed = unordered = 0
     for row_own, alts in zip(own, fractions):
@@ -364,6 +377,11 @@ def _evidence_fraction_issues(table: pa.Table, structure: str, severity: str) ->
         unordered += any(x < y for x, y in zip(alts, alts[1:]))
         if row_own is not None and abs(row_own + sum(alts) - 1.0) > _FRACTION_SUM_TOLERANCE:
             unsummed += 1
+    return out_of_range, unsummed, unordered
+
+
+def _evidence_fraction_issues(counts: tuple[int, int, int], structure: str, severity: str) -> list[ValidationIssue]:
+    out_of_range, unsummed, unordered = counts
     issues = []
     if out_of_range:
         message = f"{out_of_range} alternative evidence fraction(s) are not finite numbers in [0, 1]"
@@ -380,19 +398,20 @@ def _evidence_fraction_issues(table: pa.Table, structure: str, severity: str) ->
     return issues
 
 
-def _vocabulary_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
+def _vocabulary_count(values: pa.Array | pa.ChunkedArray, allowed: tuple[str, ...]) -> int:
+    """Non-null values outside a closed vocabulary; 0 for non-string input."""
+    if not (pa.types.is_string(values.type) or pa.types.is_large_string(values.type)):
+        return 0
+    outside = pc.invert(pc.is_in(values, value_set=pa.array(allowed)))
+    return pc.sum(pc.cast(pc.and_(outside, pc.is_valid(values)), pa.int64())).as_py() or 0
+
+
+def _vocabulary_issues(counts: dict[str, int], structure: str, severity: str) -> list[ValidationIssue]:
     """Flag values outside a closed vocabulary (null is allowed)."""
     issues = []
-    for name, allowed in _VOCABULARIES.get(structure, {}).items():
-        if name not in table.schema.names:
-            continue
-        values = table.column(name)
-        if not (pa.types.is_string(values.type) or pa.types.is_large_string(values.type)):
-            continue
-        outside = pc.invert(pc.is_in(values, value_set=pa.array(allowed)))
-        bad = pc.sum(pc.cast(pc.and_(outside, pc.is_valid(values)), pa.int64())).as_py() or 0
+    for name, bad in counts.items():
         if bad:
-            message = f"{bad} value(s) of {name} are not one of {', '.join(allowed)}"
+            message = f"{bad} value(s) of {name} are not one of {', '.join(_VOCABULARIES[structure][name])}"
             issues.append(_issue(structure, "value_not_in_vocabulary", severity, name, message))
     return issues
 
@@ -414,7 +433,7 @@ def _is_str(t: pa.DataType) -> bool:
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
 
-def _flattened_struct_column(table: pa.Table, column: str, fields: dict) -> pa.Table | None:
+def _flattened_struct_column(table: pa.Table | pa.RecordBatch, column: str, fields: dict) -> pa.Table | None:
     """One row per list element of a list<struct> column, with its parent row index.
 
     ``fields`` maps each needed struct field to a type predicate. None when the
@@ -424,7 +443,7 @@ def _flattened_struct_column(table: pa.Table, column: str, fields: dict) -> pa.T
     """
     if column not in table.schema.names or len(table) == 0:
         return None
-    col = table.column(column).combine_chunks()
+    col = table.column(column)
     if not (pa.types.is_list(col.type) and pa.types.is_struct(col.type.value_type)):
         return None
     struct = col.type.value_type
@@ -436,8 +455,8 @@ def _flattened_struct_column(table: pa.Table, column: str, fields: dict) -> pa.T
     return pa.table({"row": pc.list_parent_indices(col), **{f: pc.struct_field(flat, f) for f in fields}})
 
 
-def _modification_candidate_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
-    """Candidate probabilities are in [0, 1]; within an alternative group they sum to at most 1.
+def _modification_candidate_counts(table: pa.Table | pa.RecordBatch) -> tuple[int, int]:
+    """Candidate probabilities out of [0, 1], and alternative groups whose probabilities sum above 1.
 
     Candidates without a group may co-occur (a label and an acetyl on one
     residue), so no sum is implied across them.
@@ -448,20 +467,27 @@ def _modification_candidate_issues(table: pa.Table, structure: str, severity: st
         {"position": _is_int, "probability": _is_float, "alternative_group": _is_int},
     )
     if flat is None or flat.num_rows == 0:
-        return []
-    issues = []
+        return 0, 0
     bad = _out_of_range_count(flat.column("probability"))
-    if bad:
-        message = f"{bad} modification candidate probabilities are not finite numbers in [0, 1]"
-        issues.append(_issue(structure, "value_out_of_range", severity, "modification_candidates", message))
+    over = 0
     grouped = flat.filter(pc.is_valid(flat.column("alternative_group")))
     if grouped.num_rows:
         sums = grouped.group_by(["row", "alternative_group"]).aggregate([("probability", "sum")])
         over = pc.greater(sums.column("probability_sum"), 1.0 + _FRACTION_SUM_TOLERANCE)
         over = pc.sum(pc.cast(pc.fill_null(over, False), pa.int64())).as_py() or 0
-        if over:
-            message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1"
-            issues.append(_issue(structure, "candidate_probability_sum", severity, "modification_candidates", message))
+    return bad, over
+
+
+def _modification_candidate_issues(counts: tuple[int, int], structure: str, severity: str) -> list[ValidationIssue]:
+    """Candidate probabilities are in [0, 1]; within an alternative group they sum to at most 1."""
+    bad, over = counts
+    issues = []
+    if bad:
+        message = f"{bad} modification candidate probabilities are not finite numbers in [0, 1]"
+        issues.append(_issue(structure, "value_out_of_range", severity, "modification_candidates", message))
+    if over:
+        message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1"
+        issues.append(_issue(structure, "candidate_probability_sum", severity, "modification_candidates", message))
     return issues
 
 
@@ -507,9 +533,8 @@ def _conflicting_edit_count(flat: pa.Table, keys: tuple[str, ...]) -> int:
     return len(conflicting)
 
 
-def _sequence_edit_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
-    """Each sequence edit names a real reference span and residues, and the edits of
-    one sequence are ordered and do not overlap.
+def _sequence_edit_counts(table: pa.Table | pa.RecordBatch, structure: str) -> tuple[int, int]:
+    """Malformed sequence edits, and sequences whose edits overlap or are out of order.
 
     ``reference`` is the span ``start..end`` (1-based, inclusive) of the reference
     sequence, so its length is ``end - start + 1``; an insertion has an empty
@@ -518,14 +543,22 @@ def _sequence_edit_issues(table: pa.Table, structure: str, severity: str) -> lis
     """
     column, keys = _SEQUENCE_EDIT_COLUMNS.get(structure, (None, ()))
     if column is None:
-        return []
+        return 0, 0
     fields = {"start": _is_int, "end": _is_int, "reference": _is_str, "alternative": _is_str}
     fields.update({k: _is_str for k in keys})
     flat = _flattened_struct_column(table, column, fields)
     if flat is None or flat.num_rows == 0:
-        return []
+        return 0, 0
+    return _malformed_edit_count(flat), _conflicting_edit_count(flat, keys)
+
+
+def _sequence_edit_issues(counts: tuple[int, int], structure: str, severity: str) -> list[ValidationIssue]:
+    """Each sequence edit names a real reference span and residues, and the edits of
+    one sequence are ordered and do not overlap.
+    """
+    malformed, conflicting = counts
+    column = _SEQUENCE_EDIT_COLUMNS.get(structure, (None, ()))[0]
     issues = []
-    malformed = _malformed_edit_count(flat)
     if malformed:
         message = (
             f"{malformed} sequence edit(s) are malformed: start must be >= 1, reference must be the "
@@ -533,7 +566,6 @@ def _sequence_edit_issues(table: pa.Table, structure: str, severity: str) -> lis
             "residues must be one-letter codes, and an edit must change something"
         )
         issues.append(_issue(structure, "malformed_sequence_edit", severity, column, message))
-    conflicting = _conflicting_edit_count(flat, keys)
     if conflicting:
         message = (
             f"{conflicting} sequence(s) have edits that overlap or are out of order, so they do not define "
@@ -543,8 +575,8 @@ def _sequence_edit_issues(table: pa.Table, structure: str, severity: str) -> lis
     return issues
 
 
-def _anchor_membership_issues(table: pa.Table, structure: str, severity: str) -> list[ValidationIssue]:
-    """Flag rows that carry an ``anchor_protein`` but no ``pg_accessions`` membership.
+def _anchor_without_membership(table: pa.Table | pa.RecordBatch) -> int:
+    """Count rows that carry an ``anchor_protein`` but no ``pg_accessions`` membership.
 
     The protein group (``pg_accessions``) is the analyte and the feature->pg join
     key (see docs/spec/pg.md -> Protein group semantics); ``anchor_protein`` is only
@@ -555,16 +587,16 @@ def _anchor_membership_issues(table: pa.Table, structure: str, severity: str) ->
     """
     names = table.schema.names
     if "anchor_protein" not in names or "pg_accessions" not in names or len(table) == 0:
-        return []
+        return 0
     anchor = table.column("anchor_protein")
     pg = table.column("pg_accessions")
     # A non-list pg_accessions is a type mismatch already reported by the type check
     # above; skip here rather than let list_value_length raise on malformed input.
     if not (pa.types.is_list(pg.type) or pa.types.is_large_list(pg.type)):
-        return []
+        return 0
     # Non-string anchor_protein is a type mismatch reported elsewhere.
     if not (pa.types.is_string(anchor.type) or pa.types.is_large_string(anchor.type)):
-        return []
+        return 0
     # list_value_length is null where pg_accessions is null; fill_null(0) folds a
     # null membership into "empty" so the boolean logic never propagates nulls.
     pg_len = pc.fill_null(pc.list_value_length(pg), 0)
@@ -572,39 +604,37 @@ def _anchor_membership_issues(table: pa.Table, structure: str, severity: str) ->
     # Blank/whitespace anchors are unset (not a membership violation).
     anchor_set = pc.greater(pc.utf8_length(pc.utf8_trim_whitespace(pc.fill_null(anchor, ""))), 0)
     violation = pc.and_(anchor_set, pg_missing)
-    bad = pc.sum(pc.cast(violation, pa.int64())).as_py() or 0
+    return pc.sum(pc.cast(violation, pa.int64())).as_py() or 0
+
+
+def _anchor_membership_issues(bad: int, structure: str, severity: str) -> list[ValidationIssue]:
     if not bad:
         return []
-    return [
-        ValidationIssue(
-            structure=structure,
-            check="anchor_without_membership",
-            severity=severity,
-            column="pg_accessions",
-            message=(
-                f"{bad} row(s) have anchor_protein set but no pg_accessions "
-                "(protein-group membership). The group is the analyte and the "
-                "feature->pg join key, so a row with a leading protein must carry "
-                "its full pg_accessions membership."
-            ),
-        )
-    ]
+    message = (
+        f"{bad} row(s) have anchor_protein set but no pg_accessions "
+        "(protein-group membership). The group is the analyte and the "
+        "feature->pg join key, so a row with a leading protein must carry "
+        "its full pg_accessions membership."
+    )
+    return [_issue(structure, "anchor_without_membership", severity, "pg_accessions", message)]
 
 
 def _primary_key_issues(
-    table: pa.Table,
+    keys: pa.Table | None,
     primary_key: tuple[str, ...],
     structure: str,
     severity: str,
 ) -> list[ValidationIssue]:
-    """Return a duplicate-key issue when every primary-key column is available."""
-    columns = [column for column in primary_key if column in table.schema.names]
-    if len(columns) != len(primary_key) or len(table) == 0:
+    """Return a duplicate-key issue for the primary-key columns of a whole view.
+
+    *keys* is None when a primary-key column is missing.
+    """
+    if keys is None or keys.num_rows == 0:
         return []
 
-    key_table = pa.table({column: _canonicalize_primary_key_column(table.column(column)) for column in columns})
+    key_table = pa.table({column: _canonicalize_primary_key_column(keys.column(column)) for column in primary_key})
     total_count = len(key_table)
-    unique_count = key_table.group_by(columns).aggregate([]).num_rows
+    unique_count = key_table.group_by(list(primary_key)).aggregate([]).num_rows
     if unique_count == total_count:
         return []
 
@@ -622,6 +652,63 @@ def _primary_key_issues(
             ),
         )
     ]
+
+
+class _RowCounts:
+    """Counts of the checks that read one row at a time, summed over a view's batches."""
+
+    def __init__(self, structure: str, schema: pa.Schema, required: list[str]):
+        names = schema.names
+        self.structure = structure
+        self.nulls = dict.fromkeys(required, 0)
+        self.anchor = 0
+        self.out_of_range = dict.fromkeys((name for name in _UNIT_INTERVAL_COLUMNS.get(structure, ()) if name in names), 0)
+        self.fractions = (0, 0, 0)
+        self.candidates = (0, 0)
+        self.edits = (0, 0)
+        self.vocabulary = dict.fromkeys((name for name in _VOCABULARIES.get(structure, {}) if name in names), 0)
+        self.scan = 0
+
+    def add(self, batch: pa.Table | pa.RecordBatch, scan_format: str | None) -> None:
+        """Add one batch's counts."""
+        for name in self.nulls:
+            self.nulls[name] += batch.column(name).null_count
+        self.anchor += _anchor_without_membership(batch)
+        for name in self.out_of_range:
+            self.out_of_range[name] += _out_of_range_count(batch.column(name))
+        if self.structure == "site":
+            self.fractions = tuple(a + b for a, b in zip(self.fractions, _evidence_fraction_counts(batch)))
+        self.candidates = tuple(a + b for a, b in zip(self.candidates, _modification_candidate_counts(batch)))
+        self.edits = tuple(a + b for a, b in zip(self.edits, _sequence_edit_counts(batch, self.structure)))
+        for name in self.vocabulary:
+            self.vocabulary[name] += _vocabulary_count(batch.column(name), _VOCABULARIES[self.structure][name])
+        if scan_format is not None:
+            self.scan += _scan_format_violations(batch.column("scan"), scan_format)
+
+    def null_issues(self, rows: int, severity: str) -> list[ValidationIssue]:
+        """Issues for the non-nullable columns that hold nulls."""
+        return [
+            _issue(
+                self.structure,
+                "null_values",
+                severity,
+                name,
+                f"Column '{name}' is non-nullable but contains {count} null value(s) out of {rows} rows",
+            )
+            for name, count in self.nulls.items()
+            if count
+        ]
+
+    def value_issues(self, severity: str) -> list[ValidationIssue]:
+        """Issues from the value checks counted over the batches."""
+        return [
+            *_anchor_membership_issues(self.anchor, self.structure, severity),
+            *_unit_interval_issues(self.out_of_range, self.structure, severity),
+            *_evidence_fraction_issues(self.fractions, self.structure, severity),
+            *_vocabulary_issues(self.vocabulary, self.structure, severity),
+            *_modification_candidate_issues(self.candidates, self.structure, severity),
+            *_sequence_edit_issues(self.edits, self.structure, severity),
+        ]
 
 
 class ViewSchema:
@@ -728,77 +815,60 @@ class ViewSchema:
                 a write-time one. Missing columns and type mismatches are always
                 errors regardless of ``strict``.
         """
+        severity = "error" if strict else "warning"
+        keys = table.select(list(self._primary_key)) if set(self._primary_key) <= set(table.schema.names) else None
+        referential = _pg_referential_issues(table, self._view_name, severity) if self._view_name == "pg" else []
+        return self.validate_batches(table.schema, [table], keys, referential, strict=strict)
+
+    def validate_batches(
+        self,
+        schema: pa.Schema,
+        batches,
+        keys: pa.Table | None,
+        referential: list[ValidationIssue],
+        *,
+        strict: bool = False,
+    ) -> ValidationResult:
+        """Validate a view read as Arrow batches sharing *schema*, with the checks of validate_full().
+
+        The checks that read one row at a time are summed batch by batch, so the
+        whole view is never held at once. The two that span rows are passed in for
+        the whole view: *keys* holds its primary-key columns (None when one is
+        missing) and *referential* its pg referential issues.
+        """
         result = ValidationResult(structure=self._view_name)
-        gated_severity = "error" if strict else "warning"
-        expected = self.get_arrow_schema()
+        severity = "error" if strict else "warning"
+        result.issues.extend(self._column_issues(schema))
 
-        # Check 1 & 2: Column presence and type matching
-        for expected_field in expected:
-            if expected_field.name not in table.schema.names:
-                if not self._is_optional(expected_field.name):
-                    result.issues.append(
-                        ValidationIssue(
-                            structure=self._view_name,
-                            check="missing_column",
-                            severity="error",
-                            column=expected_field.name,
-                            message=f"Missing required column: {expected_field.name}",
-                        )
-                    )
-                continue
-            actual = table.schema.field(expected_field.name)
-            if not _types_compatible(expected_field.type, actual.type):
-                result.issues.append(
-                    ValidationIssue(
-                        structure=self._view_name,
-                        check="type_mismatch",
-                        severity="error",
-                        column=expected_field.name,
-                        message=(f"Column '{expected_field.name}': expected {expected_field.type}, got {actual.type}"),
-                    )
-                )
+        required = [name for name, fdef in self._fields.items() if name in schema.names and not fdef.nullable]
+        counts = _RowCounts(self._view_name, schema, required)
+        scan_format = _declared_scan_format(schema, self._view_name)
+        rows = 0
+        for batch in batches:
+            rows += batch.num_rows
+            counts.add(batch, scan_format)
 
-        # Check 3: Null values in non-nullable columns
-        for field_name, fdef in self._fields.items():
-            if field_name not in table.schema.names:
-                continue
-            if not fdef.nullable:
-                col = table.column(field_name)
-                null_count = col.null_count
-                if null_count > 0:
-                    result.issues.append(
-                        ValidationIssue(
-                            structure=self._view_name,
-                            check="null_values",
-                            severity=gated_severity,
-                            column=field_name,
-                            message=(
-                                f"Column '{field_name}' is non-nullable but contains "
-                                f"{null_count} null value(s) out of {len(col)} rows"
-                            ),
-                        )
-                    )
-
-        result.issues.extend(
-            _primary_key_issues(
-                table,
-                self._primary_key,
-                self._view_name,
-                gated_severity,
-            )
-        )
-
-        if self._view_name == "pg":
-            result.issues.extend(_pg_referential_issues(table, self._view_name, gated_severity))
-
-        result.issues.extend(_anchor_membership_issues(table, self._view_name, gated_severity))
-        result.issues.extend(_unit_interval_issues(table, self._view_name, gated_severity))
-        result.issues.extend(_vocabulary_issues(table, self._view_name, gated_severity))
-        result.issues.extend(_modification_candidate_issues(table, self._view_name, gated_severity))
-        result.issues.extend(_sequence_edit_issues(table, self._view_name, gated_severity))
-        result.issues.extend(_scan_format_issues(table, self._view_name, gated_severity))
-
+        result.issues.extend(counts.null_issues(rows, severity))
+        result.issues.extend(_primary_key_issues(keys, self._primary_key, self._view_name, severity))
+        result.issues.extend(referential)
+        result.issues.extend(counts.value_issues(severity))
+        result.issues.extend(_scan_format_issues(scan_format, counts.scan, self._view_name, severity))
         return result
+
+    def _column_issues(self, schema: pa.Schema) -> list[ValidationIssue]:
+        """Required columns that are missing and columns whose type does not match."""
+        issues = []
+        for expected_field in self.get_arrow_schema():
+            name = expected_field.name
+            if name not in schema.names:
+                if not self._is_optional(name):
+                    issues.append(_issue(self._view_name, "missing_column", "error", name, f"Missing required column: {name}"))
+                continue
+            actual = schema.field(name)
+            if not _types_compatible(expected_field.type, actual.type):
+                message = f"Column '{name}': expected {expected_field.type}, got {actual.type}"
+                issues.append(_issue(self._view_name, "type_mismatch", "error", name, message))
+        return issues
 
     def _is_optional(self, field_name: str) -> bool:
         fdef = self._fields.get(field_name)

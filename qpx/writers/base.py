@@ -633,15 +633,19 @@ class BaseWriter:
             # Build with a nullable id, then derive from the persisted (cast)
             # values via _fill_identity_table — the same path table/DataFrame
             # writes use, so a row's id is identical no matter how it was written.
-            table = self._fill_identity_table(pa.Table.from_pylist(records, schema=self._relaxed_id_schema()))
-            self._check_required_non_null(table)
-            self._ensure_writer()
-            self._writer.write_table(table)
+            self._write_identity_table(pa.Table.from_pylist(records, schema=self._relaxed_id_schema()))
             return
         batch = pa.RecordBatch.from_pylist(records, schema=self.arrow_schema)
         self._check_required_non_null(batch)
         self._ensure_writer()
         self._writer.write_batch(batch)
+
+    def _write_identity_table(self, table: pa.Table) -> None:
+        """Derive the ids of a table built on the nullable-id schema, check it and write it."""
+        table = self._fill_identity_table(table)
+        self._check_required_non_null(table)
+        self._ensure_writer()
+        self._writer.write_table(table)
 
     def _ensure_writer(self):
         if self._writer is None:

@@ -469,6 +469,9 @@ class Dataset:
     # ``pg.pg_id`` is read straight from the matched pg row (never re-derived).
     # A feature whose group has no matching pg row — or which carries no
     # quantified label — simply produces no rows: identified but not quantified.
+    # ``grouped_runs`` is unnested so the run test is an equality: all three
+    # conditions are then hash-join keys instead of a filter applied to every
+    # same-membership pair. The view is unordered; link_feature_pg() sorts.
     _LINK_FEATURE_PG_SQL = """
         WITH feat_labels AS (
             SELECT
@@ -477,17 +480,24 @@ class Dataset:
                 list_sort(list_transform(f.pg_accessions, lambda x: x.accession)) AS membership,
                 UNNEST(list_transform(f.intensities, lambda i: i.label)) AS feature_label
             FROM feature f
+        ),
+        pg_runs AS (
+            SELECT
+                p.pg_id AS pg_id,
+                p.label AS label,
+                list_sort(p.pg_accessions) AS membership,
+                UNNEST(p.grouped_runs) AS run_file_name
+            FROM pg p
         )
         SELECT DISTINCT
             fl.feature_id AS feature_id,
-            p.pg_id AS pg_id,
-            p.label AS label
+            pr.pg_id AS pg_id,
+            pr.label AS label
         FROM feat_labels fl
-        JOIN pg p
-            ON list_sort(p.pg_accessions) = fl.membership
-           AND list_contains(p.grouped_runs, fl.run_file_name)
-           AND p.label IS NOT DISTINCT FROM fl.feature_label
-        ORDER BY fl.feature_id, p.pg_id
+        JOIN pg_runs pr
+            ON pr.membership = fl.membership
+           AND pr.run_file_name = fl.run_file_name
+           AND pr.label IS NOT DISTINCT FROM fl.feature_label
     """
 
     # Fixed identifiers for the DuckDB temp views that back the softlinks. The
@@ -524,7 +534,10 @@ class Dataset:
             channel/fraction produce no rows (this is correct, not an error).
         """
         self._require_feature_pg("link_feature_pg")
-        return QueryResult(self._engine.connection, self._LINK_FEATURE_PG_SQL)
+        self._register_feature_pg_link_view()
+        return QueryResult(
+            self._engine.connection, "SELECT feature_id, pg_id, label FROM qpx_feature_pg_link ORDER BY feature_id, pg_id"
+        )
 
     def features_without_pg_link(self) -> QueryResult:
         """Return ``feature_id`` for features that resolve to no pg row.
@@ -639,11 +652,20 @@ class Dataset:
 
         if self.feature is not None and self.pg is not None:
             self._register_feature_pg_link_view()
-            diagnostics["n_feature_pg_links"] = self._link_scalar("SELECT COUNT(*) FROM qpx_feature_pg_link")
-            diagnostics["n_features_linked"] = self._link_scalar("SELECT COUNT(DISTINCT feature_id) FROM qpx_feature_pg_link")
-            diagnostics["n_features_without_pg"] = self._link_scalar(
-                "SELECT COUNT(*) FROM feature WHERE feature_id NOT IN (SELECT feature_id FROM qpx_feature_pg_link)"
-            )
+            # One pass over the join: each count read from the view re-ran it.
+            links, linked, unlinked = self._engine.execute(
+                """
+                WITH link AS MATERIALIZED (SELECT feature_id FROM qpx_feature_pg_link),
+                linked AS (SELECT DISTINCT feature_id FROM link)
+                SELECT
+                    (SELECT COUNT(*) FROM link),
+                    (SELECT COUNT(*) FROM linked),
+                    (SELECT COUNT(*) FROM feature WHERE feature_id NOT IN (SELECT feature_id FROM linked))
+                """
+            ).fetchall()[0]
+            diagnostics["n_feature_pg_links"] = int(links)
+            diagnostics["n_features_linked"] = int(linked)
+            diagnostics["n_features_without_pg"] = int(unlinked)
 
         if self.feature is not None and self.psm is not None:
             self._register_feature_psm_link_view()

@@ -798,6 +798,87 @@ def _quantify_sdrf_mapping(sdrf_path: Path):
     return mapping
 
 
+def _struct_field(values, name: str):
+    """Return one field of a struct array; null where the struct itself is null."""
+    import pyarrow.compute as pc
+
+    return pc.call_function("struct_field", [values], pc.StructFieldOptions(name))
+
+
+def _flatten_intensities(batch):
+    """Return one row per intensity entry with its feature's protein, sequence and run."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    intensities = batch.column("intensities")
+    values = pc.call_function("list_flatten", [intensities])
+    parents = pc.call_function("list_parent_indices", [intensities])
+    features = pa.Table.from_batches([batch]).select(["anchor_protein", "sequence", "run_file_name"]).take(parents)
+    if values.type.get_field_index("label") >= 0:
+        # A null entry carries no label.
+        label = pc.if_else(pc.is_valid(values), _struct_field(values, "label"), "")
+    else:
+        # Pre-1.1 files key the channel as "channel", which is not read here.
+        label = pc.fill_null(pa.nulls(len(values), pa.string()), "")
+    return pa.table(
+        {
+            "ProteinName": features["anchor_protein"],
+            "PeptideCanonical": features["sequence"],
+            "run_file_name": features["run_file_name"],
+            "label": label,
+            "NormIntensity": pc.cast(_struct_field(values, "intensity"), pa.float64()),
+        }
+    )
+
+
+def _run_label_pairs(runs, labels):
+    """Return the distinct ``(run, label)`` pairs in first-appearance order and each row's pair index."""
+    import numpy as np
+    import pyarrow.compute as pc
+
+    options = pc.DictionaryEncodeOptions(null_encoding="encode")
+    run_codes = pc.call_function("dictionary_encode", [runs], options).combine_chunks()
+    label_codes = pc.call_function("dictionary_encode", [labels], options).combine_chunks()
+    width = len(label_codes.dictionary)
+    codes = run_codes.indices.to_numpy().astype(np.int64) * width + label_codes.indices.to_numpy()
+    unique, first, inverse = np.unique(codes, return_index=True, return_inverse=True)
+    order = np.argsort(first)
+    position = np.empty(len(order), dtype=np.int64)
+    position[order] = np.arange(len(order))
+    pairs = unique[order]
+    return (
+        run_codes.dictionary.take(pairs // width).to_pylist(),
+        label_codes.dictionary.take(pairs % width).to_pylist(),
+        position[inverse],
+    )
+
+
+def _sdrf_samples(runs: list, labels: list, sdrf_path: Path):
+    """Resolve each distinct ``(run, label)`` pair to its SDRF sample and condition."""
+    import pandas as pd
+
+    from qpx.converters.channel_labels import normalize_label
+    from qpx.core.files import run_file_stem
+
+    pairs = pd.DataFrame(
+        {
+            "_run_key": [run_file_stem(run) for run in runs],
+            "_label_key": [normalize_label(label) for label in labels],
+        }
+    ).merge(
+        _quantify_sdrf_mapping(sdrf_path),
+        on=["_run_key", "_label_key"],
+        how="left",
+        validate="many_to_one",
+    )
+    unmapped = pairs["SampleID"].isna()
+    if unmapped.any():
+        missing = pairs.loc[unmapped, ["_run_key", "_label_key"]].drop_duplicates()
+        rendered = ", ".join(f"{run_key}::{label_key}" for run_key, label_key in missing.itertuples(index=False, name=None))
+        raise click.UsageError(f"QPX intensities have no matching SDRF run/label row: {rendered}")
+    return pairs["SampleID"].array, pairs["Condition"].array
+
+
 def _qpx_feature_to_peptide_df(feature_path: Path, sdrf_path: Optional[Path] = None):
     """Read QPX feature.parquet and flatten to mokume peptide DataFrame.
 
@@ -812,60 +893,53 @@ def _qpx_feature_to_peptide_df(feature_path: Path, sdrf_path: Optional[Path] = N
     ``(run_file_name, label)`` is mapped to its real sample and condition.
     Without one, the existing ``run::label`` sample key is retained and
     condition is explicitly marked ``not available``.
+
+    Only the needed columns are read and the intensity lists are flattened in
+    Arrow; samples are resolved once per distinct ``(run, label)`` pair.
     """
     import pandas as pd
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
 
-    df = pd.read_parquet(str(feature_path))
-    logger.info("Loaded %d QPX feature rows from %s", len(df), feature_path)
+    has_decoy = "is_decoy" in pq.read_schema(str(feature_path)).names
+    columns = ["anchor_protein", "sequence", "run_file_name", "intensities"] + (["is_decoy"] if has_decoy else [])
+    table = pq.read_table(str(feature_path), columns=columns)
+    logger.info("Loaded %d QPX feature rows from %s", table.num_rows, feature_path)
 
-    # Filter decoys early
-    if "is_decoy" in df.columns:
-        df = df[~df["is_decoy"].astype(bool)]
+    if has_decoy:
+        table = table.filter(pc.invert(pc.fill_null(table["is_decoy"], False)))
 
-    # Map protein column
-    protein_col = "anchor_protein" if "anchor_protein" in df.columns else "pg_accessions"
-    df["ProteinName"] = df[protein_col].apply(
-        lambda x: x if isinstance(x, str) else (";".join(x) if isinstance(x, list) else str(x))
-    )
-    df["PeptideCanonical"] = df.get("sequence", df.get("peptidoform", ""))
-
-    # Drop rows without intensities, then explode vectorised
-    df = df[df["intensities"].apply(lambda x: x is not None and len(x) > 0)]
-    if df.empty:
+    flattened = [_flatten_intensities(batch) for batch in table.to_batches()]
+    entries = pa.concat_tables(flattened) if flattened else None
+    if entries is None or entries.num_rows == 0:
         return pd.DataFrame(columns=["ProteinName", "PeptideCanonical", "NormIntensity", "SampleID", "Condition"])
 
-    exploded = df[["ProteinName", "PeptideCanonical", "run_file_name", "intensities"]].explode("intensities")
-    # Extract struct fields
-    exploded["NormIntensity"] = exploded["intensities"].apply(lambda e: e.get("intensity", 0.0) if isinstance(e, dict) else 0.0)
-    exploded["_label"] = exploded["intensities"].apply(lambda e: e.get("label", "") if isinstance(e, dict) else "")
+    pair_runs, pair_labels, pair_index = _run_label_pairs(entries["run_file_name"], entries["label"])
     if sdrf_path is not None:
-        from qpx.converters.channel_labels import normalize_label
-        from qpx.core.files import run_file_stem
-
-        exploded["_run_key"] = exploded["run_file_name"].map(run_file_stem)
-        exploded["_label_key"] = exploded["_label"].map(normalize_label)
-        exploded = exploded.merge(
-            _quantify_sdrf_mapping(sdrf_path),
-            on=["_run_key", "_label_key"],
-            how="left",
-            validate="many_to_one",
-        )
-        unmapped = exploded["SampleID"].isna()
-        if unmapped.any():
-            pairs = exploded.loc[unmapped, ["_run_key", "_label_key"]].drop_duplicates()
-            rendered = ", ".join(f"{run_key}::{label_key}" for run_key, label_key in pairs.itertuples(index=False, name=None))
-            raise click.UsageError(f"QPX intensities have no matching SDRF run/label row: {rendered}")
+        sample_ids, conditions = _sdrf_samples(pair_runs, pair_labels, sdrf_path)
     else:
-        has_label = exploded["_label"].astype(bool)
-        exploded["SampleID"] = exploded["run_file_name"]
-        exploded.loc[has_label, "SampleID"] = exploded.loc[has_label, "run_file_name"] + "::" + exploded.loc[has_label, "_label"]
-        exploded["Condition"] = "not available"
-    # Filter invalid intensities
-    result = exploded.loc[
-        exploded["NormIntensity"].notna() & (exploded["NormIntensity"] > 0),
-        ["ProteinName", "PeptideCanonical", "NormIntensity", "SampleID", "Condition"],
-    ].copy()
-    result = result[result["ProteinName"] != ""]
+        sample_ids = pd.array(
+            [run if not label else f"{run}::{label}" for run, label in zip(pair_runs, pair_labels)], dtype=object
+        )
+        conditions = None
+
+    intensity = entries["NormIntensity"]
+    # A feature without an anchor protein is keyed as the protein "None".
+    protein = pc.fill_null(entries["ProteinName"], "None")
+    keep = pc.and_kleene(
+        pc.and_kleene(pc.is_valid(intensity), pc.greater(intensity, 0)),
+        pc.not_equal(protein, ""),
+    )
+    keep_rows = keep.to_numpy(zero_copy_only=False)
+    result = (
+        pa.table({"ProteinName": protein, "PeptideCanonical": entries["PeptideCanonical"], "NormIntensity": intensity})
+        .filter(keep)
+        .to_pandas()
+    )
+    rows = pair_index[keep_rows]
+    result["SampleID"] = sample_ids.take(rows)
+    result["Condition"] = conditions.take(rows) if conditions is not None else "not available"
 
     logger.info(
         "Prepared %d peptide rows: %d proteins, %d samples",
