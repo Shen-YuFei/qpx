@@ -19,6 +19,7 @@ from scipy import sparse
 
 from qpx._version import __version__
 from qpx.core.files import run_file_stem
+from qpx.core.sql import sql_build
 from qpx.version import QPX_SPEC_VERSION
 
 if TYPE_CHECKING:
@@ -362,18 +363,22 @@ def _load_run_obs(
 ) -> pd.DataFrame:
     """Load run/sample metadata for matrix observations."""
     try:
+        # fraction and instrument are optional run columns: an absent one reads as null.
+        optional = engine.optional_columns("run", "r", ("fraction", "instrument"))
         df = engine.execute(
-            """
-            SELECT r.run_file_name,
-                   r.run_accession,
-                   rs.sample_accession,
-                   rs.label,
-                   rs.biological_replicate,
-                   rs.technical_replicate,
-                   r.fraction,
-                   r.instrument
-            FROM run r, UNNEST(r.samples) AS _t(rs)
-            """
+            sql_build(
+                """
+                SELECT r.run_file_name,
+                       r.run_accession,
+                       rs.sample_accession,
+                       rs.label,
+                       rs.biological_replicate,
+                       rs.technical_replicate,
+                       $optional
+                FROM run r, UNNEST(r.samples) AS _t(rs)
+                """,
+                optional=optional,
+            )
         ).fetchdf()
     except Exception:
         if all_labels:

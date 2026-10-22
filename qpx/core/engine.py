@@ -159,6 +159,12 @@ class DuckDBEngine:
         view = validate_table(name)
         self._conn.execute(sql_build("CREATE OR REPLACE VIEW $view AS $query", view=view, query=sql))
 
+    def optional_columns(self, view: str, alias: str, names: tuple[str, ...]) -> str:
+        """Select list for optional columns of ``view``: ``alias.name``, or ``NULL AS name`` when the view lacks it."""
+        describe = sql_build("DESCRIBE $view", view=validate_table(view))
+        present = {row[0] for row in self._conn.execute(describe).fetchall()}
+        return ", ".join(f"{alias}.{name}" if name in present else f"NULL AS {name}" for name in names)
+
     def execute(self, sql: str, params=None):
         """Run ``sql`` through the DB-API cursor.
 

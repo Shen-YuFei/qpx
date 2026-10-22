@@ -90,7 +90,7 @@ These fields are shared with the PSM view and describe the peptide identificatio
 | `pg_accessions` | Protein group accessions of all proteins that the peptide maps to | array[string], null | no |
 | `anchor_protein` | One protein accession that represents the protein group; null when no protein mapping was performed (converters normalize blank/whitespace to null) | string, null | yes |
 | `unique` | Whether the peptide maps uniquely to a single protein group | bool, null | no |
-| `pg_positions` | Peptide start and end positions within each protein in the protein group | array[struct], null | no |
+| `pg_positions` | Peptide start and end positions within each protein in the protein group | array[struct], null | optional |
 | `pg_global_qvalue` | Global q-value of the protein group at the experiment level | float64, null | optional |
 | `gg_accessions` | Gene accessions associated with the protein group | array[string], null | optional |
 | `gg_names` | Gene names associated with the protein group | array[string], null | optional |
@@ -129,8 +129,8 @@ Each entry in `pg_positions` contains:
 
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
-| `psm_ids` | The PSM rows this feature maps to (through `psm.psm_id`). A **computed inverse softlink**, not materialized by qpx: the authoritative direction is `psm.feature_id`, and `Dataset.link_feature_psm()` recovers this list by grouping `(feature_id, psm_id)` on `feature_id` ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). Remains an optional producer hardlink a producer MAY populate; null otherwise. | array[int64], null | no |
-| `pg_ids` | References to protein-group rows through `pg.pg_id`; null when no explicit links are available | array[int64], null | no |
+| `psm_ids` | The PSM rows this feature maps to (through `psm.psm_id`). A **computed inverse softlink**, not materialized by qpx: the authoritative direction is `psm.feature_id`, and `Dataset.link_feature_psm()` recovers this list by grouping `(feature_id, psm_id)` on `feature_id` ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). Remains an optional producer hardlink a producer MAY populate; null otherwise. | array[int64], null | optional |
+| `pg_ids` | References to protein-group rows through `pg.pg_id`; null when no explicit links are available | array[int64], null | optional |
 
 ## Shared Fields
 

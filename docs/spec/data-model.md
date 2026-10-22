@@ -278,6 +278,15 @@ returned once per sample and label.
 | Explicit cross-reference | `psm.feature_id` (authoritative, persisted); `feature.psm_ids`, `feature.pg_ids` (optional producer hardlinks) | psm ↔ feature |
 | Computed cross-reference | `Dataset.link_feature_psm()`, `Dataset.link_feature_pg()` softlinks | psm ↔ feature, feature → pg |
 
+## Required, nullable and optional columns
+
+The **Required** column of each view's field table says whether a column must be in the file:
+
+- **yes** and **no**: the column must be present. A *no* column may hold nulls; a *yes* column may hold nulls only when its type lists `null`.
+- **optional**: the column may be left out of the file. When it is present, its values may be null.
+
+In the YAML schemas, `required: true` marks *yes* and `optional: true` marks *optional*; a field with neither is *no*. `qpxc validate` reports a missing *yes* or *no* column as an error and accepts a file without an *optional* column.
+
 ## Related pages
 
 - [PSM View](psm.md) — spectrum-level identifications.

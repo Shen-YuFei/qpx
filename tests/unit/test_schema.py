@@ -151,6 +151,19 @@ def test_schema_validation():
     assert any("anchor_protein" in e for e in errors)
 
 
+def test_run_with_only_required_columns_is_valid():
+    """Run columns the spec does not require may be absent (bigbio/qpx#356)."""
+    arrow = RunSchema.get_arrow_schema()
+    keep = ["run_accession", "run_file_name", "samples"]
+    sample = {"sample_accession": "s1", "label": "LFQ", "biological_replicate": None, "technical_replicate": None}
+    table = pa.Table.from_pylist(
+        [{"run_accession": "r1", "run_file_name": "r1", "samples": [sample]}],
+        schema=pa.schema([arrow.field(name) for name in keep]),
+    )
+    for strict in (False, True):
+        assert not RunSchema.validate_full(table, strict=strict).issues
+
+
 def test_all_schemas_have_valid_primary_keys():
     """Every schema has a _primary_key tuple whose fields exist in the schema."""
     for schema_inst in ALL_SCHEMAS:

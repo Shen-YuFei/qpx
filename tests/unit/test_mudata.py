@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 mudata = pytest.importorskip("mudata")
@@ -475,6 +476,30 @@ def test_build_mudata_lfq_default_stays_run_level(tmp_path):
     assert precursor.n_obs == 2
     assert list(precursor.obs_names) == ["run_01", "run_02"]
     assert list(precursor.obs["sample_accession"]) == ["lfq-run_01-LFQ", "lfq-run_02-LFQ"]
+
+
+def test_run_without_optional_columns_keeps_sample_metadata(tmp_path):
+    """fraction and instrument may be absent from run (bigbio/qpx#356); readers fill them with null."""
+    _write_quant_bundle(
+        tmp_path,
+        "z",
+        [{"label": "TMT126", "intensity": 100.0}, {"label": "TMT127N", "intensity": 200.0}],
+        [{"label": "TMT126", "intensity": 1000.0}, {"label": "TMT127N", "intensity": 2000.0}],
+    )
+    run_path = tmp_path / "z.run.parquet"
+    pq.write_table(pq.read_table(run_path, columns=["run_accession", "run_file_name", "samples"]), run_path)
+
+    dataset = Dataset(tmp_path, file_prefix="z")
+    try:
+        precursor = build_mudata(dataset, modalities=["precursors"]).mod["precursors"]
+        quantified = dataset.feature.for_quantification(dataset).to_df()
+    finally:
+        dataset.close()
+
+    assert list(precursor.obs["sample_accession"]) == ["z_TMT126", "z_TMT127N"]
+    assert {"fraction", "instrument"} <= set(precursor.obs.columns)
+    assert sorted(quantified["sample_accession"]) == ["z_TMT126", "z_TMT127N"]
+    assert quantified["fraction"].isna().all()
 
 
 def test_build_mudata_lfq_all_labels_keeps_sample_accession(tmp_path):
