@@ -169,52 +169,66 @@ def _sorted_unique(table, column: str) -> pd.Index:
 # pg is flattened since 1.1 (scalar ``label``), so its label queries read the
 # column directly; feature keeps the intensities list<struct>.
 _LABEL_FIELD_QUERIES: dict[tuple[str, str], str] = {
-    ("channel", "feature"): "SELECT i.channel FROM feature, UNNEST(intensities) AS _t(i) LIMIT 1",
+    ("channel", "feature"): "SELECT i.channel FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
     ("channel", "pg"): "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
-    ("label", "feature"): "SELECT i.label FROM feature, UNNEST(intensities) AS _t(i) LIMIT 1",
+    ("label", "feature"): "SELECT i.label FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
     ("label", "pg"): "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
 }
 
 _MULTIPLEXED_QUERIES: dict[tuple[str, str], str] = {
-    ("channel", "feature"): "SELECT COUNT(DISTINCT i.channel) FROM feature, UNNEST(intensities) AS _t(i)",
+    ("channel", "feature"): "SELECT COUNT(DISTINCT i.channel) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
     ("channel", "pg"): "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
-    ("label", "feature"): "SELECT COUNT(DISTINCT i.label) FROM feature, UNNEST(intensities) AS _t(i)",
+    ("label", "feature"): "SELECT COUNT(DISTINCT i.label) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
     ("label", "pg"): "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
 }
 
 
 _PRECURSOR_QUERIES: dict[str, str] = {
     "channel": """
-    SELECT f.run_file_name,
-           f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-           i.intensity
-    FROM feature f, UNNEST(f.intensities) AS _t(i)
+    SELECT run_file_name, precursor_id, i.intensity
+    FROM (
+        SELECT f.run_file_name,
+               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
+               UNNEST(f.intensities) AS i
+        FROM feature f
+    )
     WHERE i.channel = '$label'
     """,
     "label": """
-    SELECT f.run_file_name,
-           f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-           i.intensity
-    FROM feature f, UNNEST(f.intensities) AS _t(i)
+    SELECT run_file_name, precursor_id, i.intensity
+    FROM (
+        SELECT f.run_file_name,
+               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
+               UNNEST(f.intensities) AS i
+        FROM feature f
+    )
     WHERE i.label = '$label'
     """,
 }
 
 _PRECURSOR_ALL_QUERIES: dict[str, str] = {
     "channel": """
-    SELECT f.run_file_name,
+    SELECT run_file_name,
            CAST(i.channel AS VARCHAR) AS intensity_label,
-           f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-           i.intensity
-    FROM feature f, UNNEST(f.intensities) AS _t(i)
+           precursor_id, i.intensity
+    FROM (
+        SELECT f.run_file_name,
+               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
+               UNNEST(f.intensities) AS i
+        FROM feature f
+    )
     WHERE i.channel IS NOT NULL
     """,
     "label": """
-    SELECT f.run_file_name,
+    SELECT run_file_name,
            CAST(i.label AS VARCHAR) AS intensity_label,
-           f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-           i.intensity
-    FROM feature f, UNNEST(f.intensities) AS _t(i)
+           precursor_id, i.intensity
+    FROM (
+        SELECT f.run_file_name,
+               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
+               UNNEST(f.intensities) AS i
+        FROM feature f
+    )
     WHERE i.label IS NOT NULL
     """,
 }
@@ -231,40 +245,36 @@ _PRECURSOR_ALL_QUERIES: dict[str, str] = {
 # are kept so the shared label-field dispatch does not need a pg special-case.
 _PROTEIN_QUERIES: dict[str, str] = {
     "channel": """
-    SELECT gr AS run_file_name,
+    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            pg.anchor_protein,
            pg.intensity AS intensity
-    FROM pg,
-         UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
+    FROM pg
     WHERE pg.label = '$label'
     """,
     "label": """
-    SELECT gr AS run_file_name,
+    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            pg.anchor_protein,
            pg.intensity AS intensity
-    FROM pg,
-         UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
+    FROM pg
     WHERE pg.label = '$label'
     """,
 }
 
 _PROTEIN_ALL_QUERIES: dict[str, str] = {
     "channel": """
-    SELECT gr AS run_file_name,
+    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            CAST(pg.label AS VARCHAR) AS intensity_label,
            pg.anchor_protein,
            pg.intensity AS intensity
-    FROM pg,
-         UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
+    FROM pg
     WHERE pg.label IS NOT NULL
     """,
     "label": """
-    SELECT gr AS run_file_name,
+    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            CAST(pg.label AS VARCHAR) AS intensity_label,
            pg.anchor_protein,
            pg.intensity AS intensity
-    FROM pg,
-         UNNEST(list_distinct(pg.grouped_runs)) AS _g(gr)
+    FROM pg
     WHERE pg.label IS NOT NULL
     """,
 }
