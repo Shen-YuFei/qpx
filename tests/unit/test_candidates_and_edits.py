@@ -107,6 +107,19 @@ def test_bad_candidate_probabilities_fail_strict_validation(tmp_path, candidates
     assert any(i.check == check for i in result.errors)
 
 
+def test_rounded_group_probabilities_stay_valid(tmp_path):
+    """MaxQuant rounds to three decimals, so one phosphate's group can sum to 1.001."""
+    from qpx.writers import PsmWriter
+
+    candidates = [
+        candidate(4, "S", "Phospho", 0.501, True, "UNIMOD:21", 79.966331, group=1),
+        candidate(5, "T", "Phospho", 0.5, False, "UNIMOD:21", 79.966331, group=1),
+    ]
+    with PsmWriter(tmp_path / "exp.psm.parquet") as w:
+        w.write_batch([_psm(modification_candidates=candidates)])
+    assert _validate(tmp_path, "psm").is_valid
+
+
 def test_co_occurring_modifications_do_not_sum_across_groups(tmp_path):
     """A certain SILAC label on K6 co-occurs with the acetyl/trimethyl alternatives."""
     from qpx.writers import PsmWriter

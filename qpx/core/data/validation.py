@@ -65,6 +65,9 @@ _UNIT_INTERVAL_COLUMNS = {
 }
 # Tolerance for a residue's evidence fractions summing to 1.
 _FRACTION_SUM_TOLERANCE = 1e-6
+# Producers round candidate probabilities (MaxQuant to three decimals), so an
+# alternative group can sum to a few thousandths above 1.
+_CANDIDATE_SUM_TOLERANCE = 0.01
 # Closed vocabularies of the site and proteoform views. ``prior_evidence`` and
 # ``source`` are open: producers name their own evidence classes and sources.
 _VOCABULARIES = {
@@ -226,7 +229,7 @@ def _modification_candidate_counts(table: pa.Table | pa.RecordBatch) -> tuple[in
     grouped = flat.filter(pc.is_valid(flat.column("alternative_group")))
     if grouped.num_rows:
         sums = grouped.group_by(["row", "alternative_group"]).aggregate([("probability", "sum")])
-        over = pc.greater(sums.column("probability_sum"), 1.0 + _FRACTION_SUM_TOLERANCE)
+        over = pc.greater(sums.column("probability_sum"), 1.0 + _CANDIDATE_SUM_TOLERANCE)
         over = pc.sum(pc.cast(pc.fill_null(over, False), pa.int64())).as_py() or 0
     return bad, over
 
@@ -239,7 +242,7 @@ def _modification_candidate_issues(counts: tuple[int, int], structure: str, seve
         message = f"{bad} modification candidate probabilities are not finite numbers in [0, 1]"
         issues.append(_issue(structure, "value_out_of_range", severity, "modification_candidates", message))
     if over:
-        message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1"
+        message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1.01"
         issues.append(_issue(structure, "candidate_probability_sum", severity, "modification_candidates", message))
     return issues
 
