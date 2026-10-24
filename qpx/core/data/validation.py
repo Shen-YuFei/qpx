@@ -1,4 +1,4 @@
-"""Row-level value checks and validation result types for QPX data structures."""
+"""Row-level value checks, site and proteoform link queries, and validation result types."""
 
 from __future__ import annotations
 
@@ -370,3 +370,41 @@ def _anchor_membership_issues(bad: int, structure: str, severity: str) -> list[V
         "its full pg_accessions membership."
     )
     return [_issue(structure, "anchor_without_membership", severity, "pg_accessions", message)]
+
+
+# Link checks of the site and proteoform views, as constant queries.
+_LINK_SQL = {
+    "site": {
+        "dangling_pg": (
+            'SELECT count(*) FROM "site" v WHERE v.pg_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg p WHERE p.pg_id = v.pg_id)'
+        ),
+        "pg_context": (
+            'SELECT count(*) FROM "site" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE p.label IS NOT NULL "
+            "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
+        ),
+        "dangling_psm": (
+            'SELECT count(*) FROM "site" v WHERE v.best_psm_id IS NOT NULL '
+            "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
+        ),
+    },
+    "proteoform": {
+        "dangling_pg": (
+            'SELECT count(*) FROM "proteoform" v WHERE v.pg_id IS NOT NULL '
+            "AND NOT EXISTS (SELECT 1 FROM pg p WHERE p.pg_id = v.pg_id)"
+        ),
+        "pg_context": (
+            'SELECT count(*) FROM "proteoform" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE NOT (v.label IS NOT DISTINCT FROM p.label) "
+            "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
+        ),
+        "dangling_psm": (
+            'SELECT count(*) FROM "proteoform" v WHERE v.best_psm_id IS NOT NULL '
+            "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
+        ),
+    },
+}
+_LINK_CONTEXT_MESSAGE = {
+    "site": "link to a pg row that has a label or other grouped_runs (a site links to the null-label row of its runs)",
+    "proteoform": "link to a pg row whose label or grouped_runs differ from the row's",
+}
