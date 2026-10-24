@@ -174,7 +174,12 @@ class BaseStructure:
         referential = []
         if view.view_name == "pg" and {"pg_accessions", "grouped_runs", "label"} <= set(schema.names):
             referential = pg_referential_issues_from_query(self._engine, query, view.view_name, severity)
-        batches = self._engine.connection.sql(query).to_arrow_reader(_VALIDATE_BATCH_ROWS)
+        # Only the columns the row checks read are streamed; the constant keeps the
+        # select valid for a view that has none of them.
+        columns = ", ".join(["1 AS _validation_row", *map(validate_identifier, view.validation_columns(schema))])
+        batches = self._engine.connection.sql(
+            sql_build("SELECT $columns FROM ($query)", columns=columns, query=query)
+        ).to_arrow_reader(_VALIDATE_BATCH_ROWS)
         return view.validate_batches(schema, batches, keys, referential, strict=strict)
 
     # --- Parquet metadata (delegates to core.parquet_io) ---
