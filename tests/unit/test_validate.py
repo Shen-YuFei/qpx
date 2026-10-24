@@ -369,7 +369,7 @@ def test_blank_anchor_without_membership_not_flagged():
 
 def test_anchor_membership_skips_non_list_pg_accessions():
     """Malformed non-list ``pg_accessions`` must not raise in the membership check."""
-    from qpx.core.data.schema import _anchor_without_membership
+    from qpx.core.data.validation import _anchor_without_membership
 
     table = pa.table({"anchor_protein": pa.array(["P1"]), "pg_accessions": pa.array(["P1;P2"])})
     assert not _anchor_without_membership(table)
@@ -377,7 +377,7 @@ def test_anchor_membership_skips_non_list_pg_accessions():
 
 def test_anchor_membership_skips_non_string_anchor():
     """Malformed non-string ``anchor_protein`` must not raise in the membership check."""
-    from qpx.core.data.schema import _anchor_without_membership
+    from qpx.core.data.validation import _anchor_without_membership
 
     table = pa.table({"anchor_protein": pa.array([1, 2]), "pg_accessions": pa.array([[], []], type=pa.list_(pa.string()))})
     assert not _anchor_without_membership(table)
