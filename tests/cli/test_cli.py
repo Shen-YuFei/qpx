@@ -1,5 +1,7 @@
 """CLI command tests — convert, transform, query, info, validate, ontology."""
 
+import re
+
 from click.testing import CliRunner
 
 from qpx.cli.main import qpx_main
@@ -379,6 +381,20 @@ class TestInfoCLI:
         runner = CliRunner()
         result = runner.invoke(qpx_main, ["info", "--help"])
         _assert_help(result, "--dataset-path")
+
+    def test_info_counts_every_shard(self, tmp_path):
+        """A view split over several files reports the rows of all of them."""
+        from qpx.writers.psm import PsmWriter
+        from tests.conftest import make_psm_record
+
+        for shard, scan in (("a", 1001), ("b", 1002)):
+            with PsmWriter(tmp_path / f"{shard}.psm.parquet") as writer:
+                writer.write_batch([make_psm_record(scan=[scan])])
+
+        result = CliRunner().invoke(qpx_main, ["info", "--dataset-path", str(tmp_path)])
+
+        assert result.exit_code == 0, result.output
+        assert re.search(r"^\s*psm\s+2\s", result.output, re.MULTILINE), result.output
 
     def test_info_schema_help_renders(self):
         runner = CliRunner()

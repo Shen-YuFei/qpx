@@ -148,8 +148,8 @@ def _collect_score_names(table_path: Path) -> set[str]:
     for row in col.to_pylist():
         if row:
             for score in row:
-                if score and "name" in score and score["name"]:
-                    names.add(score["name"])
+                if score:
+                    names.add(score["score_name"])
     return names
 
 

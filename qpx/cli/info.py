@@ -79,7 +79,6 @@ def info(ctx, dataset_path: Optional[Path], verbose: bool):
 def _show_dataset_summary(dataset_path: Path, verbose: bool):
     """Print a human-readable summary of a QPX dataset."""
     import qpx
-    from qpx.core.parquet_io import parquet_row_count
 
     click.echo(f"QPX Dataset: {dataset_path.resolve()}")
     click.echo("=" * 60)
@@ -100,15 +99,11 @@ def _show_dataset_summary(dataset_path: Path, verbose: bool):
         total_rows = 0
         for name in sorted(structures):
             struct = ds._structures[name]
-            file_path = struct._file_path
-
-            try:
-                rows = parquet_row_count(file_path)
-            except Exception:
-                rows = struct.count()
+            # Counts every shard or partition of the view, not just the first file.
+            rows = struct.count()
 
             total_rows += rows
-            rel_path = file_path.name
+            rel_path = struct._file_path.name
             click.echo(f"  {name:<15} {rows:>12,} {rel_path}")
 
         click.echo(f"  {'-' * 15} {'-' * 12}")

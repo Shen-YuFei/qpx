@@ -465,7 +465,7 @@ def _accession_target_files(dataset: Path) -> list[str]:
 )
 @click.option(
     "--output",
-    help="Output directory (default: overwrites in place)",
+    help="Output directory for the normalized views (required unless --in-place)",
     type=click.Path(file_okay=False, path_type=Path),
     default=None,
 )
