@@ -369,6 +369,10 @@ class BaseWriter:
         """Return whether a producer id should be replaced for one row."""
         return self._override_provided_ids
 
+    def _keeps_every_id(self, table: pa.Table, id_field: str) -> bool:
+        """Whether every row keeps its provided id, so the composite need not be read."""
+        return not self._override_provided_ids and id_field in table.column_names and table.column(id_field).null_count == 0
+
     def _fill_identity_table(self, table: pa.Table) -> pa.Table:
         """Return *table* with its derived-id column present and non-null.
 
@@ -384,6 +388,9 @@ class BaseWriter:
         if not composite or id_field is None:
             return table
         names = set(table.schema.names)
+        id_arrow_field = pa.field(id_field, pa.int64(), nullable=False)
+        if self._keeps_every_id(table, id_field):
+            return table.set_column(table.schema.get_field_index(id_field), id_arrow_field, table.column(id_field))
         n = table.num_rows
         # Hash the PERSISTED (schema-cast) value of each composite field so the id
         # is identical regardless of which write path built the table — e.g. a
@@ -406,7 +413,6 @@ class BaseWriter:
                 pa.array(cv_lists, type=cv_type),
             )
         id_array = pa.array(ids, type=pa.int64())
-        id_arrow_field = pa.field(id_field, pa.int64(), nullable=False)
         if id_field in names:
             return table.set_column(table.schema.get_field_index(id_field), id_arrow_field, id_array)
         return table.add_column(0, id_arrow_field, id_array)
