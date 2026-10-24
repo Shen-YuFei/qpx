@@ -14,6 +14,7 @@ fields:
     doc: "Raw data file name (without extension)"
   file_name:
     type: string
+    optional: true
     doc: "Original file name with extension (e.g. S1_Frontal_1.raw)"
 
   # Sample-channel mapping (supports multiplexed runs)
@@ -25,21 +26,26 @@ fields:
   # Run properties
   fraction:
     type: string
+    optional: true
     doc: "Fraction identifier"
 
   # Instrument and method (plain strings; CV mappings in ontology.parquet)
   instrument:
     type: string
+    optional: true
     doc: "Mass spectrometer name"
   enzymes:
     type: "list<string>"
+    optional: true
     doc: "Proteolytic enzyme names"
   dissociation_method:
     type: string
+    optional: true
     doc: "Fragmentation method name (HCD, CID, ETD)"
   acquisition_method:
     type: string
     nullable: true
+    optional: true
     doc: "Data acquisition method name (e.g. DDA, DIA); from comment[proteomics data acquisition method]"
 
   # Additional ontology-backed run terms (acquisition method as CV, labeling, etc.);
@@ -47,9 +53,11 @@ fields:
   additional_terms:
     type: "list<ontology_term>"
     nullable: true
+    optional: true
     doc: "Other ontology-backed run terms (acquisition method, labeling, etc.)"
 
   # Search configuration
   modification_parameters:
     type: "list<modification_param>"
+    optional: true
     doc: "Modifications configured in database search"

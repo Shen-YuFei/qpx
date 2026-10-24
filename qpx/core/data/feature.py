@@ -86,10 +86,12 @@ class Feature(BaseStructure):
         else:
             join_cond = "(i.label = rs.label OR len(r.samples) = 1)"
             label_expr = "rs.label"
+        # fraction is an optional run column: an absent one reads as null.
+        fraction = self._engine.optional_columns("run", "r", ("fraction",))
         stmt = sql_build(
             """SELECT f.sequence, f.peptidoform, f.charge, f.anchor_protein,
                rs.sample_accession, $label_expr AS label, i.intensity,
-               f.run_file_name, rs.biological_replicate, r.fraction
+               f.run_file_name, rs.biological_replicate, $fraction
         FROM $src f
         JOIN run r ON f.run_file_name = r.run_file_name,
              UNNEST(r.samples) AS _t1(rs),
@@ -99,5 +101,6 @@ class Feature(BaseStructure):
             src=self._query.source,
             join_cond=join_cond,
             label_expr=label_expr,
+            fraction=fraction,
         )
         return QueryResult(self._engine.connection, stmt)
