@@ -192,17 +192,11 @@ class MzIdentMLPgAdapter(BaseConverter):
             )
         return global_qvalue, additional_scores
 
-    def _build_pag_record(self, pag, ns: str, dbseq_map: dict[str, str], grouped_runs: list[str]) -> dict | None:
-        """Build a single pg record from a ProteinAmbiguityGroup element."""
-        pdhs = pag.findall(f"{{{ns}}}ProteinDetectionHypothesis")
-        if not pdhs:
-            return None
-
+    def _pag_members(self, pdhs, ns: str, dbseq_map: dict, additional_scores: list) -> tuple:
+        """Collect member accessions, peptide counts, representative and scores."""
         pg_accessions: list[str] = []
         anchor_protein: str | None = None
         peptides: list[dict] = []
-        global_qvalue, additional_scores = self._extract_pag_scores(pag, ns)
-
         for pdh in pdhs:
             acc = dbseq_map.get(pdh.get("dBSequence_ref", ""), pdh.get("dBSequence_ref", ""))
             if acc:
@@ -232,6 +226,18 @@ class MzIdentMLPgAdapter(BaseConverter):
                                 "higher_better": None,
                             }
                         )
+
+        return pg_accessions, anchor_protein, peptides
+
+    def _build_pag_record(self, pag, ns: str, dbseq_map: dict[str, str], grouped_runs: list[str]) -> dict | None:
+        """Build a single pg record from a ProteinAmbiguityGroup element."""
+        pdhs = pag.findall(f"{{{ns}}}ProteinDetectionHypothesis")
+        if not pdhs:
+            return None
+
+        global_qvalue, additional_scores = self._extract_pag_scores(pag, ns)
+
+        pg_accessions, anchor_protein, peptides = self._pag_members(pdhs, ns, dbseq_map, additional_scores)
 
         if not pg_accessions:
             return None

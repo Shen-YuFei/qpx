@@ -61,73 +61,22 @@ class MaxQuantConverter(BaseOrchestrator):
                 logger.info("SDRF conversion complete")
 
         if PSM in structures and msms_file:
-            with MaxQuantPsmAdapter(
-                duckdb_memory=self._memory,
-                duckdb_threads=self._cpus,
-                compression=self._compression,
-            ) as adapter:
-                adapter.convert(
-                    msms_path=str(msms_file),
-                    output_path=str(output_folder / f"{prefix}.psm.parquet"),
-                    chunksize=_BATCH_SIZE,
-                    spectral_data=spectral_data,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
-                self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
+            self._convert_psms(msms_file, output_folder / f"{prefix}.psm.parquet", spectral_data, ontology_entries)
             logger.info("MaxQuant PSM conversion complete")
 
         if FEATURE in structures and evidence_file:
-            with MaxQuantFeatureAdapter(
-                duckdb_memory=self._memory,
-                duckdb_threads=self._cpus,
-                compression=self._compression,
-            ) as adapter:
-                adapter.convert(
-                    evidence_path=str(evidence_file),
-                    output_path=str(output_folder / f"{prefix}.feature.parquet"),
-                    sdrf_path=str(sdrf_file) if sdrf_file else None,
-                    protein_groups_path=(str(protein_groups_file) if protein_groups_file else None),
-                    chunksize=_BATCH_SIZE,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
-                self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
+            self._convert_features(
+                evidence_file, protein_groups_file, sdrf_file, output_folder / f"{prefix}.feature.parquet", ontology_entries
+            )
             logger.info("MaxQuant feature conversion complete")
 
         if PG in structures and protein_groups_file:
-            with MaxQuantPgAdapter(
-                duckdb_memory=self._memory,
-                duckdb_threads=self._cpus,
-                compression=self._compression,
-            ) as adapter:
-                adapter.convert(
-                    protein_groups_path=str(protein_groups_file),
-                    output_path=str(output_folder / f"{prefix}.pg.parquet"),
-                    sdrf_path=str(sdrf_file) if sdrf_file else None,
-                    evidence_path=str(evidence_file) if evidence_file else None,
-                    chunksize=_BATCH_SIZE,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
-                self._resolved_mappings_by_view[PG] = adapter.get_resolved_columns()
+            self._convert_pg(
+                protein_groups_file, evidence_file, sdrf_file, output_folder / f"{prefix}.pg.parquet", ontology_entries
+            )
             logger.info("MaxQuant PG conversion complete")
 
-        for view_name, mappings in self._resolved_mappings_by_view.items():
-            ontology_entries.extend(
-                field_ontology_entries(
-                    view=view_name,
-                    resolved_mappings=mappings,
-                    tool_name=get_tool_meta("maxquant")["tool_name"],
-                )
-            )
-
-        self._write_ontology(output_folder, prefix, ontology_entries)
-        self._write_provenance(output_folder, prefix, structures)
-        self._write_dataset(
-            output_folder,
-            prefix,
-            project_accession,
-            software_name="MaxQuant",
-            software_version=None,
-        )
+        self._write_conversion_metadata(output_folder, prefix, structures, project_accession, ontology_entries)
 
     def _write_provenance(self, output_folder: Path, prefix: str, structures: list[str]) -> None:
         """Write provenance.parquet with MaxQuant + QPX conversion steps."""
@@ -156,3 +105,74 @@ class MaxQuantConverter(BaseOrchestrator):
             },
         ]
         super()._write_provenance(output_folder, prefix, records)
+
+    def _convert_psms(self, msms_file, output_path, spectral_data, ontology_entries):
+        """Write PSMs and collect their ontology and source mappings."""
+        with MaxQuantPsmAdapter(
+            duckdb_memory=self._memory,
+            duckdb_threads=self._cpus,
+            compression=self._compression,
+        ) as adapter:
+            adapter.convert(
+                msms_path=str(msms_file),
+                output_path=str(output_path),
+                chunksize=_BATCH_SIZE,
+                spectral_data=spectral_data,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
+            self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
+
+    def _convert_features(self, evidence_file, protein_groups_file, sdrf_file, output_path, ontology_entries):
+        """Write features and collect their ontology and source mappings."""
+        with MaxQuantFeatureAdapter(
+            duckdb_memory=self._memory,
+            duckdb_threads=self._cpus,
+            compression=self._compression,
+        ) as adapter:
+            adapter.convert(
+                evidence_path=str(evidence_file),
+                output_path=str(output_path),
+                sdrf_path=str(sdrf_file) if sdrf_file else None,
+                protein_groups_path=(str(protein_groups_file) if protein_groups_file else None),
+                chunksize=_BATCH_SIZE,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
+            self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
+
+    def _convert_pg(self, protein_groups_file, evidence_file, sdrf_file, output_path, ontology_entries):
+        """Write protein groups and collect their source mappings."""
+        with MaxQuantPgAdapter(
+            duckdb_memory=self._memory,
+            duckdb_threads=self._cpus,
+            compression=self._compression,
+        ) as adapter:
+            adapter.convert(
+                protein_groups_path=str(protein_groups_file),
+                output_path=str(output_path),
+                sdrf_path=str(sdrf_file) if sdrf_file else None,
+                evidence_path=str(evidence_file) if evidence_file else None,
+                chunksize=_BATCH_SIZE,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
+            self._resolved_mappings_by_view[PG] = adapter.get_resolved_columns()
+
+    def _write_conversion_metadata(self, output_folder, prefix, structures, project_accession, ontology_entries):
+        """Write field ontology, provenance, and dataset metadata."""
+        for view_name, mappings in self._resolved_mappings_by_view.items():
+            ontology_entries.extend(
+                field_ontology_entries(
+                    view=view_name,
+                    resolved_mappings=mappings,
+                    tool_name=get_tool_meta("maxquant")["tool_name"],
+                )
+            )
+
+        self._write_ontology(output_folder, prefix, ontology_entries)
+        self._write_provenance(output_folder, prefix, structures)
+        self._write_dataset(
+            output_folder,
+            prefix,
+            project_accession,
+            software_name="MaxQuant",
+            software_version=None,
+        )

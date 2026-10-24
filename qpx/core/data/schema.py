@@ -152,6 +152,27 @@ def _scan_format_issues(scan_format: str | None, count: int, structure: str, sev
     return [_issue(structure, "scan_format", severity, "scan", message)]
 
 
+_PG_RUN_DOUBLE_COUNT_SQL = """
+        WITH exploded AS (
+            -- Deduplicate each row's own grouped_runs first (a within-row
+            -- duplicate is already reported by duplicate_grouped_run); this
+            -- way run_double_count measures only cross-row disjointness.
+            -- Key on the canonical (order-independent) group MEMBERSHIP, so
+            -- distinct groups sharing a leader are not conflated.
+            SELECT list_sort(list_distinct(pg_accessions)) AS members, label,
+                   UNNEST(list_distinct(grouped_runs)) AS run
+            FROM pg_validate
+        ),
+        repeated AS (
+            SELECT COUNT(*) AS c
+            FROM exploded
+            GROUP BY members, label, run
+            HAVING COUNT(*) > 1
+        )
+        SELECT COALESCE(SUM(c - 1), 0) FROM repeated
+        """
+
+
 def _query_pg_referential_issues(
     con,
     structure: str,
@@ -187,27 +208,7 @@ def _query_pg_referential_issues(
                 message=f"{dup_lists} pg row(s) have duplicate raw files within grouped_runs (must be a set of distinct files)",
             )
         )
-    double = con.execute(
-        """
-        WITH exploded AS (
-            -- Deduplicate each row's own grouped_runs first (a within-row
-            -- duplicate is already reported by duplicate_grouped_run); this
-            -- way run_double_count measures only cross-row disjointness.
-            -- Key on the canonical (order-independent) group MEMBERSHIP, so
-            -- distinct groups sharing a leader are not conflated.
-            SELECT list_sort(list_distinct(pg_accessions)) AS members, label,
-                   UNNEST(list_distinct(grouped_runs)) AS run
-            FROM pg_validate
-        ),
-        repeated AS (
-            SELECT COUNT(*) AS c
-            FROM exploded
-            GROUP BY members, label, run
-            HAVING COUNT(*) > 1
-        )
-        SELECT COALESCE(SUM(c - 1), 0) FROM repeated
-        """
-    ).fetchall()[0][0]
+    double = con.execute(_PG_RUN_DOUBLE_COUNT_SQL).fetchall()[0][0]
     if double:
         issues.append(
             ValidationIssue(

@@ -7,7 +7,8 @@ import pyarrow.parquet as pq
 import pytest
 from click.testing import CliRunner
 
-from qpx.cli.convert import _apply_software, _finish_conversion, convert
+from qpx.cli.convert import convert
+from qpx.cli.convert.postprocess import _apply_software, _finish_conversion
 from qpx.dataset import Dataset
 from tests.converters.test_openms_consensus import _invoke_consensus_convert
 
@@ -266,7 +267,8 @@ def test_openms_consensus_and_diann_finish_conversion_once_with_their_prefix(tmp
         calls.append(prefix)
         return _finish_conversion(output_folder, prefix, *args, **kwargs)
 
-    monkeypatch.setattr("qpx.cli.convert._finish_conversion", spy)
+    monkeypatch.setattr("qpx.cli.convert.openms_consensus._finish_conversion", spy)
+    monkeypatch.setattr("qpx.cli.convert.diann._finish_conversion", spy)
 
     consensus, _ = _run(tmp_path / "consensus", prefix="t")
     assert consensus.exit_code == 0, consensus.output

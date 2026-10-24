@@ -17,6 +17,7 @@ import hashlib
 import logging
 import math
 from collections import Counter
+from typing import NamedTuple
 
 from qpx.converters.openms_consensus.feature_adapter import (
     _map_label,
@@ -247,6 +248,80 @@ def _psm_additional_scores(primary, hits, score, score_type, score_is_qvalue, hi
     return additional_scores, site_scores
 
 
+class _PsmContext(NamedTuple):
+    """Spectrum location and score interpretation shared by one PID's hits."""
+
+    run: str
+    scan: list[int]
+    obs_mz: float
+    score_type: str
+    score_is_qvalue: bool
+    higher_better: bool
+
+
+def _psm_hit_groups(pid, run, scan) -> tuple[dict, list]:
+    """Group colliding hits while retaining their first-seen order."""
+    groups: dict[tuple, list] = {}
+    order: list[tuple] = []
+    for hit in pid.getHits():
+        peptidoform = to_proforma(hit.getSequence())
+        charge = int(hit.getCharge() or 0)
+        key = (peptidoform, charge, run, tuple(scan))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(hit)
+
+    return groups, order
+
+
+def _psm_confidence_scores(pid, primary, hits, context, confidence, seq_obj):
+    """Build source-scoped confidence and additional score fields."""
+    peptide_level = confidence is not None and confidence.applies(pid)
+    pep = None if peptide_level else _pep_of(primary)
+    score = safe_float(primary.getScore())
+    additional_scores, site_scores = _psm_additional_scores(
+        primary, hits, score, context.score_type, context.score_is_qvalue, context.higher_better, peptide_level=peptide_level
+    )
+    if peptide_level:
+        peptide_qvalue = confidence.of(pid, to_proforma(seq_obj))[1]
+        if peptide_qvalue is not None:
+            additional_scores.append({"score_name": "peptide_qvalue", "score_value": peptide_qvalue, "higher_better": False})
+    return pep, additional_scores, site_scores
+
+
+def _psm_record(pid, hits, context, enzyme, confidence) -> dict:
+    """Build one collapsed PSM from its peptide, spectrum and score fields."""
+    # Keep the lowest-PEP hit; hits without a PEP sort last (worst). ``min`` is
+    # stable, so ties (and the common single-hit case) keep the first hit,
+    # preserving existing output exactly.
+    primary = min(hits, key=lambda h: _pep_of(h) if _pep_of(h) is not None else math.inf)
+    seq_obj = primary.getSequence()
+    peptidoform = to_proforma(seq_obj)
+    charge = int(primary.getCharge() or 0)
+    calc_mz = float(seq_obj.getMZ(charge)) if charge > 0 else None
+    is_decoy = is_decoy_hit(primary)
+    pep, additional_scores, site_scores = _psm_confidence_scores(pid, primary, hits, context, confidence, seq_obj)
+    modifications = to_modifications(seq_obj, site_scores)
+    return {
+        "sequence": seq_obj.toUnmodifiedString(),
+        "peptidoform": peptidoform,
+        "modifications": modifications,
+        "charge": charge,
+        "run_file_name": context.run,
+        "scan": context.scan,
+        "rt": float(pid.getRT()) if pid.getRT() else None,
+        "calculated_mz": calc_mz,
+        "observed_mz": context.obs_mz,
+        "mass_error_ppm": _mass_error_ppm(calc_mz, context.obs_mz),
+        "missed_cleavages": (count_missed_cleavages(seq_obj.toUnmodifiedString(), enzyme) if enzyme else None),
+        "posterior_error_probability": pep,
+        "additional_scores": additional_scores or None,
+        "is_decoy": is_decoy,
+        "protein_accessions": _protein_accessions(hits),
+    }
+
+
 def psm_records_for_pid(
     pid, resolve_run, seen: set[tuple], cf_runs=None, enzyme=None, duplicates=None, confidence=None
 ) -> list[dict]:
@@ -285,65 +360,18 @@ def psm_records_for_pid(
     # collisions must resolve to one row (lowest PEP), keeping the other engines'
     # search scores; genuinely different peptidoforms map to different keys and are
     # all emitted as distinct PSMs.
-    groups: dict[tuple, list] = {}
-    order: list[tuple] = []
-    for hit in pid.getHits():
-        peptidoform = to_proforma(hit.getSequence())
-        charge = int(hit.getCharge() or 0)
-        key = (peptidoform, charge, run, tuple(scan))
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(hit)
+    groups, order = _psm_hit_groups(pid, run, scan)
 
     records: list[dict] = []
     higher_better = bool(pid.isHigherScoreBetter())
+    context = _PsmContext(run, scan, obs_mz, score_type, score_is_qvalue, higher_better)
     for key in order:
         if key in seen:
             if duplicates is not None:
                 duplicates.append((key, float(pid.getRT()) if pid.getRT() else None, obs_mz))
             continue
         seen.add(key)
-        hits = groups[key]
-        # Keep the lowest-PEP hit; hits without a PEP sort last (worst). ``min`` is
-        # stable, so ties (and the common single-hit case) keep the first hit,
-        # preserving existing output exactly.
-        primary = min(hits, key=lambda h: _pep_of(h) if _pep_of(h) is not None else math.inf)
-        seq_obj = primary.getSequence()
-        peptidoform = to_proforma(seq_obj)
-        charge = int(primary.getCharge() or 0)
-        calc_mz = float(seq_obj.getMZ(charge)) if charge > 0 else None
-        is_decoy = is_decoy_hit(primary)
-        peptide_level = confidence is not None and confidence.applies(pid)
-        pep = None if peptide_level else _pep_of(primary)
-        score = safe_float(primary.getScore())
-        additional_scores, site_scores = _psm_additional_scores(
-            primary, hits, score, score_type, score_is_qvalue, higher_better, peptide_level=peptide_level
-        )
-        if peptide_level:
-            peptide_qvalue = confidence.of(pid, to_proforma(seq_obj))[1]
-            if peptide_qvalue is not None:
-                additional_scores.append({"score_name": "peptide_qvalue", "score_value": peptide_qvalue, "higher_better": False})
-        modifications = to_modifications(seq_obj, site_scores)
-        records.append(
-            {
-                "sequence": seq_obj.toUnmodifiedString(),
-                "peptidoform": peptidoform,
-                "modifications": modifications,
-                "charge": charge,
-                "run_file_name": run,
-                "scan": scan,
-                "rt": float(pid.getRT()) if pid.getRT() else None,
-                "calculated_mz": calc_mz,
-                "observed_mz": obs_mz,
-                "mass_error_ppm": _mass_error_ppm(calc_mz, obs_mz),
-                "missed_cleavages": (count_missed_cleavages(seq_obj.toUnmodifiedString(), enzyme) if enzyme else None),
-                "posterior_error_probability": pep,
-                "additional_scores": additional_scores or None,
-                "is_decoy": is_decoy,
-                "protein_accessions": _protein_accessions(hits),
-            }
-        )
+        records.append(_psm_record(pid, groups[key], context, enzyme, confidence))
     return records
 
 

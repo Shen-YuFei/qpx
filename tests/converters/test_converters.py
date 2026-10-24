@@ -333,15 +333,15 @@ class TestMaxQuantPhosphoProbabilities:
 
 
 class TestMzIdentMLBuildPeptidoform:
-    """Test _build_peptidoform from mzidentml.psm_adapter."""
+    """Test _build_peptidoform from mzidentml.psm_records."""
 
     def test_no_modifications(self):
-        from qpx.converters.mzidentml.psm_adapter import _build_peptidoform
+        from qpx.converters.mzidentml.psm_records import _build_peptidoform
 
         assert _build_peptidoform("PEPTIDEK", None) == "PEPTIDEK"
 
     def test_unimod_modification(self):
-        from qpx.converters.mzidentml.psm_adapter import _build_peptidoform
+        from qpx.converters.mzidentml.psm_records import _build_peptidoform
 
         mods = [
             {
@@ -353,7 +353,7 @@ class TestMzIdentMLBuildPeptidoform:
         assert _build_peptidoform("PEPTMIDEK", mods) == "PEPTM[UNIMOD:35]IDEK"
 
     def test_nterm_modification(self):
-        from qpx.converters.mzidentml.psm_adapter import _build_peptidoform
+        from qpx.converters.mzidentml.psm_records import _build_peptidoform
 
         mods = [
             {
@@ -365,7 +365,7 @@ class TestMzIdentMLBuildPeptidoform:
         assert _build_peptidoform("PEPTIDEK", mods) == "[UNIMOD:1]-PEPTIDEK"
 
     def test_psi_mod_accession(self):
-        from qpx.converters.mzidentml.psm_adapter import _build_peptidoform
+        from qpx.converters.mzidentml.psm_records import _build_peptidoform
 
         mods = [
             {

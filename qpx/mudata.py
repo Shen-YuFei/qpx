@@ -18,7 +18,7 @@ import pandas as pd
 from scipy import sparse
 
 from qpx._version import __version__
-from qpx.core.files import run_file_stem
+from qpx.core.mudata_obs import _has_view, _load_run_obs
 from qpx.core.query import _escape_sql_string
 from qpx.core.sql import sql_build
 from qpx.version import QPX_SPEC_VERSION
@@ -229,12 +229,6 @@ _PROTEIN_ALL_QUERY = """
     """
 
 
-def _has_view(engine: DuckDBEngine, name: str) -> bool:
-    """Return True if the dataset registered the view *name*."""
-    rows = engine.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1", [name]).fetchall()
-    return len(rows) > 0
-
-
 def _detect_intensity_label(engine: DuckDBEngine, table: str = "feature") -> str | None:
     """Return the first intensity label of the given table, or None when it has none."""
     rows = engine.execute(_LABEL_QUERIES[table]).fetchall()
@@ -290,92 +284,6 @@ def _prepare_observations_arrow(
         index=obs_index,
     )
     return table, "run_file_name", obs_index, keys
-
-
-def _load_run_obs(
-    engine: DuckDBEngine,
-    observation_keys: pd.DataFrame,
-    all_labels: bool,
-) -> pd.DataFrame:
-    """Load run/sample metadata for matrix observations."""
-    if _has_view(engine, "run"):
-        # fraction and instrument are optional run columns: an absent one reads as null.
-        optional = engine.optional_columns("run", "r", ("fraction", "instrument"))
-        df = engine.execute(
-            sql_build(
-                """
-                SELECT r.run_file_name,
-                       r.run_accession,
-                       rs.sample_accession,
-                       rs.label,
-                       rs.biological_replicate,
-                       rs.technical_replicate,
-                       $optional
-                FROM run r, UNNEST(r.samples) AS _t(rs)
-                """,
-                optional=optional,
-            )
-        ).fetchdf()
-    else:
-        df = pd.DataFrame()
-
-    if df.empty:
-        if all_labels:
-            return observation_keys.copy()
-        return pd.DataFrame(index=observation_keys.index)
-
-    exact: dict[tuple[str, str], dict] = {}
-    stem_exact: dict[tuple[str, str], dict] = {}
-    first_by_run: dict[str, dict] = {}
-    first_by_stem: dict[str, dict] = {}
-    labels_by_run: dict[str, set[str]] = {}
-    labels_by_stem: dict[str, set[str]] = {}
-    for record in df.to_dict("records"):
-        run_name = str(record["run_file_name"])
-        stem = run_file_stem(run_name)
-        label = str(record["label"])
-        exact.setdefault((run_name, label), record)
-        stem_exact.setdefault((stem, label), record)
-        first_by_run.setdefault(run_name, record)
-        first_by_stem.setdefault(stem, record)
-        labels_by_run.setdefault(run_name, set()).add(label)
-        labels_by_stem.setdefault(stem, set()).add(label)
-
-    rows: list[dict] = []
-    for _, key in observation_keys.iterrows():
-        run_name = str(key["run_file_name"])
-        stem = run_file_stem(run_name)
-        label = str(key["intensity_label"])
-        record = exact.get((run_name, label))
-        if record is None:
-            record = stem_exact.get((stem, label))
-        # Fall back to the run's sole sample when the intensity label does not
-        # match any SDRF sample label. This is the label-free case (intensity
-        # label "LFQ" vs sample label "label free sample"), detected by the run
-        # carrying at most one distinct SDRF label. For multiplexed runs (more
-        # than one distinct label / channel) we never guess, so each channel
-        # keeps its own real sample_accession.
-        if record is None and len(labels_by_run.get(run_name, ())) <= 1:
-            record = first_by_run.get(run_name)
-        if record is None and len(labels_by_stem.get(stem, ())) <= 1:
-            record = first_by_stem.get(stem)
-
-        values = dict(record) if record is not None else {}
-        values.pop("run_file_name", None)
-        if all_labels:
-            values = {
-                "run_file_name": run_name,
-                "intensity_label": label,
-                **values,
-            }
-        rows.append(values)
-
-    obs = pd.DataFrame(rows, index=observation_keys.index)
-
-    # Fill remaining NaN in string columns to avoid h5py serialization errors
-    str_cols = obs.select_dtypes(include=["object"]).columns
-    obs[str_cols] = obs[str_cols].fillna("")
-    return obs
 
 
 def _attach_uns_metadata(engine: DuckDBEngine, mdata) -> None:

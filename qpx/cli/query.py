@@ -85,16 +85,7 @@ def query_cmd():
     type=int,
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
-def query_sql_cmd(
-    dataset_path: Path,
-    sql_query: str,
-    output: Optional[Path],
-    output_format: str,
-    structures: Optional[str],
-    duckdb_memory: Optional[str],
-    duckdb_threads: Optional[int],
-    verbose: bool,
-):
+def query_sql_cmd(**kwargs):
     """Run an arbitrary SQL query against a QPX dataset.
 
     Opens the dataset, registers all (or selected) data structures as
@@ -120,6 +111,15 @@ def query_sql_cmd(
             --sql "SELECT COUNT(*) FROM psm" \\
             --structures psm
     """
+    dataset_path = kwargs["dataset_path"]
+    sql_query = kwargs["sql_query"]
+    output = kwargs["output"]
+    output_format = kwargs["output_format"]
+    structures = kwargs["structures"]
+    duckdb_memory = kwargs["duckdb_memory"]
+    duckdb_threads = kwargs["duckdb_threads"]
+    verbose = kwargs["verbose"]
+
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -186,16 +186,7 @@ def query_sql_cmd(
     default="csv",
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
-def query_filter_cmd(
-    dataset_path: Path,
-    structure: str,
-    condition: str,
-    columns: Optional[str],
-    limit: Optional[int],
-    output: Optional[Path],
-    output_format: str,
-    verbose: bool,
-):
+def query_filter_cmd(**kwargs):
     """Filter a QPX data structure by a SQL condition.
 
     Opens the dataset, applies the filter condition to the specified
@@ -225,6 +216,15 @@ def query_filter_cmd(
             --output filtered_pg.parquet \\
             --output-format parquet
     """
+    dataset_path = kwargs["dataset_path"]
+    structure = kwargs["structure"]
+    condition = kwargs["condition"]
+    columns = kwargs["columns"]
+    limit = kwargs["limit"]
+    output = kwargs["output"]
+    output_format = kwargs["output_format"]
+    verbose = kwargs["verbose"]
+
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 

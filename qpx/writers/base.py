@@ -134,6 +134,37 @@ def _validate_partitioned_table(schema_class, table: pa.Table) -> None:
         )
 
 
+def _validate_partition_columns(table: pa.Table, cols: list[str]) -> None:
+    """Require existing scalar columns for Hive partitioning."""
+    # Validate the partition columns up front so the default path (or an
+    # unsupported key) fails with an actionable message instead of a raw
+    # KeyError deep in pyarrow. Since QPX 1.1 the pg view is keyed on
+    # grouped_runs (list<string>) with no scalar run_file_name, and Hive
+    # partitioning encodes each value as a directory name — it cannot
+    # represent a list — so the pg view is not Hive-partitionable.
+    available = set(table.schema.names)
+    missing = [c for c in cols if c not in available]
+    if missing:
+        if "grouped_runs" in available and "run_file_name" in missing:
+            raise ValueError(
+                "The protein-group (pg) view is not Hive-partitionable: it is keyed on "
+                "'grouped_runs' (list<string>, since QPX 1.1) and has no scalar "
+                "'run_file_name' column. Hive partitioning encodes each value as a "
+                "directory name and cannot represent a list. Write pg as a single "
+                "Parquet file (write_table), or partition the psm/feature views, which "
+                "keep 'run_file_name'."
+            )
+        raise ValueError(f"Cannot partition on missing column(s) {missing}; available columns: {sorted(available)}")
+    for col in cols:
+        col_type = table.schema.field(col).type
+        if pa.types.is_list(col_type) or pa.types.is_large_list(col_type) or pa.types.is_struct(col_type):
+            raise ValueError(
+                f"Cannot Hive-partition on non-scalar column '{col}' (type {col_type}); partition "
+                "columns must be scalar. The pg view's 'grouped_runs' is a list, so pg is not "
+                "partitionable — write it as a single file."
+            )
+
+
 def _schema_leaf_paths(schema: pa.Schema) -> list[str]:
     """Return every leaf column path in pyarrow's dotted convention."""
 
@@ -230,19 +261,7 @@ class BaseWriter:
         # the footer stamps the effective composite via the ``_identity_composite``
         # property below.
         self._identity_composite_override = tuple(identity_composite) if identity_composite else None
-        effective_composite = self._identity_composite
-        if effective_composite:
-            identity_schema = (
-                self._schema_class.get_extended_arrow_schema(self._extra_columns)
-                if self._extra_columns
-                else self._schema_class.get_arrow_schema()
-            )
-            available_fields = set(identity_schema.names)
-            unknown_fields = [field for field in effective_composite if field not in available_fields]
-            if unknown_fields:
-                raise ValueError(
-                    f"identity_composite contains fields outside the {self._schema_class.view_name} schema: {unknown_fields}"
-                )
+        self._validate_identity_composite()
 
         # Build Parquet footer metadata. Two distinct versions are stamped:
         #   qpx_version    — the on-disk *specification* version (QPX_SPEC_VERSION),
@@ -270,6 +289,22 @@ class BaseWriter:
             if id_field is not None:
                 self._file_metadata[b"primary_key"] = id_field.encode()
             self._file_metadata[b"identity_composite"] = ",".join(identity_composite).encode()
+
+    def _validate_identity_composite(self) -> None:
+        """Reject composite fields absent from the effective writer schema."""
+        effective_composite = self._identity_composite
+        if effective_composite:
+            identity_schema = (
+                self._schema_class.get_extended_arrow_schema(self._extra_columns)
+                if self._extra_columns
+                else self._schema_class.get_arrow_schema()
+            )
+            available_fields = set(identity_schema.names)
+            unknown_fields = [field for field in effective_composite if field not in available_fields]
+            if unknown_fields:
+                raise ValueError(
+                    f"identity_composite contains fields outside the {self._schema_class.view_name} schema: {unknown_fields}"
+                )
 
     # --- Derived identity --------------------------------------------------
 
@@ -739,33 +774,7 @@ class BaseWriter:
             table = deriver._fill_identity_table(table)
             _validate_partitioned_table(schema_class, table)
 
-        # Validate the partition columns up front so the default path (or an
-        # unsupported key) fails with an actionable message instead of a raw
-        # KeyError deep in pyarrow. Since QPX 1.1 the pg view is keyed on
-        # grouped_runs (list<string>) with no scalar run_file_name, and Hive
-        # partitioning encodes each value as a directory name — it cannot
-        # represent a list — so the pg view is not Hive-partitionable.
-        available = set(table.schema.names)
-        missing = [c for c in cols if c not in available]
-        if missing:
-            if "grouped_runs" in available and "run_file_name" in missing:
-                raise ValueError(
-                    "The protein-group (pg) view is not Hive-partitionable: it is keyed on "
-                    "'grouped_runs' (list<string>, since QPX 1.1) and has no scalar "
-                    "'run_file_name' column. Hive partitioning encodes each value as a "
-                    "directory name and cannot represent a list. Write pg as a single "
-                    "Parquet file (write_table), or partition the psm/feature views, which "
-                    "keep 'run_file_name'."
-                )
-            raise ValueError(f"Cannot partition on missing column(s) {missing}; available columns: {sorted(available)}")
-        for col in cols:
-            col_type = table.schema.field(col).type
-            if pa.types.is_list(col_type) or pa.types.is_large_list(col_type) or pa.types.is_struct(col_type):
-                raise ValueError(
-                    f"Cannot Hive-partition on non-scalar column '{col}' (type {col_type}); partition "
-                    "columns must be scalar. The pg view's 'grouped_runs' is a list, so pg is not "
-                    "partitionable — write it as a single file."
-                )
+        _validate_partition_columns(table, cols)
 
         table = _stamp_footer_metadata(table, compression, file_metadata)
 

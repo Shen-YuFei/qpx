@@ -89,6 +89,33 @@ def _populated_channel_values(raw_channels: list[object], channel_col: str) -> l
     return populated
 
 
+def _channel_label_rows(raw_channels: list[object], declared_labels: set[str] | None) -> list[tuple[str, str]]:
+    """Resolve report channels to distinct canonical SDRF labels."""
+    declared_by_key = {normalize_label(label).casefold(): normalize_label(label) for label in declared_labels or ()}
+    rows: list[tuple[str, str]] = []
+    canonical_to_raw: dict[str, str] = {}
+    for raw_channel in raw_channels:
+        raw_text = str(raw_channel).strip()
+        normalized = normalize_label(raw_text)
+        if declared_by_key:
+            key = normalized.casefold()
+            if key not in declared_by_key:
+                raise ValueError(
+                    f"DIA-NN channel {raw_text!r} is not declared in SDRF "
+                    "comment[label]; channel identifiers must match so "
+                    "intensities can resolve to run samples"
+                )
+            normalized = declared_by_key[key]
+
+        canonical_key = normalized.casefold()
+        previous = canonical_to_raw.get(canonical_key)
+        if previous is not None and previous != raw_text:
+            raise ValueError(f"DIA-NN channels {previous!r} and {raw_text!r} both canonicalize to {normalized!r}")
+        canonical_to_raw[canonical_key] = raw_text
+        rows.append((raw_text, normalized))
+    return rows
+
+
 class DiaNNBaseAdapter(BaseConverter):
     """Base adapter with DIA-NN-specific loading utilities.
 
@@ -202,29 +229,7 @@ class DiaNNBaseAdapter(BaseConverter):
             return None
 
         declared_labels = read_sdrf_labels(sdrf_path)
-        declared_by_key = {normalize_label(label).casefold(): normalize_label(label) for label in declared_labels or ()}
-
-        rows: list[tuple[str, str]] = []
-        canonical_to_raw: dict[str, str] = {}
-        for raw_channel in raw_channels:
-            raw_text = str(raw_channel).strip()
-            normalized = normalize_label(raw_text)
-            if declared_by_key:
-                key = normalized.casefold()
-                if key not in declared_by_key:
-                    raise ValueError(
-                        f"DIA-NN channel {raw_text!r} is not declared in SDRF "
-                        "comment[label]; channel identifiers must match so "
-                        "intensities can resolve to run samples"
-                    )
-                normalized = declared_by_key[key]
-
-            canonical_key = normalized.casefold()
-            previous = canonical_to_raw.get(canonical_key)
-            if previous is not None and previous != raw_text:
-                raise ValueError(f"DIA-NN channels {previous!r} and {raw_text!r} both canonicalize to {normalized!r}")
-            canonical_to_raw[canonical_key] = raw_text
-            rows.append((raw_text, normalized))
+        rows = _channel_label_rows(raw_channels, declared_labels)
 
         self._conn.execute("DROP TABLE IF EXISTS diann_channel_labels")
         self._conn.from_df(

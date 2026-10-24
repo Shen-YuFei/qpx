@@ -49,86 +49,37 @@ class FragPipeConverter(BaseOrchestrator):
         produced_structures: list[str] = []
 
         if psm_file:
-            with FragPipePsmAdapter(
-                duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression
-            ) as adapter:
-                adapter.convert(
-                    psm_path=str(psm_file),
-                    output_path=str(out / f"{prefix}.psm.parquet"),
-                    chunksize=_BATCH_SIZE,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
-                self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
+            self._convert_psms(psm_file, out / f"{prefix}.psm.parquet", ontology_entries)
             produced_structures.append(PSM)
             logger.info("FragPipe PSM conversion complete")
 
         if ion_file:
-            from qpx.converters.fragpipe.feature_adapter import FragPipeFeatureAdapter
-
-            with FragPipeFeatureAdapter(
-                duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression
-            ) as adapter:
-                adapter.convert(
-                    feature_path=str(ion_file),
-                    output_path=str(out / f"{prefix}.feature.parquet"),
-                    sdrf_path=str(sdrf_file) if sdrf_file else None,
-                    psm_path=str(psm_file) if psm_file else None,
-                    experiment_to_runs=experiment_to_runs,
-                    experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
-                    chunksize=_BATCH_SIZE,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
-                self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
+            self._convert_features(
+                ion_file,
+                psm_file,
+                sdrf_file,
+                out / f"{prefix}.feature.parquet",
+                (experiment_to_runs, experiment_annotation_file),
+                ontology_entries,
+            )
             produced_structures.append(FEATURE)
             logger.info("FragPipe feature conversion complete")
 
         if pg_file:
-            with FragPipePgAdapter(
-                duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression
-            ) as adapter:
-                adapter.convert(
-                    protein_path=str(pg_file),
-                    output_path=str(out / f"{prefix}.pg.parquet"),
-                    chunksize=_BATCH_SIZE,
-                    experiment_to_runs=experiment_to_runs,
-                    experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
-                    sdrf_path=str(sdrf_file) if sdrf_file else None,
-                )
-                ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
-                self._resolved_mappings_by_view[PG] = adapter.get_resolved_columns()
+            self._convert_pg(
+                pg_file,
+                sdrf_file,
+                out / f"{prefix}.pg.parquet",
+                (experiment_to_runs, experiment_annotation_file),
+                ontology_entries,
+            )
             produced_structures.append(PG)
             logger.info("FragPipe PG conversion complete")
 
         if sdrf_file:
-            from qpx.converters.sdrf import SdrfConverter
+            self._convert_sdrf(sdrf_file, out / f"{prefix}.sample.parquet", out / f"{prefix}.run.parquet", ontology_entries)
 
-            with SdrfConverter() as conv:
-                conv.convert(
-                    sdrf_path=str(sdrf_file),
-                    sample_output=str(out / f"{prefix}.sample.parquet"),
-                    run_output=str(out / f"{prefix}.run.parquet"),
-                )
-                ontology_entries.extend(conv.run_ontology_entries())
-            logger.info("SDRF conversion complete")
-
-        for view_name, mappings in self._resolved_mappings_by_view.items():
-            ontology_entries.extend(
-                field_ontology_entries(
-                    view=view_name,
-                    resolved_mappings=mappings,
-                    tool_name=get_tool_meta("fragpipe")["tool_name"],
-                )
-            )
-
-        self._write_ontology(out, prefix, ontology_entries)
-        self._write_provenance(out, prefix, self._build_provenance_records(produced_structures))
-        self._write_dataset(
-            out,
-            prefix,
-            project_accession,
-            software_name="FragPipe/MSFragger",
-            software_version=None,
-        )
+        self._write_conversion_metadata(out, prefix, produced_structures, project_accession, ontology_entries)
 
     def _build_provenance_records(self, structures: list[str]) -> list[dict]:
         """Build provenance records for FragPipe + QPX conversion steps."""
@@ -156,3 +107,83 @@ class FragPipeConverter(BaseOrchestrator):
                 "output_views": structures + [SAMPLE, RUN, ONTOLOGY],
             },
         ]
+
+    def _convert_psms(self, psm_file, output_path, ontology_entries):
+        """Write PSMs and collect their ontology and source mappings."""
+        with FragPipePsmAdapter(duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression) as adapter:
+            adapter.convert(
+                psm_path=str(psm_file),
+                output_path=str(output_path),
+                chunksize=_BATCH_SIZE,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
+            self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
+
+    def _convert_features(self, ion_file, psm_file, sdrf_file, output_path, mapping, ontology_entries):
+        """Write features using the supplied experiment mapping."""
+        experiment_to_runs, experiment_annotation_file = mapping
+        from qpx.converters.fragpipe.feature_adapter import FragPipeFeatureAdapter
+
+        with FragPipeFeatureAdapter(
+            duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression
+        ) as adapter:
+            adapter.convert(
+                feature_path=str(ion_file),
+                output_path=str(output_path),
+                sdrf_path=str(sdrf_file) if sdrf_file else None,
+                psm_path=str(psm_file) if psm_file else None,
+                experiment_to_runs=experiment_to_runs,
+                experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
+                chunksize=_BATCH_SIZE,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
+            self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
+
+    def _convert_pg(self, pg_file, sdrf_file, output_path, mapping, ontology_entries):
+        """Write protein groups using the supplied experiment mapping."""
+        experiment_to_runs, experiment_annotation_file = mapping
+        with FragPipePgAdapter(duckdb_memory=self._memory, duckdb_threads=self._cpus, compression=self._compression) as adapter:
+            adapter.convert(
+                protein_path=str(pg_file),
+                output_path=str(output_path),
+                chunksize=_BATCH_SIZE,
+                experiment_to_runs=experiment_to_runs,
+                experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
+                sdrf_path=str(sdrf_file) if sdrf_file else None,
+            )
+            ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
+            self._resolved_mappings_by_view[PG] = adapter.get_resolved_columns()
+
+    def _convert_sdrf(self, sdrf_file, sample_path, run_path, ontology_entries):
+        """Write SDRF views and collect run ontology terms."""
+        from qpx.converters.sdrf import SdrfConverter
+
+        with SdrfConverter() as conv:
+            conv.convert(
+                sdrf_path=str(sdrf_file),
+                sample_output=str(sample_path),
+                run_output=str(run_path),
+            )
+            ontology_entries.extend(conv.run_ontology_entries())
+        logger.info("SDRF conversion complete")
+
+    def _write_conversion_metadata(self, out, prefix, produced_structures, project_accession, ontology_entries):
+        """Write field ontology, provenance, and dataset metadata."""
+        for view_name, mappings in self._resolved_mappings_by_view.items():
+            ontology_entries.extend(
+                field_ontology_entries(
+                    view=view_name,
+                    resolved_mappings=mappings,
+                    tool_name=get_tool_meta("fragpipe")["tool_name"],
+                )
+            )
+
+        self._write_ontology(out, prefix, ontology_entries)
+        self._write_provenance(out, prefix, self._build_provenance_records(produced_structures))
+        self._write_dataset(
+            out,
+            prefix,
+            project_accession,
+            software_name="FragPipe/MSFragger",
+            software_version=None,
+        )

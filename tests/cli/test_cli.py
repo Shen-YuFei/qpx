@@ -163,7 +163,7 @@ class TestTransformQuantifyCLI:
         import sys
         from types import ModuleType
 
-        from qpx.cli.transform import _validate_quantify_inputs
+        from qpx.cli.transform.quantify import _validate_quantify_inputs
 
         mokume = ModuleType("mokume")
         mokume.__path__ = []
@@ -177,7 +177,7 @@ class TestTransformQuantifyCLI:
         """SDRF run/channel pairs restore biological samples and conditions."""
         import pandas as pd
 
-        from qpx.cli.transform import _qpx_feature_to_peptide_df
+        from qpx.cli.transform.quantify import _qpx_feature_to_peptide_df
 
         feature_path = tmp_path / "feature.parquet"
         pd.DataFrame(
@@ -218,7 +218,7 @@ class TestTransformQuantifyCLI:
         """Standalone Feature input supplies an explicit missing condition."""
         import pandas as pd
 
-        from qpx.cli.transform import _qpx_feature_to_peptide_df
+        from qpx.cli.transform.quantify import _qpx_feature_to_peptide_df
 
         feature_path = tmp_path / "feature.parquet"
         pd.DataFrame(
@@ -239,7 +239,7 @@ class TestTransformQuantifyCLI:
         """Every positive target intensity becomes one row keyed by run and label."""
         import pandas as pd
 
-        from qpx.cli.transform import _qpx_feature_to_peptide_df
+        from qpx.cli.transform.quantify import _qpx_feature_to_peptide_df
 
         feature_path = tmp_path / "feature.parquet"
         pd.DataFrame(

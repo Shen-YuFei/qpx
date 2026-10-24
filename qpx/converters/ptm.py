@@ -222,6 +222,32 @@ def _modification_site(seq_pos: int, last_aa: str | None, cterm: bool, sequence_
     return seq_pos, last_aa
 
 
+def _modification_identity(mod_str: str, aa: str | None, meta: Optional[dict]) -> tuple[str, str | None]:
+    """Resolve a modification tag to its name and accession."""
+    name = mod_str
+    accession = None
+    if mod_str.startswith("UNIMOD:"):
+        accession = mod_str
+        if meta:
+            entry = meta.get(accession)
+            if entry:
+                name = entry[0]
+        else:
+            name = accession
+    elif mod_str.startswith("+") or mod_str.startswith("-"):
+        if meta:
+            for acc, (mod_name, sites, _) in meta.items():
+                if aa in sites or "X" in sites:
+                    name = mod_name
+                    accession = acc
+                    break
+            else:
+                name = f"CHEMMOD:{mod_str}"
+        else:
+            name = f"CHEMMOD:{mod_str}"
+    return name, accession
+
+
 def _from_proforma_impl(
     peptidoform: str,
     sequence: str,
@@ -254,28 +280,7 @@ def _from_proforma_impl(
 
             position, aa = _modification_site(seq_pos, last_aa, cterm, len(sequence))
 
-            name = mod_str
-            accession = None
-
-            if mod_str.startswith("UNIMOD:"):
-                accession = mod_str
-                if meta:
-                    entry = meta.get(accession)
-                    if entry:
-                        name = entry[0]
-                else:
-                    name = accession
-            elif mod_str.startswith("+") or mod_str.startswith("-"):
-                if meta:
-                    for acc, (mod_name, sites, _) in meta.items():
-                        if aa in sites or "X" in sites:
-                            name = mod_name
-                            accession = acc
-                            break
-                    else:
-                        name = f"CHEMMOD:{mod_str}"
-                else:
-                    name = f"CHEMMOD:{mod_str}"
+            name, accession = _modification_identity(mod_str, aa, meta)
 
             key = accession or name
             if key not in mods:

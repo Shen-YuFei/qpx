@@ -131,6 +131,17 @@ def _check_protected_changes(
     return warnings
 
 
+def _backup_metadata_file(path: Path, log_message: str) -> None:
+    """Back up an existing metadata file once before replacing it."""
+    if path.exists():
+        backup = path.with_name(f"{path.name}.bak")
+        if not backup.exists():
+            import shutil
+
+            shutil.copy2(path, backup)
+            logger.info(log_message, backup.name)
+
+
 def update_metadata(
     dataset_path: Path,
     new_sdrf_path: Path,
@@ -172,21 +183,8 @@ def update_metadata(
     run_path = dataset_path / f"{file_prefix}.run.parquet"
 
     # Back up originals
-    if sample_path.exists():
-        backup = sample_path.with_name(f"{sample_path.name}.bak")
-        if not backup.exists():
-            import shutil
-
-            shutil.copy2(sample_path, backup)
-            logger.info("Backed up original sample.parquet → %s", backup.name)
-
-    if run_path.exists():
-        backup = run_path.with_name(f"{run_path.name}.bak")
-        if not backup.exists():
-            import shutil
-
-            shutil.copy2(run_path, backup)
-            logger.info("Backed up original run.parquet → %s", backup.name)
+    _backup_metadata_file(sample_path, "Backed up original sample.parquet → %s")
+    _backup_metadata_file(run_path, "Backed up original run.parquet → %s")
 
     # Step 3: Convert new SDRF
     converter = SdrfConverter()

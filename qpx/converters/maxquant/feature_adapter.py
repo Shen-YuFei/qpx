@@ -41,6 +41,15 @@ logger = logging.getLogger(__name__)
 # Derive field map from central mappings
 _FEATURE_MAP = get_field_mappings("maxquant", "feature")
 
+_EVIDENCE_DEDUP_SQL = """
+            SELECT *
+            FROM evidence
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY $partition_by
+                ORDER BY $order_by
+            ) = 1
+            """
+
 # Producer-specific feature identity composite (bigbio/qpx#229). MaxQuant reports
 # an RT window per feature, so its measured key uses rt_start/rt_stop (both in
 # feature.yaml) rather than a single rt. Passed to FeatureWriter so feature_id
@@ -195,14 +204,7 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
             order_by.append("1")
 
         return sql_build(
-            """
-            SELECT *
-            FROM evidence
-            QUALIFY ROW_NUMBER() OVER (
-                PARTITION BY $partition_by
-                ORDER BY $order_by
-            ) = 1
-            """,
+            _EVIDENCE_DEDUP_SQL,
             partition_by=partition_by,
             order_by=", ".join(order_by),
         )
@@ -279,12 +281,7 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         if gene_raw is not None and pd.notna(gene_raw) and str(gene_raw).strip():
             genes = [g.strip() for g in str(gene_raw).split(";") if g.strip()] or None
         if not genes and fasta_raw is not None and pd.notna(fasta_raw) and str(fasta_raw).strip():
-            genes = []
-            for hdr in str(fasta_raw).split(";"):
-                m = re.search(r"GN=([^\s;]+)", hdr)
-                if m and m.group(1) not in genes:
-                    genes.append(m.group(1))
-            genes = genes or None
+            genes = MaxQuantFeatureAdapter._genes_from_headers(fasta_raw)
         return genes
 
     def _build_pg_lookup(self, df: pd.DataFrame, acc_col: str, qval_col: Optional[str], gene_col: Optional[str]) -> dict:
@@ -430,115 +427,29 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         # is_decoy (bool)
         is_decoy = mq_flag_to_bool(row.get(r.get("is_decoy", "Reverse"), ""))
 
-        # Scan (list<int32>)
-        scan_raw = row.get(r.get("scan", "MS/MS scan number"))
-        scan = []
-        if pd.notna(scan_raw):
-            try:
-                scan = [int(scan_raw)]
-            except (ValueError, TypeError):
-                pass
+        spectrum_fields = self._evidence_spectrum_fields(row, charge)
 
-        # Calculated m/z from neutral mass and charge
-        neutral_mass = safe_float(row.get(r.get("mass", "Mass")))
-        if neutral_mass and charge:
-            calculated_mz = (neutral_mass + charge * PROTON_MASS) / charge
-        else:
-            calculated_mz = None
+        pg_accessions, anchor_protein, unique, pg_qvalue, gg_names = self._evidence_protein_fields(row, pg_maps)
 
-        # m/z
-        observed_mz = safe_float(row.get(r.get("observed_mz", "m/z")))
-
-        # RT (minutes → seconds)
-        rt = safe_float(row.get(r.get("rt", "Calibrated retention time")))
-        if rt is not None:
-            rt *= 60.0
-        rt_start = safe_float(row.get(r.get("rt_start", "Calibrated retention time start")))
-        if rt_start is not None:
-            rt_start *= 60.0
-        rt_stop = safe_float(row.get(r.get("rt_stop", "Calibrated retention time finish")))
-        if rt_stop is not None:
-            rt_stop *= 60.0
-
-        # PEP
-        pep = safe_float(row.get(r.get("posterior_error_probability", "PEP")))
-
-        # Ion mobility
-        ion_mobility = safe_float(row.get(r.get("ion_mobility", "1/K0")))
-
-        # Protein accessions (list of pg_protein structs)
-        pg_acc_raw = str(row.get(r.get("pg_accessions", "Leading proteins"), ""))
-        pg_acc_list = [self._norm_uniprot_id(a) for a in pg_acc_raw.split(";")] if pg_acc_raw else []
-        anchor_protein = self._norm_uniprot_id(str(row.get(r.get("anchor_protein", "Leading razor protein"), "")))
-        if not anchor_protein and pg_acc_list:
-            anchor_protein = pg_acc_list[0]
-        pg_accessions = [{"accession": acc, "start": None, "end": None, "pre": None, "post": None} for acc in pg_acc_list] or None
-
-        # Unique peptide indicator
-        unique = len(pg_acc_list) <= 1
-
-        # Protein-group q-value and genes, keyed on the full membership.
-        pg_qvalue, pg_genes = self._lookup_pg_metadata(pg_maps, pg_acc_list, anchor_protein)
-
-        # Gene names
-        gg_raw = row.get(r.get("gg_names", "Gene names"))
-        gg_names = str(gg_raw).split(";") if pd.notna(gg_raw) and gg_raw else None
-        if not gg_names:
-            gg_names = pg_genes
-
-        # Mass error (ppm) — direct column from evidence.txt
-        mass_error_ppm = safe_float(row.get(r.get("mass_error_ppm", "Mass error [ppm]")))
-
-        # Missed cleavages (dedicated field from evidence.txt)
-        mc_raw = row.get(r.get("missed_cleavages", "Missed cleavages"))
-        missed_cleavages = int(mc_raw) if pd.notna(mc_raw) else None
-
-        # MBR detection: Type == "MULTI-MATCH" means transferred (MBR) feature
-        evidence_type = str(row.get("Type", "")).strip().upper()
-        id_run_file_name = None if evidence_type == "MULTI-MATCH" else run_file_name
+        match_fields = self._evidence_match_fields(row, run_file_name)
 
         # Build intensities (new schema: {label, intensity})
         intensities, additional_intensities = self._build_intensities(row, experiment_type, tmt_channels, ri_offset)
 
-        # Additional scores
-        additional_scores = []
-        andromeda = safe_float(row.get(r.get("andromeda_score", "Score")))
-        if andromeda is not None:
-            additional_scores.append(
-                {
-                    "score_name": "andromeda_score",
-                    "score_value": andromeda,
-                    "higher_better": True,
-                }
-            )
-        delta = safe_float(row.get(r.get("andromeda_delta_score", "Delta score")))
-        if delta is not None:
-            additional_scores.append(
-                {
-                    "score_name": "andromeda_delta_score",
-                    "score_value": delta,
-                    "higher_better": True,
-                }
-            )
+        additional_scores = self._evidence_scores(row)
 
         return {
+            **match_fields,
+            **spectrum_fields,
             "sequence": sequence,
             "peptidoform": peptidoform,
             "modifications": modifications,
             "charge": charge,
-            "posterior_error_probability": pep,
             "is_decoy": is_decoy,
-            "calculated_mz": calculated_mz,
-            "observed_mz": observed_mz,
-            "mass_error_ppm": mass_error_ppm,
             "additional_scores": additional_scores or None,
             "predicted_rt": None,
             "run_file_name": run_file_name,
             "cv_params": None,
-            "scan": scan,
-            "rt": rt,
-            "ion_mobility": ion_mobility,
-            "missed_cleavages": missed_cleavages,
             "intensities": intensities or None,
             "additional_intensities": additional_intensities,
             "pg_accessions": pg_accessions,
@@ -549,9 +460,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
             "ion_mobility_stop": None,
             "gg_accessions": gg_names,
             "gg_names": gg_names,
-            "id_run_file_name": id_run_file_name,
-            "rt_start": rt_start,
-            "rt_stop": rt_stop,
         }
 
     def _build_intensities(
@@ -615,3 +523,131 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
             intensities.append({"label": label, "intensity": float(intensity_val)})
 
         return intensities, additional_intensities or None
+
+    @staticmethod
+    def _genes_from_headers(fasta_raw: str) -> Optional[list[str]]:
+        """Extract distinct gene symbols from FASTA headers."""
+        genes = []
+        for hdr in str(fasta_raw).split(";"):
+            m = re.search(r"GN=([^\s;]+)", hdr)
+            if m and m.group(1) not in genes:
+                genes.append(m.group(1))
+        genes = genes or None
+        return genes
+
+    def _evidence_spectrum_fields(self, row: dict, charge: int) -> dict:
+        """Extract the spectrum, m/z, and retention-time fields."""
+        r = self._resolved
+        # Scan (list<int32>)
+        scan_raw = row.get(r.get("scan", "MS/MS scan number"))
+        scan = []
+        if pd.notna(scan_raw):
+            try:
+                scan = [int(scan_raw)]
+            except (ValueError, TypeError):
+                pass
+
+        # Calculated m/z from neutral mass and charge
+        neutral_mass = safe_float(row.get(r.get("mass", "Mass")))
+        if neutral_mass and charge:
+            calculated_mz = (neutral_mass + charge * PROTON_MASS) / charge
+        else:
+            calculated_mz = None
+
+        # m/z
+        observed_mz = safe_float(row.get(r.get("observed_mz", "m/z")))
+
+        # RT (minutes → seconds)
+        rt = safe_float(row.get(r.get("rt", "Calibrated retention time")))
+        if rt is not None:
+            rt *= 60.0
+        rt_start = safe_float(row.get(r.get("rt_start", "Calibrated retention time start")))
+        if rt_start is not None:
+            rt_start *= 60.0
+        rt_stop = safe_float(row.get(r.get("rt_stop", "Calibrated retention time finish")))
+        if rt_stop is not None:
+            rt_stop *= 60.0
+
+        # PEP
+        pep = safe_float(row.get(r.get("posterior_error_probability", "PEP")))
+
+        # Ion mobility
+        ion_mobility = safe_float(row.get(r.get("ion_mobility", "1/K0")))
+        return {
+            "scan": scan,
+            "calculated_mz": calculated_mz,
+            "observed_mz": observed_mz,
+            "rt": rt,
+            "rt_start": rt_start,
+            "rt_stop": rt_stop,
+            "posterior_error_probability": pep,
+            "ion_mobility": ion_mobility,
+        }
+
+    def _evidence_protein_fields(self, row: dict, pg_maps: dict | None) -> tuple:
+        """Resolve protein membership, group confidence, and genes."""
+        r = self._resolved
+        # Protein accessions (list of pg_protein structs)
+        pg_acc_raw = str(row.get(r.get("pg_accessions", "Leading proteins"), ""))
+        pg_acc_list = [self._norm_uniprot_id(a) for a in pg_acc_raw.split(";")] if pg_acc_raw else []
+        anchor_protein = self._norm_uniprot_id(str(row.get(r.get("anchor_protein", "Leading razor protein"), "")))
+        if not anchor_protein and pg_acc_list:
+            anchor_protein = pg_acc_list[0]
+        pg_accessions = [{"accession": acc, "start": None, "end": None, "pre": None, "post": None} for acc in pg_acc_list] or None
+
+        # Unique peptide indicator
+        unique = len(pg_acc_list) <= 1
+
+        # Protein-group q-value and genes, keyed on the full membership.
+        pg_qvalue, pg_genes = self._lookup_pg_metadata(pg_maps, pg_acc_list, anchor_protein)
+
+        # Gene names
+        gg_raw = row.get(r.get("gg_names", "Gene names"))
+        gg_names = str(gg_raw).split(";") if pd.notna(gg_raw) and gg_raw else None
+        if not gg_names:
+            gg_names = pg_genes
+        return pg_accessions, anchor_protein, unique, pg_qvalue, gg_names
+
+    def _evidence_scores(self, row: dict) -> list[dict]:
+        """Collect Andromeda score fields from an evidence row."""
+        r = self._resolved
+        # Additional scores
+        additional_scores = []
+        andromeda = safe_float(row.get(r.get("andromeda_score", "Score")))
+        if andromeda is not None:
+            additional_scores.append(
+                {
+                    "score_name": "andromeda_score",
+                    "score_value": andromeda,
+                    "higher_better": True,
+                }
+            )
+        delta = safe_float(row.get(r.get("andromeda_delta_score", "Delta score")))
+        if delta is not None:
+            additional_scores.append(
+                {
+                    "score_name": "andromeda_delta_score",
+                    "score_value": delta,
+                    "higher_better": True,
+                }
+            )
+        return additional_scores
+
+    def _evidence_match_fields(self, row: dict, run_file_name: str) -> dict:
+        """Extract mass error, cleavage count, and identification source."""
+        r = self._resolved
+        # Mass error (ppm) — direct column from evidence.txt
+        mass_error_ppm = safe_float(row.get(r.get("mass_error_ppm", "Mass error [ppm]")))
+
+        # Missed cleavages (dedicated field from evidence.txt)
+        mc_raw = row.get(r.get("missed_cleavages", "Missed cleavages"))
+        missed_cleavages = int(mc_raw) if pd.notna(mc_raw) else None
+
+        # MBR detection: Type == "MULTI-MATCH" means transferred (MBR) feature
+        evidence_type = str(row.get("Type", "")).strip().upper()
+        id_run_file_name = None if evidence_type == "MULTI-MATCH" else run_file_name
+        return {
+            "mass_error_ppm": mass_error_ppm,
+            "missed_cleavages": missed_cleavages,
+            "id_run_file_name": id_run_file_name,
+        }

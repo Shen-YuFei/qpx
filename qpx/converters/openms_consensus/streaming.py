@@ -1,7 +1,7 @@
 """Streaming (low-memory) consensusXML reader.
 
 ``pyopenms.ConsensusXMLFile().load()`` pulls the whole ``ConsensusMap`` into
-memory (~0.8x the file size), which does not scale to 100+ GB files. This module
+memory, which does not scale to 100+ GB files. This module
 provides :class:`StreamingConsensusMap`, which mimics the exact pyopenms API
 surface the ``openms_consensus`` adapters use, backed by a defused ``iterparse``:
 
@@ -12,8 +12,9 @@ surface the ``openms_consensus`` adapters use, backed by a defused ``iterparse``
   the same way.
 
 Because the shim exposes the same methods the adapters call, the existing,
-validated adapters run **unchanged** on streamed data — so the output is
-identical to the pyopenms path; only peak memory changes. ``getSequence()``
+validated adapters run **unchanged** on streamed data — so the rows match the
+pyopenms path, with a few float values (PEP, mass error) differing in the last
+bit; peak memory is about half and run time about double. ``getSequence()``
 returns a real ``pyopenms.AASequence`` (built per-peptide, no map), so ProForma /
 modification handling is byte-identical.
 """
@@ -21,6 +22,7 @@ modification handling is byte-identical.
 from __future__ import annotations
 
 import gzip
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
@@ -170,13 +172,20 @@ class _MetaMixin:
         return self._meta.get(key)
 
 
+class _PrecursorPosition(NamedTuple):
+    """The m/z and retention time of a precursor or consensus feature."""
+
+    mz: float
+    rt: float
+
+
 class _PeptideIdentification(_MetaMixin):
     __slots__ = ("_hits", "_mz", "_rt", "_ref", "_score_type", "_higher", "_meta")
 
-    def __init__(self, hits, mz, rt, ref, score_type, higher, meta):
+    def __init__(self, hits, position: _PrecursorPosition, ref, score_type, higher, meta):
         self._hits = hits
-        self._mz = mz
-        self._rt = rt
+        self._mz = position.mz
+        self._rt = position.rt
         self._ref = ref
         self._score_type = score_type
         self._higher = higher
@@ -227,11 +236,11 @@ class _SubFeature:
 class _ConsensusFeature:
     __slots__ = ("_charge", "_mz", "_rt", "_subs", "_pids", "_quality", "_uid")
 
-    def __init__(self, charge, mz, rt, subs, pids, quality=0.0, uid=0):
+    def __init__(self, charge, position: _PrecursorPosition, subs, pids, quality=0.0, uid=0):
         self._uid = uid
         self._charge = charge
-        self._mz = mz
-        self._rt = rt
+        self._mz = position.mz
+        self._rt = position.rt
         self._subs = subs
         self._pids = pids
         self._quality = quality
@@ -380,7 +389,9 @@ def _parse_peptide_id(pid_el, ph_to_acc: dict[str, str]) -> _PeptideIdentificati
     higher = a.get("higher_score_better", "false").lower() == "true"
     meta = _user_params(pid_el)
     meta["identification_run_ref"] = a.get("identification_run_ref", "")
-    return _PeptideIdentification(hits, mz, rt, a.get("spectrum_reference", ""), a.get("score_type", ""), higher, meta)
+    return _PeptideIdentification(
+        hits, _PrecursorPosition(mz, rt), a.get("spectrum_reference", ""), a.get("score_type", ""), higher, meta
+    )
 
 
 def _parse_consensus_element(el, ph_to_acc: dict[str, str]) -> _ConsensusFeature:
@@ -408,12 +419,33 @@ def _parse_consensus_element(el, ph_to_acc: dict[str, str]) -> _ConsensusFeature
             pids.append(_parse_peptide_id(child, ph_to_acc))
     # quality is a C++ float in OpenMS, like the sub-feature intensities
     uid = el.attrib.get("id", "").removeprefix("e_")
-    return _ConsensusFeature(charge, mz, rt, subs, pids, _f32(el.attrib.get("quality") or 0.0), int(uid) if uid.isdigit() else 0)
+    return _ConsensusFeature(
+        charge, _PrecursorPosition(mz, rt), subs, pids, _f32(el.attrib.get("quality") or 0.0), int(uid) if uid.isdigit() else 0
+    )
 
 
 # ---------------------------------------------------------------------------
 # The streaming map
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class _IdentificationHeader:
+    """Fields collected while reading one protein-identification header."""
+
+    hits: list = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
+    score_type: str = ""
+    identifier: str = ""
+    search_meta: dict = field(default_factory=dict)
+
+
+_PROTEIN_HEADER_EVENTS = {
+    ("start", "IdentificationRun"),
+    ("start", "ProteinIdentification"),
+    ("end", "ProteinHit"),
+    ("end", "ProteinIdentification"),
+}
 
 
 class StreamingConsensusMap:
@@ -435,64 +467,68 @@ class StreamingConsensusMap:
     # -- header (proteins + maps), parsed once --------------------------------
 
     def _parse_header(self) -> None:
-        ph_hits: list[oms.ProteinHit] = []
-        ph_meta: dict[str, str] = {}  # ProteinIdentification-level UserParams (groups live here)
-        prot_score_type = ""
-        identifier = ""
-        search_meta: dict[str, str] = {}
+        header = _IdentificationHeader()
         for event, el in _iterparse(self._path, events=("start", "end")):
             tag = _localname(el.tag)
-            if event == "end" and tag == "map":
+            if (event, tag) == ("end", "map"):
                 self._headers[int(el.attrib["id"])] = _ColHeader(el.attrib.get("name", ""), el.attrib.get("label", ""))
                 el.clear()
-            elif event == "end" and tag == "SearchParameters":
+            elif (event, tag) == ("end", "SearchParameters"):
                 # The enzyme used for the search; needed to count missed cleavages.
                 # Kept here because the streaming reader never revisits the header.
                 enzyme = el.attrib.get("enzyme", "")
                 if enzyme and not self._enzyme:
                     self._enzyme = enzyme
-                search_meta = _user_params(el)
+                header.search_meta = _user_params(el)
                 el.clear()
-            elif event == "start" and tag == "IdentificationRun":
-                identifier = el.attrib.get("id", "")
-                search_meta = {}
-            elif event == "start" and tag == "ProteinIdentification":
-                ph_hits = []
-                ph_meta = {}
-                prot_score_type = el.attrib.get("score_type", "")
-            elif event == "end" and tag == "ProteinHit":
-                acc = el.attrib.get("accession", "")
-                phid = el.attrib.get("id", "")
-                self._ph_to_acc[phid] = acc
-                ph_hits.append(_parse_protein_hit(el))
+            elif (event, tag) in _PROTEIN_HEADER_EVENTS:
+                self._parse_protein_header(event, el, header)
+            elif (event, tag) == ("end", "dataProcessing"):
                 el.clear()
-            elif event == "end" and tag == "ProteinIdentification":
-                # The indistinguishable groups are ProteinIdentification-level
-                # UserParams: name "indistinguishable_proteins_N", value
-                # "score,PH_a,PH_b,...". Collect them before the element clears.
-                ph_meta = _user_params(el)
-                self._prots.append(
-                    _ProteinIdentification(
-                        ph_hits,
-                        self._build_groups(ph_meta),
-                        prot_score_type,
-                        _parse_spectra_data(ph_meta),
-                        identifier,
-                        search_meta,
-                    )
-                )
-                el.clear()
-                # do NOT stop: the <mapList> comes after the IdentificationRun.
-            elif event == "end" and tag == "dataProcessing":
-                el.clear()
-            elif event == "start" and tag == "consensusElementList":
+            elif (event, tag) == ("start", "consensusElementList"):
                 break  # header done; the bulk element list follows
             if event == "end" and tag in ("consensusElement", "UnassignedPeptideIdentification"):
                 el.clear()  # never accumulate the bulk while scanning the header
         if not self._prots:
             self._prots.append(
-                _ProteinIdentification(ph_hits, self._build_groups(ph_meta), prot_score_type, _parse_spectra_data(ph_meta))
+                _ProteinIdentification(
+                    header.hits, self._build_groups(header.meta), header.score_type, _parse_spectra_data(header.meta)
+                )
             )
+
+    def _parse_protein_header(self, event, el, header) -> None:
+        """Update identification-run and protein fields for one header event."""
+        tag = _localname(el.tag)
+        if (event, tag) == ("start", "IdentificationRun"):
+            header.identifier = el.attrib.get("id", "")
+            header.search_meta = {}
+        elif (event, tag) == ("start", "ProteinIdentification"):
+            header.hits = []
+            header.meta = {}
+            header.score_type = el.attrib.get("score_type", "")
+        elif (event, tag) == ("end", "ProteinHit"):
+            acc = el.attrib.get("accession", "")
+            phid = el.attrib.get("id", "")
+            self._ph_to_acc[phid] = acc
+            header.hits.append(_parse_protein_hit(el))
+            el.clear()
+        elif (event, tag) == ("end", "ProteinIdentification"):
+            # The indistinguishable groups are ProteinIdentification-level
+            # UserParams: name "indistinguishable_proteins_N", value
+            # "score,PH_a,PH_b,...". Collect them before the element clears.
+            header.meta = _user_params(el)
+            self._prots.append(
+                _ProteinIdentification(
+                    header.hits,
+                    self._build_groups(header.meta),
+                    header.score_type,
+                    _parse_spectra_data(header.meta),
+                    header.identifier,
+                    header.search_meta,
+                )
+            )
+            el.clear()
+            # do NOT stop: the <mapList> comes after the IdentificationRun.
 
     def _build_groups(self, prot_meta: dict[str, str]) -> list[_Group]:
         groups: list[_Group] = []

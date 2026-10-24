@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Optional
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -27,7 +27,7 @@ from qpx.converters.channel_labels import (
     relabel_intensities_table,
     resolve_channel_labels,
 )
-from qpx.converters.openms.run_names import RunNormalizer, build_run_normalizer, normalize_run_names
+from qpx.converters.openms.run_names import RunNormalizer, build_run_normalizer
 from qpx.converters.orchestrator import BaseOrchestrator
 from qpx.converters.sdrf import SdrfConverter
 from qpx.core.constants import FEATURE, ONTOLOGY, PG, PSM, RUN, SAMPLE
@@ -199,20 +199,20 @@ def _add_legacy_grouped_runs(table: pa.Table) -> pa.Table:
     return table.append_column("grouped_runs", pa.array(values, type=pa.list_(pa.string())))
 
 
-def _rewrite_core_file(
-    view: str,
-    src_path: Path,
-    dst: Path,
-    channel_labels: dict[int, str],
-    is_lfq: bool | None,
-    compression: str,
-    fraction_group_lookup: dict[str, str],
-    run_normalizer: RunNormalizer = normalize_run_names,
-) -> tuple[Path, int, int]:
-    """Upgrade one OpenMS core file while streaming by Parquet row group."""
-    parquet = pq.ParquetFile(src_path)
+@dataclass(frozen=True)
+class _RewriteOptions:
+    """Channel, design and run-name enrichment applied to each core file."""
+
+    channel_labels: dict[int, str]
+    is_lfq: bool | None
+    compression: str
+    fraction_group_lookup: dict[str, str]
+    run_normalizer: RunNormalizer
+
+
+def _core_writer_kwargs(parquet, view: str, compression: str) -> dict:
+    """Preserve source writer, scan-format and identity metadata during upgrade."""
     metadata = parquet.schema_arrow.metadata or {}
-    writer_class = _VIEW_WRITERS[view]
     writer_kwargs = {
         "creator": metadata.get(b"creator", b"OpenMS").decode(),
         "software_provider": metadata.get(b"software_provider", b"OpenMS").decode(),
@@ -226,6 +226,17 @@ def _rewrite_core_file(
     if view == PSM and b"scan_format" in metadata:
         writer_kwargs["scan_format"] = metadata[b"scan_format"].decode()
 
+    return writer_kwargs
+
+
+def _rewrite_core_file(view: str, src_path: Path, dst: Path, options: _RewriteOptions) -> tuple[Path, int, int]:
+    """Upgrade one OpenMS core file while streaming by Parquet row group."""
+    parquet = pq.ParquetFile(src_path)
+    writer_class = _VIEW_WRITERS[view]
+    writer_kwargs = _core_writer_kwargs(parquet, view, options.compression)
+    channel_labels = options.channel_labels
+    is_lfq = options.is_lfq
+    fraction_group_lookup = options.fraction_group_lookup
     with tempfile.NamedTemporaryFile(prefix=f".{dst.name}.", suffix=".tmp", dir=dst.parent, delete=False) as temp_file:
         temp_path = Path(temp_file.name)
     annotated = 0
@@ -247,7 +258,7 @@ def _rewrite_core_file(
                     run_column=run_column,
                     cv_param_resolver=fraction_group_resolver,
                 )
-                table = run_normalizer(table, view)
+                table = options.run_normalizer(table, view)
                 annotated += group_annotated
                 rows += table.num_rows
                 if view != PG or "intensities" not in table.column_names:
@@ -261,16 +272,7 @@ def _rewrite_core_file(
     return temp_path, rows, annotated
 
 
-def _copy_core(
-    discovered: dict[str, Path],
-    output_folder: Path,
-    output_prefix: str,
-    channel_labels: Optional[dict[int, str]] = None,
-    is_lfq: bool | None = None,
-    compression: str = "zstd",
-    fraction_group_lookup: Optional[dict[str, str]] = None,
-    run_normalizer: RunNormalizer = normalize_run_names,
-) -> dict[str, Path]:
+def _copy_core(discovered: dict[str, Path], output_folder: Path, output_prefix: str, options: _RewriteOptions) -> dict[str, Path]:
     """
     Upgrade and copy core parquet files to the output directory.
 
@@ -283,22 +285,12 @@ def _copy_core(
     pre-1.1 tables are projected onto the current schemas and receive mandatory
     IDs before they are atomically installed at the destination.
     """
-    fraction_group_lookup = fraction_group_lookup or {}
     output_paths: dict[str, Path] = {}
     staged: dict[str, tuple[Path, Path, Path, int, int]] = {}
     try:
         for view, src_path in discovered.items():
             dst = output_folder / f"{output_prefix}.{view}.parquet"
-            temp_path, rows, annotated = _rewrite_core_file(
-                view,
-                src_path,
-                dst,
-                channel_labels or {},
-                is_lfq,
-                compression,
-                fraction_group_lookup,
-                run_normalizer,
-            )
+            temp_path, rows, annotated = _rewrite_core_file(view, src_path, dst, options)
             staged[view] = (temp_path, src_path, dst, rows, annotated)
 
         _validate_core({view: values[0] for view, values in staged.items()})
@@ -393,54 +385,8 @@ class OpenMSConverter(BaseOrchestrator):
 
         discovered = self.discover_and_validate()
 
-        # Resolve canonical channel labels so the OpenMS -out_qpx run-filename /
-        # bare-index labels become TMT126.. / LFQ, consistent with the
-        # consensusXML and DIA-NN (quantmsdiann) QPX paths. Prefer the ColumnHeaders
-        # (authoritative channel count/order) when available; otherwise resolve
-        # from the SDRF-declared plex.
-        sdrf_labels = read_sdrf_labels(self.sdrf_path)
-        experiment_type = experiment_type_from_labels(sdrf_labels) if sdrf_labels else None
-
-        # Parse the consensusXML leading <mapList> ONCE and derive both the
-        # channel labels and the experimental-design fraction_group grouping from
-        # that header pass. Recovering PSM runs separately streams the full file.
-        maplist = parse_consensusxml_maplist(self.consensusxml_path) if self.consensusxml_path else {}
-
-        channel_labels = {}
-        if maplist and experiment_type and experiment_type != "SILAC":
-            channel_labels = channel_labels_from_consensusxml(
-                self.consensusxml_path, experiment_type, sdrf_labels, maplist=maplist
-            )
-            if channel_labels:
-                logger.info("Resolved %d channels from consensusXML", len(channel_labels))
-        if not channel_labels and experiment_type:
-            channel_labels = resolve_channel_labels(experiment_type, sdrf_labels)
-        is_lfq = experiment_type == "LFQ" if experiment_type not in (None, "SILAC") else None
-        if experiment_type is None:
-            logger.info("No SDRF channel labels available; preserving OpenMS intensity labels")
-        elif experiment_type == "SILAC":
-            logger.info("Preserving OpenMS SILAC intensity labels")
-
-        # OpenMS's experimental-design ``fraction_group`` (the replicate/fraction
-        # grouping key) is stamped as a cv_param on pg + feature rows during the
-        # copy/relabel rewrite below (same streaming pass). Best-effort: empty for
-        # isobaric / pre-design consensusXML files (no fraction_group UserParams)
-        # and when the file is absent. See bigbio/qpx#221, OpenMS#9817.
-        fraction_groups = fraction_groups_from_consensusxml(self.consensusxml_path, maplist=maplist) if maplist else {}
-        fraction_group_lookup = _fraction_group_lookup(fraction_groups) if fraction_groups else {}
-        if fraction_group_lookup:
-            logger.info("Resolved fraction_group for %d run(s) from consensusXML", len(fraction_groups))
-
-        output_paths = _copy_core(
-            discovered,
-            output_folder,
-            output_prefix,
-            channel_labels,
-            is_lfq,
-            self._compression,
-            fraction_group_lookup,
-            build_run_normalizer(self.sdrf_path, self.consensusxml_path, maplist, PSM in discovered),
-        )
+        options, experiment_type = self._resolve_rewrite_options(discovered)
+        output_paths = _copy_core(discovered, output_folder, output_prefix, options)
 
         ontology_entries = self._convert_sdrf(output_folder, output_prefix)
         ontology_entries.extend(self._collect_ontology(output_paths))
@@ -459,6 +405,60 @@ class OpenMSConverter(BaseOrchestrator):
         )
         self._write_mudata(output_folder, output_prefix)
         logger.info("OpenMS QPX enrichment complete -> %s", output_folder)
+
+    def _resolve_rewrite_options(self, discovered: dict[str, Path]) -> tuple[_RewriteOptions, str | None]:
+        """Resolve channel labels, fraction groups and exact run-name mappings."""
+        # Resolve canonical channel labels so the OpenMS -out_qpx run-filename /
+        # bare-index labels become TMT126.. / LFQ, consistent with the
+        # consensusXML and DIA-NN (quantmsdiann) QPX paths. Prefer the ColumnHeaders
+        # (authoritative channel count/order) when available; otherwise resolve
+        # from the SDRF-declared plex.
+        sdrf_labels = read_sdrf_labels(self.sdrf_path)
+        experiment_type = experiment_type_from_labels(sdrf_labels) if sdrf_labels else None
+
+        # Parse the consensusXML leading <mapList> ONCE and derive both the
+        # channel labels and the experimental-design fraction_group grouping from
+        # that header pass. Recovering PSM runs separately streams the full file.
+        maplist = parse_consensusxml_maplist(self.consensusxml_path) if self.consensusxml_path else {}
+
+        channel_labels, is_lfq = self._resolve_channel_labels(maplist, experiment_type, sdrf_labels)
+
+        # OpenMS's experimental-design ``fraction_group`` (the replicate/fraction
+        # grouping key) is stamped as a cv_param on pg + feature rows during the
+        # copy/relabel rewrite below (same streaming pass). Best-effort: empty for
+        # isobaric / pre-design consensusXML files (no fraction_group UserParams)
+        # and when the file is absent. See bigbio/qpx#221, OpenMS#9817.
+        fraction_groups = fraction_groups_from_consensusxml(self.consensusxml_path, maplist=maplist) if maplist else {}
+        fraction_group_lookup = _fraction_group_lookup(fraction_groups) if fraction_groups else {}
+        if fraction_group_lookup:
+            logger.info("Resolved fraction_group for %d run(s) from consensusXML", len(fraction_groups))
+
+        options = _RewriteOptions(
+            channel_labels,
+            is_lfq,
+            self._compression,
+            fraction_group_lookup,
+            build_run_normalizer(self.sdrf_path, self.consensusxml_path, maplist, PSM in discovered),
+        )
+        return options, experiment_type
+
+    def _resolve_channel_labels(self, maplist, experiment_type, sdrf_labels) -> tuple[dict, bool | None]:
+        """Resolve canonical labels while preserving unknown and SILAC labels."""
+        channel_labels = {}
+        if maplist and experiment_type and experiment_type != "SILAC":
+            channel_labels = channel_labels_from_consensusxml(
+                self.consensusxml_path, experiment_type, sdrf_labels, maplist=maplist
+            )
+            if channel_labels:
+                logger.info("Resolved %d channels from consensusXML", len(channel_labels))
+        if not channel_labels and experiment_type:
+            channel_labels = resolve_channel_labels(experiment_type, sdrf_labels)
+        is_lfq = experiment_type == "LFQ" if experiment_type not in (None, "SILAC") else None
+        if experiment_type is None:
+            logger.info("No SDRF channel labels available; preserving OpenMS intensity labels")
+        elif experiment_type == "SILAC":
+            logger.info("Preserving OpenMS SILAC intensity labels")
+        return channel_labels, is_lfq
 
     def discover_and_validate(self) -> dict[str, Path]:
         """Discover core files; validation follows their schema upgrade."""
