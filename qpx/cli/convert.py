@@ -519,12 +519,6 @@ def convert_diann_cmd(
     default=None,
 )
 @click.option(
-    "--batch-size",
-    help="Processing batch size",
-    default=100_000,
-    type=int,
-)
-@click.option(
     "--max-cpus",
     help="Maximum number of threads",
     type=int,
@@ -550,12 +544,6 @@ def convert_diann_cmd(
     help="Parquet compression codec.",
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
-@click.option(
-    "--fixed-mod-only",
-    help="Only include features with fixed modifications (Unmodified or Carbamidomethyl C)",
-    is_flag=True,
-    default=False,
-)
 @_dataset_metadata_options
 def convert_maxquant_cmd(
     msms_file: Optional[Path],
@@ -565,14 +553,12 @@ def convert_maxquant_cmd(
     output_folder: Path,
     output_prefix: Optional[str],
     structures: Optional[str],
-    batch_size: int,
     max_cpus: Optional[int],
     max_memory: Optional[str],
     spectral_data: bool,
     project_accession: Optional[str],
     compression: str,
     verbose: bool,
-    fixed_mod_only: bool,
     metadata: _DatasetMetadata,
 ):
     """Convert MaxQuant output to QPX format.
@@ -629,11 +615,8 @@ def convert_maxquant_cmd(
         output_folder=output_folder,
         output_prefix=output_prefix,
         structures=list(requested),
-        batch_size=batch_size,
-        n_workers=max_cpus,
         spectral_data=spectral_data,
         project_accession=project_accession,
-        fixed_mod_only=fixed_mod_only,
     )
 
     prefix = output_prefix or "maxquant"
@@ -684,12 +667,6 @@ def convert_maxquant_cmd(
     help="Prefix for output file names",
 )
 @click.option(
-    "--batch-size",
-    help="Processing batch size",
-    default=1_000_000,
-    type=int,
-)
-@click.option(
     "--max-memory",
     help="Maximum memory limit (e.g. '16GB')",
 )
@@ -719,7 +696,6 @@ def convert_fragpipe_cmd(
     experiment_annotation_file: Optional[Path],
     output_folder: Path,
     output_prefix: Optional[str],
-    batch_size: int,
     max_memory: Optional[str],
     max_cpus: Optional[int],
     project_accession: Optional[str],
@@ -767,7 +743,6 @@ def convert_fragpipe_cmd(
         sdrf_file=sdrf_file,
         experiment_annotation_file=experiment_annotation_file,
         output_prefix=output_prefix,
-        batch_size=batch_size,
         project_accession=project_accession,
     )
 
@@ -1276,23 +1251,12 @@ def convert_sdrf_cmd(
 )
 @click.option(
     "--max-memory",
-    help="Maximum DuckDB memory limit",
-    default="16GB",
-    show_default=True,
+    help="Maximum DuckDB memory limit (e.g. '16GB')",
 )
 @click.option(
     "--max-cpus",
     help="Maximum number of DuckDB threads",
-    default=4,
-    show_default=True,
     type=int,
-)
-@click.option(
-    "--batch-size",
-    help="Number of Feature records written per batch",
-    default=50_000,
-    show_default=True,
-    type=click.IntRange(min=1),
 )
 @click.option(
     "--compression",
@@ -1311,7 +1275,6 @@ def convert_quantms_msstats_cmd(
     project_accession: Optional[str],
     max_memory: str,
     max_cpus: int,
-    batch_size: int,
     compression: str,
     verbose: bool,
     metadata: _DatasetMetadata,
@@ -1345,7 +1308,6 @@ def convert_quantms_msstats_cmd(
         output_folder=output_folder,
         output_prefix=output_prefix,
         project_accession=project_accession,
-        batch_size=batch_size,
     )
 
     _finish_conversion(output_folder, prefix, project_accession, metadata)
@@ -1506,13 +1468,6 @@ def convert_spectronaut_cmd(
     default=None,
 )
 @click.option(
-    "--batch-size",
-    help="Processing batch size",
-    default=200_000,
-    type=int,
-    show_default=True,
-)
-@click.option(
     "--project-accession",
     help="PDC / ProteomeXchange accession (e.g. PDC000227)",
 )
@@ -1526,15 +1481,11 @@ def convert_spectronaut_cmd(
 @click.option(
     "--max-memory",
     help="Maximum memory limit (e.g. '16GB')",
-    default="16GB",
-    show_default=True,
 )
 @click.option(
     "--max-cpus",
     help="Maximum number of threads",
-    default=4,
     type=int,
-    show_default=True,
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
 @_dataset_metadata_options
@@ -1543,7 +1494,6 @@ def convert_cdap_cmd(
     output_folder: Path,
     output_prefix: str,
     structures: Optional[str],
-    batch_size: int,
     project_accession: Optional[str],
     compression: str,
     max_memory: str,
@@ -1591,7 +1541,6 @@ def convert_cdap_cmd(
         output_folder=output_folder,
         output_prefix=output_prefix,
         structures=requested,
-        batch_size=batch_size,
         project_accession=project_accession,
     )
 

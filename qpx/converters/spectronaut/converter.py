@@ -31,8 +31,8 @@ class SpectronautConverter(BaseOrchestrator):
         """Initialize converter with report path and DuckDB settings."""
         self.report_path = str(report_path)
         self.sdrf_path = str(sdrf_path) if sdrf_path else None
-        self._memory = max_memory or "16GB"
-        self._threads = max_cpus or 4
+        self._memory = max_memory
+        self._threads = max_cpus
         self._compression = compression
         self._ontology_entries: list[dict] = []
         self._resolved_mappings_by_view: dict[str, dict] = {}

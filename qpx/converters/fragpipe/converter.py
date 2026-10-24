@@ -13,14 +13,17 @@ from qpx.core.scores import field_ontology_entries, score_ontology_entries
 
 logger = logging.getLogger(__name__)
 
+# Rows per batch read from each FragPipe table.
+_BATCH_SIZE = 1_000_000
+
 
 class FragPipeConverter(BaseOrchestrator):
     """Orchestrate full FragPipe conversion to QPX format."""
 
     def __init__(self, output_directory=None, max_memory=None, max_cpus=None, compression: str = "zstd"):
         self._output_dir = Path(output_directory) if output_directory else None
-        self._memory = max_memory or "16GB"
-        self._cpus = max_cpus or 4
+        self._memory = max_memory
+        self._cpus = max_cpus
         self._compression = compression
         self._resolved_mappings_by_view: dict[str, dict] = {}
 
@@ -31,7 +34,6 @@ class FragPipeConverter(BaseOrchestrator):
         pg_file=None,
         sdrf_file=None,
         output_prefix=None,
-        batch_size=500_000,
         output_folder=None,
         project_accession=None,
         experiment_to_runs=None,
@@ -53,7 +55,7 @@ class FragPipeConverter(BaseOrchestrator):
                 adapter.convert(
                     psm_path=str(psm_file),
                     output_path=str(out / f"{prefix}.psm.parquet"),
-                    chunksize=batch_size,
+                    chunksize=_BATCH_SIZE,
                 )
                 ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
                 self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
@@ -73,7 +75,7 @@ class FragPipeConverter(BaseOrchestrator):
                     psm_path=str(psm_file) if psm_file else None,
                     experiment_to_runs=experiment_to_runs,
                     experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
-                    chunksize=batch_size,
+                    chunksize=_BATCH_SIZE,
                 )
                 ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
                 self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
@@ -87,7 +89,7 @@ class FragPipeConverter(BaseOrchestrator):
                 adapter.convert(
                     protein_path=str(pg_file),
                     output_path=str(out / f"{prefix}.pg.parquet"),
-                    chunksize=batch_size,
+                    chunksize=_BATCH_SIZE,
                     experiment_to_runs=experiment_to_runs,
                     experiment_annotation_path=(str(experiment_annotation_file) if experiment_annotation_file else None),
                     sdrf_path=str(sdrf_file) if sdrf_file else None,

@@ -45,8 +45,8 @@ import click
     default=None,
     help="MS levels for the mz view (e.g. '2' or '1,2'). Default: all levels.",
 )
-@click.option("--max-cpus", default=24, show_default=True, help="Threads for the CDAP conversion")
-@click.option("--max-memory", default="16GB", show_default=True, help="Memory limit for the CDAP conversion")
+@click.option("--max-cpus", type=int, help="Threads for the CDAP conversion")
+@click.option("--max-memory", help="Memory limit for the CDAP conversion")
 @click.option(
     "--download-threads",
     default=24,
@@ -73,8 +73,8 @@ def pdc2qpx_cmd(
     include_spectra: bool,
     no_metadata: bool,
     ms_levels: Optional[str],
-    max_cpus: int,
-    max_memory: str,
+    max_cpus: int | None,
+    max_memory: str | None,
     download_threads: int,
     skip_download: bool,
     stop_on_error: bool,

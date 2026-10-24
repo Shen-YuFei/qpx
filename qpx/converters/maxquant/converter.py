@@ -14,13 +14,16 @@ from qpx.core.scores import field_ontology_entries, score_ontology_entries
 
 logger = logging.getLogger(__name__)
 
+# Rows per batch read from each MaxQuant table.
+_BATCH_SIZE = 100_000
+
 
 class MaxQuantConverter(BaseOrchestrator):
     """Orchestrate full MaxQuant conversion to QPX format."""
 
     def __init__(self, max_memory=None, max_cpus=None, compression: str = "zstd"):
-        self._memory = max_memory or "16GB"
-        self._cpus = max_cpus or 4
+        self._memory = max_memory
+        self._cpus = max_cpus
         self._compression = compression
         self._resolved_mappings_by_view: dict[str, dict] = {}
 
@@ -33,11 +36,8 @@ class MaxQuantConverter(BaseOrchestrator):
         sdrf_file=None,
         output_prefix=None,
         structures=None,
-        batch_size=100_000,
-        n_workers=None,
         spectral_data=False,
         project_accession=None,
-        fixed_mod_only: bool = False,
     ):
         output_folder = Path(output_folder)
         output_folder.mkdir(parents=True, exist_ok=True)
@@ -76,18 +76,16 @@ class MaxQuantConverter(BaseOrchestrator):
                         corrupt.unlink()
                         logger.debug("Removed corrupt %s", corrupt)
 
-        duckdb_threads = n_workers if n_workers else self._cpus
-
         if PSM in structures and msms_file:
             with MaxQuantPsmAdapter(
                 duckdb_memory=self._memory,
-                duckdb_threads=duckdb_threads,
+                duckdb_threads=self._cpus,
                 compression=self._compression,
             ) as adapter:
                 adapter.convert(
                     msms_path=str(msms_file),
                     output_path=str(output_folder / f"{prefix}.psm.parquet"),
-                    chunksize=batch_size,
+                    chunksize=_BATCH_SIZE,
                     spectral_data=spectral_data,
                 )
                 ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
@@ -97,7 +95,7 @@ class MaxQuantConverter(BaseOrchestrator):
         if FEATURE in structures and evidence_file:
             with MaxQuantFeatureAdapter(
                 duckdb_memory=self._memory,
-                duckdb_threads=duckdb_threads,
+                duckdb_threads=self._cpus,
                 compression=self._compression,
             ) as adapter:
                 adapter.convert(
@@ -105,8 +103,7 @@ class MaxQuantConverter(BaseOrchestrator):
                     output_path=str(output_folder / f"{prefix}.feature.parquet"),
                     sdrf_path=str(sdrf_file) if sdrf_file else None,
                     protein_groups_path=(str(protein_groups_file) if protein_groups_file else None),
-                    chunksize=batch_size,
-                    fixed_mod_only=fixed_mod_only,
+                    chunksize=_BATCH_SIZE,
                 )
                 ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
                 self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
@@ -115,7 +112,7 @@ class MaxQuantConverter(BaseOrchestrator):
         if PG in structures and protein_groups_file:
             with MaxQuantPgAdapter(
                 duckdb_memory=self._memory,
-                duckdb_threads=duckdb_threads,
+                duckdb_threads=self._cpus,
                 compression=self._compression,
             ) as adapter:
                 adapter.convert(
@@ -123,7 +120,7 @@ class MaxQuantConverter(BaseOrchestrator):
                     output_path=str(output_folder / f"{prefix}.pg.parquet"),
                     sdrf_path=str(sdrf_file) if sdrf_file else None,
                     evidence_path=str(evidence_file) if evidence_file else None,
-                    chunksize=batch_size,
+                    chunksize=_BATCH_SIZE,
                 )
                 ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
                 self._resolved_mappings_by_view[PG] = adapter.get_resolved_columns()

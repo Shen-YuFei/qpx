@@ -78,12 +78,10 @@ def query_cmd():
 @click.option(
     "--duckdb-memory",
     help="DuckDB memory limit (e.g., '16GB')",
-    default="16GB",
 )
 @click.option(
     "--duckdb-threads",
     help="DuckDB thread count",
-    default=4,
     type=int,
 )
 @click.option("--verbose", help="Enable verbose logging", is_flag=True)
@@ -93,8 +91,8 @@ def query_sql_cmd(
     output: Optional[Path],
     output_format: str,
     structures: Optional[str],
-    duckdb_memory: str,
-    duckdb_threads: int,
+    duckdb_memory: Optional[str],
+    duckdb_threads: Optional[int],
     verbose: bool,
 ):
     """Run an arbitrary SQL query against a QPX dataset.

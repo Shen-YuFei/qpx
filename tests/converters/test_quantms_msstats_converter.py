@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -37,14 +38,15 @@ def _write_sdrf(path: Path, runs: dict[str, list[str]]) -> None:
 
 
 def _convert(msstats: Path, sdrf: Path, output: Path, prefix: str = "test") -> Path:
-    QuantmsMsstatsConverter(max_cpus=24).convert(
-        msstats_file=msstats,
-        sdrf_file=sdrf,
-        output_folder=output,
-        output_prefix=prefix,
-        project_accession="PXDTEST",
-        batch_size=2,
-    )
+    # Two-row batches so the small inputs still span several batches.
+    with patch("qpx.converters.quantms_msstats.converter._BATCH_SIZE", 2):
+        QuantmsMsstatsConverter(max_cpus=24).convert(
+            msstats_file=msstats,
+            sdrf_file=sdrf,
+            output_folder=output,
+            output_prefix=prefix,
+            project_accession="PXDTEST",
+        )
     return output / f"{prefix}.feature.parquet"
 
 

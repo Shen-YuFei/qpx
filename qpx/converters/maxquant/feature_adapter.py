@@ -63,8 +63,8 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
 
     def __init__(
         self,
-        duckdb_memory: str = "16GB",
-        duckdb_threads: int = 4,
+        duckdb_memory: str | None = None,
+        duckdb_threads: int | None = None,
         conn: duckdb.DuckDBPyConnection | None = None,
         compression: str = "zstd",
     ):
@@ -84,7 +84,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         protein_groups_path: Optional[str] = None,
         chunksize: int = 500_000,
         creator: str = "maxquant",
-        fixed_mod_only: bool = False,
     ) -> None:
         """Run the evidence.txt -> feature.parquet conversion.
 
@@ -131,9 +130,7 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         ) as writer:
             for batch in self._query_batched(evidence_query, chunksize):
                 df = batch.to_pandas()
-                records = self._transform_batch(
-                    df, sample_map, experiment_type, tmt_channels, pg_maps, fixed_mod_only=fixed_mod_only
-                )
+                records = self._transform_batch(df, sample_map, experiment_type, tmt_channels, pg_maps)
                 if records:
                     self._track_scores(records)
                     writer.write_batch(records)
@@ -386,7 +383,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         experiment_type: str,
         tmt_channels: list[str],
         pg_maps: dict | None = None,
-        fixed_mod_only: bool = False,
     ) -> list[dict]:
         """Transform a batch of evidence.txt rows into QPX feature records."""
         records: list[dict] = []
@@ -406,13 +402,10 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
                 tmt_channels,
                 pg_maps,
                 ri_offset,
-                fixed_mod_only=fixed_mod_only,
             )
             if rec:
                 records.append(rec)
         return records
-
-    _FIXED_MODS_ALLOWED = frozenset({"unmodified", "carbamidomethyl (c)"})
 
     def _transform_row(
         self,
@@ -422,15 +415,9 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         tmt_channels: list[str],
         pg_maps: dict | None = None,
         ri_offset: int = 0,
-        fixed_mod_only: bool = False,
     ) -> Optional[dict]:
         """Transform a single evidence.txt row."""
         r = self._resolved  # shorthand for resolved column mappings
-
-        if fixed_mod_only:
-            mods_raw = str(row.get(r.get("modifications", "Modifications"), "Unmodified")).strip()
-            if mods_raw.lower() not in self._FIXED_MODS_ALLOWED:
-                return None
 
         sequence = str(row.get(r.get("sequence", "Sequence"), ""))
         peptidoform = to_proforma(

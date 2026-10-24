@@ -176,8 +176,8 @@ class Dataset:
         self,
         path: str | Path,
         structures: list[str] | None = None,
-        duckdb_memory: str = "16GB",
-        duckdb_threads: int = 4,
+        duckdb_memory: str | None = None,
+        duckdb_threads: int | None = None,
         s3_config: dict | None = None,
         file_prefix: str | None = None,
     ):

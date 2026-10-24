@@ -52,8 +52,8 @@ class BaseConverter(ABC):
 
     def __init__(
         self,
-        duckdb_memory: str = "16GB",
-        duckdb_threads: int = 4,
+        duckdb_memory: str | None = None,
+        duckdb_threads: int | None = None,
         conn: duckdb.DuckDBPyConnection | None = None,
         compression: str = "zstd",
     ):
