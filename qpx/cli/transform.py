@@ -814,12 +814,8 @@ def _flatten_intensities(batch):
     values = pc.call_function("list_flatten", [intensities])
     parents = pc.call_function("list_parent_indices", [intensities])
     features = pa.Table.from_batches([batch]).select(["anchor_protein", "sequence", "run_file_name"]).take(parents)
-    if values.type.get_field_index("label") >= 0:
-        # A null entry carries no label.
-        label = pc.if_else(pc.is_valid(values), _struct_field(values, "label"), "")
-    else:
-        # Pre-1.1 files key the channel as "channel", which is not read here.
-        label = pc.fill_null(pa.nulls(len(values), pa.string()), "")
+    # A null entry carries no label.
+    label = pc.if_else(pc.is_valid(values), _struct_field(values, "label"), "")
     return pa.table(
         {
             "ProteinName": features["anchor_protein"],
@@ -902,7 +898,11 @@ def _qpx_feature_to_peptide_df(feature_path: Path, sdrf_path: Optional[Path] = N
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
 
-    has_decoy = "is_decoy" in pq.read_schema(str(feature_path)).names
+    from qpx.version import check_feature_schema_compatible
+
+    schema = pq.read_schema(str(feature_path))
+    check_feature_schema_compatible(schema, feature_path)
+    has_decoy = "is_decoy" in schema.names
     columns = ["anchor_protein", "sequence", "run_file_name", "intensities"] + (["is_decoy"] if has_decoy else [])
     table = pq.read_table(str(feature_path), columns=columns)
     logger.info("Loaded %d QPX feature rows from %s", table.num_rows, feature_path)

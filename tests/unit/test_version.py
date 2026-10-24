@@ -1,4 +1,4 @@
-"""Tests for QPX spec-version stamping and the pre-1.1 PG load guard."""
+"""Tests for QPX spec-version stamping and the PG/feature layout load guards."""
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -219,3 +219,35 @@ def test_dataset_with_one_bad_pg_file_still_opens_other_structures(tmp_path):
     assert ds.sample is not None  # other structure usable
     assert "sample" in ds.available_structures
     assert ds.sample.to_df().shape[0] == 1
+
+
+def _write_channel_feature_file(path):
+    """Synthesize a quantms.io-era feature file whose intensities are keyed by ``channel``."""
+    intensity = pa.list_(pa.struct([("sample_accession", pa.string()), ("channel", pa.string()), ("intensity", pa.float32())]))
+    pq.write_table(
+        pa.table(
+            {
+                "sequence": ["PEPTIDE"],
+                "run_file_name": ["run_01"],
+                "intensities": pa.array([[{"sample_accession": "S1", "channel": "legacy", "intensity": 42.0}]], type=intensity),
+            }
+        ),
+        str(path),
+    )
+
+
+def test_channel_keyed_feature_is_rejected(tmp_path, caplog):
+    """Feature.from_file raises on the ``channel`` layout and a Dataset skips that view."""
+    from qpx.core.data.feature import Feature
+    from qpx.dataset import Dataset
+
+    path = tmp_path / "old.feature.parquet"
+    _write_channel_feature_file(path)
+
+    with pytest.raises(QpxVersionError, match="'channel'"):
+        Feature.from_file(path)
+
+    with caplog.at_level("WARNING"):
+        ds = Dataset(tmp_path, file_prefix="old")
+    assert ds.feature is None
+    assert any("feature" in rec.message for rec in caplog.records)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,8 @@ from qpx.core.sql import escape_path, sql_build, validate_table
 from qpx.version import (
     QPX_SPEC_VERSION,
     QpxVersionError,
+    check_feature_file_compatible,
+    check_feature_schema_compatible,
     check_pg_columns_compatible,
     check_pg_file_compatible,
 )
@@ -41,6 +44,9 @@ if TYPE_CHECKING:
     import pandas as pd
 
 _log = logging.getLogger(__name__)
+
+# Per-file layout guards run on every local file of a structure before it is registered.
+_FILE_LAYOUT_GUARDS = {"pg": check_pg_file_compatible, "feature": check_feature_file_compatible}
 
 
 def _verify_one_file(
@@ -213,6 +219,9 @@ class Dataset:
                 if name == "pg":
                     cols = [row[0] for row in self._engine.execute('DESCRIBE "pg"').fetchall()]
                     check_pg_columns_compatible(cols, source=s3_glob)
+                elif name == "feature":
+                    schema = self._engine.connection.sql('SELECT * FROM "feature" LIMIT 0').to_arrow_table().schema
+                    check_feature_schema_compatible(schema, s3_glob)
                 self._structures[name] = cls(
                     engine=self._engine,
                     table_name=name,
@@ -268,9 +277,10 @@ class Dataset:
             # sharded structure returned different rows locally vs over S3
             # (bigbio/qpx#252). The registered structure's file_path points at the
             # first shard for provenance; the view unions them all.
-            if name == "pg":
+            guard = _FILE_LAYOUT_GUARDS.get(name)
+            if guard is not None:
                 for match in matches:
-                    check_pg_file_compatible(match)
+                    guard(match)
             self._engine.register_parquet_files(name, matches)
             self._structures[name] = cls(
                 engine=self._engine,
@@ -283,9 +293,10 @@ class Dataset:
             part_dir = self.path / name
             part_files = list(part_dir.glob("**/*.parquet")) if part_dir.is_dir() else []
             if part_files:
-                if name == "pg":
+                guard = _FILE_LAYOUT_GUARDS.get(name)
+                if guard is not None:
                     for part_file in sorted(part_files):
-                        check_pg_file_compatible(part_file)
+                        guard(part_file)
                 self._engine.register_partitioned_parquet(name, part_dir)
                 self._structures[name] = cls(
                     engine=self._engine,
@@ -345,69 +356,53 @@ class Dataset:
         return self._structures.get("proteoform")
 
     # --- View accessors (cached) ---
-    @property
+    @cached_property
     def protein_view(self):
-        if not hasattr(self, "_protein_view"):
-            from qpx.views.api import ProteinView
+        from qpx.views.api import ProteinView
 
-            self._protein_view = ProteinView(self)
-        return self._protein_view
+        return ProteinView(self)
 
-    @property
+    @cached_property
     def peptide_view(self):
-        if not hasattr(self, "_peptide_view"):
-            from qpx.views.api import PeptideView
+        from qpx.views.api import PeptideView
 
-            self._peptide_view = PeptideView(self)
-        return self._peptide_view
+        return PeptideView(self)
 
-    @property
+    @cached_property
     def identification_summary(self):
-        if not hasattr(self, "_identification_summary"):
-            from qpx.views.api import IdentificationSummaryView
+        from qpx.views.api import IdentificationSummaryView
 
-            self._identification_summary = IdentificationSummaryView(self)
-        return self._identification_summary
+        return IdentificationSummaryView(self)
 
-    @property
+    @cached_property
     def run_summary(self):
-        if not hasattr(self, "_run_summary"):
-            from qpx.views.api import RunSummaryView
+        from qpx.views.api import RunSummaryView
 
-            self._run_summary = RunSummaryView(self)
-        return self._run_summary
+        return RunSummaryView(self)
 
-    @property
+    @cached_property
     def modification_view(self):
-        if not hasattr(self, "_modification_view"):
-            from qpx.views.api import ModificationView
+        from qpx.views.api import ModificationView
 
-            self._modification_view = ModificationView(self)
-        return self._modification_view
+        return ModificationView(self)
 
-    @property
+    @cached_property
     def qc_view(self):
-        if not hasattr(self, "_qc_view"):
-            from qpx.views.api import QualityControlView
+        from qpx.views.api import QualityControlView
 
-            self._qc_view = QualityControlView(self)
-        return self._qc_view
+        return QualityControlView(self)
 
-    @property
+    @cached_property
     def sample_summary(self):
-        if not hasattr(self, "_sample_summary"):
-            from qpx.views.api import SampleSummaryView
+        from qpx.views.api import SampleSummaryView
 
-            self._sample_summary = SampleSummaryView(self)
-        return self._sample_summary
+        return SampleSummaryView(self)
 
-    @property
+    @cached_property
     def ae_view(self):
-        if not hasattr(self, "_ae_view"):
-            from qpx.views.api import AbsoluteExpressionView
+        from qpx.views.api import AbsoluteExpressionView
 
-            self._ae_view = AbsoluteExpressionView(self)
-        return self._ae_view
+        return AbsoluteExpressionView(self)
 
     # --- Cross-structure queries ---
     def sql(self, query: str) -> QueryResult:
@@ -649,16 +644,7 @@ class Dataset:
         """Build the long-form abundance SQL for a given level.
 
         Returns SQL that produces columns: sample_accession, feature_id, intensity.
-        Dynamically detects whether the intensities struct uses 'label' (new
-        schema) or 'channel' (old schema) so that old datasets keep working.
         """
-        # The feature view still carries an intensities list<struct> that may use
-        # 'label' (new) or 'channel' (old); detect for the peptide level. The pg
-        # view is flattened since 1.1 (scalar p.label), so protein needs no probe.
-        label_field = "label"
-        if level == "peptide" and self.feature is not None:
-            label_field = self.feature._intensity_label_field()
-
         if level == "protein":
             if self.pg is None or self.run is None:
                 raise ValueError("level='protein' requires pg and run structures.")
@@ -693,11 +679,6 @@ class Dataset:
         elif level == "peptide":
             if self.feature is None or self.run is None:
                 raise ValueError("level='peptide' requires feature and run structures.")
-            intensity_match = (
-                "i.sample_accession = rs.sample_accession"
-                if label_field == "channel"
-                else "(i.label = rs.label OR len(r.samples) = 1)"
-            )
             return sql_build(
                 """
             SELECT rs.sample_accession,
@@ -708,11 +689,10 @@ class Dataset:
                  UNNEST(r.samples) AS _t1(rs),
                  UNNEST(f.intensities) AS _t2(i)
             WHERE f.run_file_name = r.run_file_name
-              AND $intensity_match
+              AND (i.label = rs.label OR len(r.samples) = 1)
               AND f.is_decoy = false
             GROUP BY rs.sample_accession, f.sequence
             """,
-                intensity_match=intensity_match,
             )
         else:
             raise ValueError(f"level must be 'protein' or 'peptide', got '{level}'")
@@ -1598,18 +1578,17 @@ class Dataset:
         Clears all cached view instances so next access gets fresh data.
         Call this after writing new structures or AnnData files.
         """
-        for attr in [
-            "_protein_view",
-            "_peptide_view",
-            "_identification_summary",
-            "_run_summary",
-            "_modification_view",
-            "_qc_view",
-            "_sample_summary",
-            "_ae_view",
-        ]:
-            if hasattr(self, attr):
-                delattr(self, attr)
+        for attr in (
+            "protein_view",
+            "peptide_view",
+            "identification_summary",
+            "run_summary",
+            "modification_view",
+            "qc_view",
+            "sample_summary",
+            "ae_view",
+        ):
+            self.__dict__.pop(attr, None)
 
         self._structures.clear()
         self._discover_and_register(None)

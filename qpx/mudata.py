@@ -168,31 +168,18 @@ def _sorted_unique(table, column: str) -> pd.Index:
 
 # pg is flattened since 1.1 (scalar ``label``), so its label queries read the
 # column directly; feature keeps the intensities list<struct>.
-_LABEL_FIELD_QUERIES: dict[tuple[str, str], str] = {
-    ("channel", "feature"): "SELECT i.channel FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
-    ("label", "feature"): "SELECT i.label FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
-    ("label", "pg"): "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
+_LABEL_QUERIES: dict[str, str] = {
+    "feature": "SELECT i.label FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
+    "pg": "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
 }
 
-_MULTIPLEXED_QUERIES: dict[tuple[str, str], str] = {
-    ("channel", "feature"): "SELECT COUNT(DISTINCT i.channel) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
-    ("label", "feature"): "SELECT COUNT(DISTINCT i.label) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
-    ("label", "pg"): "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
+_MULTIPLEXED_QUERIES: dict[str, str] = {
+    "feature": "SELECT COUNT(DISTINCT i.label) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
+    "pg": "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
 }
 
 
-_PRECURSOR_QUERIES: dict[str, str] = {
-    "channel": """
-    SELECT run_file_name, precursor_id, i.intensity
-    FROM (
-        SELECT f.run_file_name,
-               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-               UNNEST(f.intensities) AS i
-        FROM feature f
-    )
-    WHERE i.channel = '$label'
-    """,
-    "label": """
+_PRECURSOR_QUERY = """
     SELECT run_file_name, precursor_id, i.intensity
     FROM (
         SELECT f.run_file_name,
@@ -201,23 +188,9 @@ _PRECURSOR_QUERIES: dict[str, str] = {
         FROM feature f
     )
     WHERE i.label = '$label'
-    """,
-}
+    """
 
-_PRECURSOR_ALL_QUERIES: dict[str, str] = {
-    "channel": """
-    SELECT run_file_name,
-           CAST(i.channel AS VARCHAR) AS intensity_label,
-           precursor_id, i.intensity
-    FROM (
-        SELECT f.run_file_name,
-               f.peptidoform || '|' || CAST(f.charge AS VARCHAR) AS precursor_id,
-               UNNEST(f.intensities) AS i
-        FROM feature f
-    )
-    WHERE i.channel IS NOT NULL
-    """,
-    "label": """
+_PRECURSOR_ALL_QUERY = """
     SELECT run_file_name,
            CAST(i.label AS VARCHAR) AS intensity_label,
            precursor_id, i.intensity
@@ -228,8 +201,7 @@ _PRECURSOR_ALL_QUERIES: dict[str, str] = {
         FROM feature f
     )
     WHERE i.label IS NOT NULL
-    """,
-}
+    """
 
 # A protein group's quantification is reported once for a group of runs. Explode
 # grouped_runs so EVERY member run receives the group's intensity, rather than
@@ -257,35 +229,16 @@ _PROTEIN_ALL_QUERY = """
     """
 
 
-def _detect_label_field(engine: DuckDBEngine) -> str:
-    """Return ``"channel"`` or ``"label"`` by inspecting the feature intensities struct type."""
-    try:
-        rows = engine.execute("SELECT typeof(intensities) FROM feature LIMIT 1").fetchall()
-        if rows:
-            type_str = rows[0][0].lower()
-            if "channel" in type_str and "label" not in type_str:
-                return "channel"
-        return "label"
-    except Exception:
-        logger.debug("Could not detect the label field of feature; defaulting to 'label'")
-        return "label"
+def _has_view(engine: DuckDBEngine, name: str) -> bool:
+    """Return True if the dataset registered the view *name*."""
+    rows = engine.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1", [name]).fetchall()
+    return len(rows) > 0
 
 
-def _detect_intensity_label(engine: DuckDBEngine, table: str = "feature") -> str:
-    """Auto-detect the first intensity label from the given table."""
-    # pg has carried a scalar ``label`` column since 1.1.
-    label_field = _detect_label_field(engine) if table == "feature" else "label"
-
-    query = _LABEL_FIELD_QUERIES.get((label_field, table))
-    if query is None:
-        raise ValueError(f"Invalid label_field={label_field!r} or table={table!r}")
-    try:
-        rows = engine.execute(query).fetchall()
-    except Exception as exc:
-        raise ValueError(f"Failed to read intensity labels from {table}: {exc}") from exc
-    if not rows:
-        raise ValueError(f"No intensity labels found in {table}")
-    return rows[0][0]
+def _detect_intensity_label(engine: DuckDBEngine, table: str = "feature") -> str | None:
+    """Return the first intensity label of the given table, or None when it has none."""
+    rows = engine.execute(_LABEL_QUERIES[table]).fetchall()
+    return rows[0][0] if rows else None
 
 
 def _prepare_observations_arrow(
@@ -345,7 +298,7 @@ def _load_run_obs(
     all_labels: bool,
 ) -> pd.DataFrame:
     """Load run/sample metadata for matrix observations."""
-    try:
+    if _has_view(engine, "run"):
         # fraction and instrument are optional run columns: an absent one reads as null.
         optional = engine.optional_columns("run", "r", ("fraction", "instrument"))
         df = engine.execute(
@@ -363,10 +316,8 @@ def _load_run_obs(
                 optional=optional,
             )
         ).fetchdf()
-    except Exception:
-        if all_labels:
-            return observation_keys.copy()
-        return pd.DataFrame(index=observation_keys.index)
+    else:
+        df = pd.DataFrame()
 
     if df.empty:
         if all_labels:
@@ -458,7 +409,6 @@ def _attach_uns_metadata(engine: DuckDBEngine, mdata) -> None:
 def _build_precursor_adata(
     engine: DuckDBEngine,
     intensity_label: str | None,
-    label_field: str = "label",
 ):
     """Build AnnData from feature.parquet.
 
@@ -468,9 +418,9 @@ def _build_precursor_adata(
     import anndata as ad
 
     if intensity_label is None:
-        table = engine.connection.sql(_PRECURSOR_ALL_QUERIES[label_field]).to_arrow_table()
+        table = engine.connection.sql(_PRECURSOR_ALL_QUERY).to_arrow_table()
     else:
-        sql = sql_build(_PRECURSOR_QUERIES[label_field], label=_escape_sql_string(intensity_label))
+        sql = sql_build(_PRECURSOR_QUERY, label=_escape_sql_string(intensity_label))
         table = engine.connection.sql(sql).to_arrow_table()
 
     if table.num_rows == 0:
@@ -711,28 +661,20 @@ def _try_build_modality(name: str, builder, mod: dict, failures: dict[str, str] 
             failures[name] = f"{type(exc).__name__}: {exc}"
 
 
-def _is_multiplexed(engine: DuckDBEngine, table: str, label_field: str) -> bool:
+def _is_multiplexed(engine: DuckDBEngine, table: str) -> bool:
     """Return True when *table* carries more than one distinct intensity label.
 
     Multiplexed data (isobaric TMT/iTRAQ, plexDIA) has many channel labels per
     run; label-free has a single label ("LFQ"). Detection drives whether obs is
     expanded over run x channel or kept at the run level.
     """
-    query = _MULTIPLEXED_QUERIES.get((label_field, table))
-    if query is None:
-        return False
-    try:
-        row = engine.execute(query).fetchall()[0]
-    except Exception:
-        return False
-    return bool(row) and row[0] is not None and row[0] > 1
+    return engine.execute(_MULTIPLEXED_QUERIES[table]).fetchall()[0][0] > 1
 
 
 def _select_intensity_labels(
     engine: DuckDBEngine,
     intensity_label: str | None,
     all_intensity_labels: bool,
-    feat_label_field: str,
 ) -> tuple[str | None, str | None]:
     """Select feature/PG labels while preserving their table-specific defaults.
 
@@ -748,22 +690,18 @@ def _select_intensity_labels(
     if intensity_label is not None:
         return intensity_label, intensity_label
 
-    if _is_multiplexed(engine, "feature", feat_label_field):
-        feature_label = None
-    else:
-        try:
-            feature_label = _detect_intensity_label(engine, "feature")
-        except ValueError:
-            # No detectable feature label (e.g. a proteins-only build): fall back
-            # to expansion rather than aborting the whole MuData assembly.
-            feature_label = None
-    if _is_multiplexed(engine, "pg", "label"):
-        protein_label = None
-    else:
-        try:
-            protein_label = _detect_intensity_label(engine, "pg")
-        except ValueError:
-            protein_label = feature_label
+    # Without a feature label (e.g. a proteins-only build) the precursors expand
+    # over every label rather than aborting the whole MuData assembly.
+    feature_label = None
+    if _has_view(engine, "feature") and not _is_multiplexed(engine, "feature"):
+        feature_label = _detect_intensity_label(engine, "feature")
+    protein_label = feature_label
+    if _has_view(engine, "pg"):
+        if _is_multiplexed(engine, "pg"):
+            protein_label = None
+        else:
+            detected = _detect_intensity_label(engine, "pg")
+            protein_label = feature_label if detected is None else detected
     return feature_label, protein_label
 
 
@@ -811,12 +749,11 @@ def build_mudata(
     else:
         requested = _available_quant_modalities(dataset) | {"expression", "differential"}
 
-    feat_label_field = _detect_label_field(engine)
-    feat_intensity, pg_intensity = _select_intensity_labels(engine, intensity_label, all_intensity_labels, feat_label_field)
+    feat_intensity, pg_intensity = _select_intensity_labels(engine, intensity_label, all_intensity_labels)
 
     mod: dict = {}
     builders = {
-        "precursors": lambda: _build_precursor_adata(engine, feat_intensity, feat_label_field),
+        "precursors": lambda: _build_precursor_adata(engine, feat_intensity),
         "proteins": lambda: _build_protein_adata(engine, pg_intensity),
         "expression": lambda: _build_expression_adata(ds_path, file_prefix),
         "differential": lambda: _build_differential_adata(ds_path, file_prefix),

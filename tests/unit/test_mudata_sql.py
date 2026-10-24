@@ -7,20 +7,13 @@ import pytest
 from qpx.mudata import _is_multiplexed
 
 
-@pytest.mark.parametrize(
-    ("table", "label_field"),
-    [
-        ("feature", "channel"),
-        ("feature", "label"),
-        ("pg", "label"),
-    ],
-)
-def test_is_multiplexed_uses_static_query_whitelist(table, label_field):
-    """Supported identifier pairs select a fixed SQL statement."""
+@pytest.mark.parametrize("table", ["feature", "pg"])
+def test_is_multiplexed_uses_static_query_whitelist(table):
+    """Supported tables select a fixed SQL statement."""
     engine = Mock()
     engine.execute.return_value.fetchall.return_value = [(2,)]
 
-    assert _is_multiplexed(engine, table, label_field)
+    assert _is_multiplexed(engine, table)
     engine.execute.assert_called_once()
     query = engine.execute.call_args.args[0]
     assert f"FROM {table}" in query
@@ -29,19 +22,13 @@ def test_is_multiplexed_uses_static_query_whitelist(table, label_field):
         # list to UNNEST).
         assert "label" in query
     else:
-        assert f"i.{label_field}" in query
+        assert "i.label" in query
 
 
-@pytest.mark.parametrize(
-    ("table", "label_field"),
-    [
-        ("feature; DROP TABLE pg", "label"),
-        ("feature", "label) FROM pg; --"),
-    ],
-)
-def test_is_multiplexed_rejects_unlisted_identifiers(table, label_field):
+def test_is_multiplexed_rejects_unlisted_identifiers():
     """Unlisted identifiers are rejected before SQL execution."""
     engine = Mock()
 
-    assert not _is_multiplexed(engine, table, label_field)
+    with pytest.raises(KeyError):
+        _is_multiplexed(engine, "feature; DROP TABLE pg")
     engine.execute.assert_not_called()

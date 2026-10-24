@@ -145,3 +145,44 @@ def _guard_pg_layout(source: str, columns: set[str], version_str: str | None) ->
             "migrate it by wrapping each scalar run_file_name into a single-element "
             "grouped_runs list. See docs/spec/versioning.md (changelog 1.1)."
         )
+
+
+# Feature intensities have been keyed by ``label`` since QPX 1.0. Files from the
+# quantms.io era key each entry by ``channel`` (next to ``sample_accession``),
+# which no feature query reads any more.
+
+
+def check_feature_file_compatible(file_path: str | Path) -> None:
+    """Guard a feature parquet file against the pre-1.0 ``intensities[].channel`` layout.
+
+    A file whose footer cannot be read (missing/corrupt) is left alone: the
+    normal read path surfaces that error.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    try:
+        schema = pq.read_schema(str(file_path))
+    except (OSError, ValueError, pa.ArrowException):
+        return  # let the regular reader report an unreadable/missing file
+    check_feature_schema_compatible(schema, file_path)
+
+
+def check_feature_schema_compatible(schema, source: str | Path) -> None:
+    """Raise :class:`QpxVersionError` if ``schema`` (a ``pyarrow.Schema``) keys feature intensities by ``channel``.
+
+    Takes the schema rather than a path so S3 datasets, whose glob PyArrow cannot
+    open, can pass the schema of the registered DuckDB view.
+    """
+    if "intensities" not in schema.names:
+        return
+    keys = {field.name for field in schema.field("intensities").type.value_type}
+    if "channel" in keys and "label" not in keys:
+        raise QpxVersionError(
+            "Incompatible feature file: "
+            f"'{source}'\n"
+            "  breaking change  : QPX 1.0 keys each feature intensity by 'label'; "
+            "this file keys it by 'channel', the pre-1.0 (quantms.io) layout.\n"
+            f"  fix              : regenerate this feature file with qpx >= {QPX_SPEC_VERSION}. "
+            "See docs/spec/versioning.md."
+        )
