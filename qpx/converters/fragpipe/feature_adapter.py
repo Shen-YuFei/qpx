@@ -36,16 +36,12 @@ _FEATURE_IDENTITY_COMPOSITE = (
 )
 
 
-def _extract_pg_proteins(
-    protein_str: str,
-    start: int | None = None,
-    end: int | None = None,
-) -> list[dict]:
+def _extract_pg_proteins(protein_str: str) -> list[dict]:
     """Extract pg_protein structs from a FragPipe Protein field.
 
     Handles formats like ``sp|P12345|PROT_HUMAN`` or plain accession ``P12345``.
-    Returns list of {accession, start, end, pre, post}. When the tool does not
-    provide positional info, pass None and they will be stored as null.
+    Returns list of {accession, start, end, pre, post}; FragPipe gives no
+    positions, so those are null.
     """
     if not protein_str:
         return []
@@ -59,8 +55,8 @@ def _extract_pg_proteins(
             result.append(
                 {
                     "accession": acc,
-                    "start": start,
-                    "end": end,
+                    "start": None,
+                    "end": None,
                     "pre": None,
                     "post": None,
                 }
@@ -428,7 +424,7 @@ class FragPipeFeatureAdapter(BaseConverter):
 
         # Protein mapping (schema: list<pg_protein>; FragPipe does not provide start/end)
         protein_raw = str(row.get(r.get("pg_accessions", "Protein"), ""))
-        pg_accessions = _extract_pg_proteins(protein_raw, start=None, end=None) or None
+        pg_accessions = _extract_pg_proteins(protein_raw) or None
         anchor_protein = pg_accessions[0]["accession"] if pg_accessions else ""
 
         # Gene

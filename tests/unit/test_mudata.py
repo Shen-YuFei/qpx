@@ -544,8 +544,7 @@ def test_detect_label_field_uses_label_for_current_schema(tmp_path):
 
     dataset = Dataset(tmp_path, file_prefix="tmt")
     try:
-        assert _detect_label_field(dataset._engine, "feature") == "label"
-        assert _detect_label_field(dataset._engine, "pg") == "label"
+        assert _detect_label_field(dataset._engine) == "label"
         # The label queries must actually match rows (non-empty intensity matrix).
         mdata = build_mudata(dataset, modalities=["precursors"])
         assert mdata.mod["precursors"].X.nnz > 0

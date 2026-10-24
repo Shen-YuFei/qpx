@@ -511,9 +511,7 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         id_run_file_name = None if evidence_type == "MULTI-MATCH" else run_file_name
 
         # Build intensities (new schema: {label, intensity})
-        intensities, additional_intensities = self._build_intensities(
-            row, run_file_name, sample_map, experiment_type, tmt_channels, ri_offset
-        )
+        intensities, additional_intensities = self._build_intensities(row, experiment_type, tmt_channels, ri_offset)
 
         # Additional scores
         additional_scores = []
@@ -572,8 +570,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
     def _build_intensities(
         self,
         row,
-        run_file_name: str,
-        sample_map: dict,
         experiment_type: str,
         tmt_channels: list[str],
         ri_offset: int = 0,

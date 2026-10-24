@@ -12,7 +12,6 @@ from qpx.mudata import _is_multiplexed
     [
         ("feature", "channel"),
         ("feature", "label"),
-        ("pg", "channel"),
         ("pg", "label"),
     ],
 )
@@ -27,7 +26,7 @@ def test_is_multiplexed_uses_static_query_whitelist(table, label_field):
     assert f"FROM {table}" in query
     if table == "pg":
         # pg is flattened since 1.1: a scalar ``label`` column (no intensities
-        # list to UNNEST), so both label_field variants read ``label`` directly.
+        # list to UNNEST).
         assert "label" in query
     else:
         assert f"i.{label_field}" in query

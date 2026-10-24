@@ -39,8 +39,6 @@ def _scalar(dataset: Dataset, sql: str) -> int | None:
     except Exception as exc:  # noqa: BLE001 - a summary must never raise  # pylint: disable=broad-exception-caught
         _log.debug("conversion summary metric failed for %r: %s", sql, exc)
         return None
-    if not row or row[0] is None:
-        return 0
     return int(row[0])
 
 

@@ -430,9 +430,6 @@ class StreamingConsensusMap:
         self._prots: list[_ProteinIdentification] = []
         self._enzyme: str = ""
         self._ph_to_acc: dict[str, str] = {}
-        self._software: list[tuple[str, str, str]] = []  # (name, version, processing action), file order
-        self._search_engines: list[tuple[str, str]] = []  # IdentificationRun search_engine, version
-        self._original_engines: list[tuple[str, str]] = []  # SE:<engine> search parameter, value
         self._parse_header()
 
     # -- header (proteins + maps), parsed once --------------------------------
@@ -455,13 +452,10 @@ class StreamingConsensusMap:
                 if enzyme and not self._enzyme:
                     self._enzyme = enzyme
                 search_meta = _user_params(el)
-                self._original_engines.extend(_se_engines(search_meta))
                 el.clear()
             elif event == "start" and tag == "IdentificationRun":
                 identifier = el.attrib.get("id", "")
                 search_meta = {}
-                if el.attrib.get("search_engine"):
-                    self._search_engines.append((el.attrib["search_engine"], el.attrib.get("search_engine_version", "")))
             elif event == "start" and tag == "ProteinIdentification":
                 ph_hits = []
                 ph_meta = {}
@@ -490,9 +484,6 @@ class StreamingConsensusMap:
                 el.clear()
                 # do NOT stop: the <mapList> comes after the IdentificationRun.
             elif event == "end" and tag == "dataProcessing":
-                software = _software(el)
-                if software is not None:
-                    self._software.append(software)
                 el.clear()
             elif event == "start" and tag == "consensusElementList":
                 break  # header done; the bulk element list follows
@@ -521,18 +512,6 @@ class StreamingConsensusMap:
 
     def getProteinIdentifications(self) -> list[_ProteinIdentification]:
         return list(self._prots)
-
-    def data_processing(self) -> list[tuple[str, str, str]]:
-        """Header ``dataProcessing`` software as (name, version, processing action), in file order."""
-        return list(self._software)
-
-    def search_engines(self) -> list[tuple[str, str]]:
-        """``IdentificationRun`` search engines as (name, version)."""
-        return list(self._search_engines)
-
-    def original_search_engines(self) -> list[tuple[str, str]]:
-        """Engines recorded as ``SE:<engine>`` search parameters, as (engine, value)."""
-        return list(self._original_engines)
 
     def getUnassignedPeptideIdentifications(self) -> list[_PeptideIdentification]:
         return [pid for _, pid in self.iter_identifications(include_assigned=False)]

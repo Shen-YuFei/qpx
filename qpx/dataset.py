@@ -581,12 +581,9 @@ class Dataset:
                 f"{operation}() requires both the 'feature' and 'psm' structures; available: {self.available_structures}"
             )
 
-    def _link_scalar(self, sql: str) -> int | None:
-        """Run a constant-literal scalar COUNT, returning ``None`` on failure."""
-        row = self._engine.execute(sql).fetchall()[0]
-        if not row or row[0] is None:
-            return 0
-        return int(row[0])
+    def _link_scalar(self, sql: str) -> int:
+        """Run a constant-literal scalar COUNT."""
+        return int(self._engine.execute(sql).fetchall()[0][0])
 
     def feature_link_diagnostics(self) -> dict:
         """Return feature<->pg and feature<->psm softlink counts for reporting.

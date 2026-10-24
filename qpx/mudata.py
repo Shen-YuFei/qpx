@@ -170,14 +170,12 @@ def _sorted_unique(table, column: str) -> pd.Index:
 # column directly; feature keeps the intensities list<struct>.
 _LABEL_FIELD_QUERIES: dict[tuple[str, str], str] = {
     ("channel", "feature"): "SELECT i.channel FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
-    ("channel", "pg"): "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
     ("label", "feature"): "SELECT i.label FROM (SELECT UNNEST(intensities) AS i FROM feature) LIMIT 1",
     ("label", "pg"): "SELECT label FROM pg WHERE label IS NOT NULL LIMIT 1",
 }
 
 _MULTIPLEXED_QUERIES: dict[tuple[str, str], str] = {
     ("channel", "feature"): "SELECT COUNT(DISTINCT i.channel) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
-    ("channel", "pg"): "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
     ("label", "feature"): "SELECT COUNT(DISTINCT i.label) FROM (SELECT UNNEST(intensities) AS i FROM feature)",
     ("label", "pg"): "SELECT COUNT(DISTINCT label) FROM pg WHERE label IS NOT NULL",
 }
@@ -240,69 +238,43 @@ _PRECURSOR_ALL_QUERIES: dict[str, str] = {
 # Since QPX 1.1 the pg view is flattened: scalar ``label`` / ``intensity`` columns,
 # one row per label, so there is no intensities list to UNNEST. grouped_runs is
 # exploded through ``list_distinct`` so a member run counts once even if a producer
-# repeated it. ID-only rows (null label) are excluded by the label predicate. The
-# ``channel`` and ``label`` keys are identical now (pg carries only ``label``); both
-# are kept so the shared label-field dispatch does not need a pg special-case.
-_PROTEIN_QUERIES: dict[str, str] = {
-    "channel": """
+# repeated it. ID-only rows (null label) are excluded by the label predicate.
+_PROTEIN_QUERY = """
     SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            pg.anchor_protein,
            pg.intensity AS intensity
     FROM pg
     WHERE pg.label = '$label'
-    """,
-    "label": """
-    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
-           pg.anchor_protein,
-           pg.intensity AS intensity
-    FROM pg
-    WHERE pg.label = '$label'
-    """,
-}
+    """
 
-_PROTEIN_ALL_QUERIES: dict[str, str] = {
-    "channel": """
+_PROTEIN_ALL_QUERY = """
     SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
            CAST(pg.label AS VARCHAR) AS intensity_label,
            pg.anchor_protein,
            pg.intensity AS intensity
     FROM pg
     WHERE pg.label IS NOT NULL
-    """,
-    "label": """
-    SELECT UNNEST(list_distinct(pg.grouped_runs)) AS run_file_name,
-           CAST(pg.label AS VARCHAR) AS intensity_label,
-           pg.anchor_protein,
-           pg.intensity AS intensity
-    FROM pg
-    WHERE pg.label IS NOT NULL
-    """,
-}
+    """
 
 
-_TYPEOF_QUERIES: dict[str, str] = {
-    "feature": "SELECT typeof(intensities) FROM feature LIMIT 1",
-    "pg": "SELECT typeof(label) FROM pg LIMIT 1",
-}
-
-
-def _detect_label_field(engine: DuckDBEngine, table: str = "feature") -> str:
-    """Return ``"channel"`` or ``"label"`` by inspecting the intensities struct type."""
+def _detect_label_field(engine: DuckDBEngine) -> str:
+    """Return ``"channel"`` or ``"label"`` by inspecting the feature intensities struct type."""
     try:
-        rows = engine.execute(_TYPEOF_QUERIES[table]).fetchall()
+        rows = engine.execute("SELECT typeof(intensities) FROM feature LIMIT 1").fetchall()
         if rows:
             type_str = rows[0][0].lower()
             if "channel" in type_str and "label" not in type_str:
                 return "channel"
         return "label"
     except Exception:
-        logger.debug("Could not detect label field from %s; defaulting to 'label'", table)
+        logger.debug("Could not detect the label field of feature; defaulting to 'label'")
         return "label"
 
 
 def _detect_intensity_label(engine: DuckDBEngine, table: str = "feature") -> str:
     """Auto-detect the first intensity label from the given table."""
-    label_field = _detect_label_field(engine, table)
+    # pg has carried a scalar ``label`` column since 1.1.
+    label_field = _detect_label_field(engine) if table == "feature" else "label"
 
     query = _LABEL_FIELD_QUERIES.get((label_field, table))
     if query is None:
@@ -518,7 +490,6 @@ def _build_precursor_adata(
 def _build_protein_adata(
     engine: DuckDBEngine,
     intensity_label: str | None,
-    label_field: str = "label",
 ):
     """Build AnnData from pg.parquet.
 
@@ -529,9 +500,9 @@ def _build_protein_adata(
     import anndata as ad
 
     if intensity_label is None:
-        table = engine.connection.sql(_PROTEIN_ALL_QUERIES[label_field]).to_arrow_table()
+        table = engine.connection.sql(_PROTEIN_ALL_QUERY).to_arrow_table()
     else:
-        sql = sql_build(_PROTEIN_QUERIES[label_field], label=_escape_sql_string(intensity_label))
+        sql = sql_build(_PROTEIN_QUERY, label=_escape_sql_string(intensity_label))
         table = engine.connection.sql(sql).to_arrow_table()
 
     if table.num_rows == 0:
@@ -762,7 +733,6 @@ def _select_intensity_labels(
     intensity_label: str | None,
     all_intensity_labels: bool,
     feat_label_field: str,
-    pg_label_field: str,
 ) -> tuple[str | None, str | None]:
     """Select feature/PG labels while preserving their table-specific defaults.
 
@@ -787,7 +757,7 @@ def _select_intensity_labels(
             # No detectable feature label (e.g. a proteins-only build): fall back
             # to expansion rather than aborting the whole MuData assembly.
             feature_label = None
-    if _is_multiplexed(engine, "pg", pg_label_field):
+    if _is_multiplexed(engine, "pg", "label"):
         protein_label = None
     else:
         try:
@@ -841,16 +811,13 @@ def build_mudata(
     else:
         requested = _available_quant_modalities(dataset) | {"expression", "differential"}
 
-    feat_label_field = _detect_label_field(engine, "feature")
-    pg_label_field = _detect_label_field(engine, "pg")
-    feat_intensity, pg_intensity = _select_intensity_labels(
-        engine, intensity_label, all_intensity_labels, feat_label_field, pg_label_field
-    )
+    feat_label_field = _detect_label_field(engine)
+    feat_intensity, pg_intensity = _select_intensity_labels(engine, intensity_label, all_intensity_labels, feat_label_field)
 
     mod: dict = {}
     builders = {
         "precursors": lambda: _build_precursor_adata(engine, feat_intensity, feat_label_field),
-        "proteins": lambda: _build_protein_adata(engine, pg_intensity, pg_label_field),
+        "proteins": lambda: _build_protein_adata(engine, pg_intensity),
         "expression": lambda: _build_expression_adata(ds_path, file_prefix),
         "differential": lambda: _build_differential_adata(ds_path, file_prefix),
     }

@@ -445,7 +445,6 @@ class SpectraMappingTransform:
         dataset,
         output_path: Union[str, Path],
         ms_levels: Optional[list[int]] = None,
-        batch_size: int = 10,
     ) -> Path:
         """
         Write spectral data from mzML files to .mz.parquet format.
@@ -459,7 +458,6 @@ class SpectraMappingTransform:
             output_path: Path for the output .mz.parquet file.
             ms_levels: Optional list of MS levels to include (e.g., [1, 2]).
                 If None, all MS levels are included.
-            batch_size: Number of runs to process before flushing to disk.
 
         Returns:
             Path to the written file.
