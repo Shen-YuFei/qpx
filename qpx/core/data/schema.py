@@ -12,6 +12,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from qpx.core.data.validation import (
+    _SEQUENCE_EDIT_COLUMNS,
     _UNIT_INTERVAL_COLUMNS,
     _VOCABULARIES,
     ValidationIssue,
@@ -307,6 +308,20 @@ def _primary_key_issues(
     ]
 
 
+# Columns _RowCounts.add reads besides the required, unit-interval and vocabulary
+# ones. Validation streams no other column, so a check that reads a new column
+# must list it here.
+_ROW_CHECK_COLUMNS = (
+    "anchor_protein",
+    "pg_accessions",
+    "modification_candidates",
+    "evidence_fraction",
+    "alternatives",
+    "scan",
+    *(column for column, _ in _SEQUENCE_EDIT_COLUMNS.values()),
+)
+
+
 class _RowCounts:
     """Counts of the checks that read one row at a time, summed over a view's batches."""
 
@@ -435,6 +450,12 @@ class ViewSchema:
         yield from self._fields.items()
 
     # --- Validation --------------------------------------------------------
+
+    def validation_columns(self, schema: pa.Schema) -> list[str]:
+        """The columns of *schema* that the row-level checks of validate_batches() read."""
+        needed = {name for name, fdef in self._fields.items() if not fdef.nullable}
+        needed.update(_ROW_CHECK_COLUMNS, _UNIT_INTERVAL_COLUMNS.get(self._view_name, ()), _VOCABULARIES.get(self._view_name, {}))
+        return [name for name in schema.names if name in needed]
 
     def validate(self, table: pa.Table, *, strict: bool = False) -> list[str]:
         """Validate an Arrow table against this schema. Returns list of error strings.
