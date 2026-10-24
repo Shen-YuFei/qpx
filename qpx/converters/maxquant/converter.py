@@ -9,6 +9,7 @@ from qpx.converters.maxquant.feature_adapter import MaxQuantFeatureAdapter
 from qpx.converters.maxquant.pg_adapter import MaxQuantPgAdapter
 from qpx.converters.maxquant.psm_adapter import MaxQuantPsmAdapter
 from qpx.converters.orchestrator import BaseOrchestrator
+from qpx.converters.sdrf import convert_sdrf_views
 from qpx.core.constants import FEATURE, ONTOLOGY, PG, PSM, RUN, SAMPLE
 from qpx.core.scores import field_ontology_entries, score_ontology_entries
 
@@ -56,25 +57,8 @@ class MaxQuantConverter(BaseOrchestrator):
 
         # Convert SDRF for sample/run metadata (if SDRF has required columns)
         if sdrf_file:
-            try:
-                from qpx.converters.sdrf import SdrfConverter
-
-                with SdrfConverter() as sdrf_conv:
-                    sdrf_conv.convert(
-                        sdrf_path=str(sdrf_file),
-                        sample_output=str(output_folder / f"{prefix}.sample.parquet"),
-                        run_output=str(output_folder / f"{prefix}.run.parquet"),
-                    )
-                    ontology_entries.extend(sdrf_conv.run_ontology_entries())
+            if convert_sdrf_views(str(sdrf_file), output_folder, prefix, ontology_entries):
                 logger.info("SDRF conversion complete")
-            except (ValueError, KeyError, OSError, TypeError) as exc:
-                logger.warning("SDRF conversion skipped (incomplete SDRF?): %s", exc)
-                # Clean up any corrupt partial files left by the failed write
-                for suffix in (".sample.parquet", ".run.parquet"):
-                    corrupt = output_folder / f"{prefix}{suffix}"
-                    if corrupt.exists():
-                        corrupt.unlink()
-                        logger.debug("Removed corrupt %s", corrupt)
 
         if PSM in structures and msms_file:
             with MaxQuantPsmAdapter(

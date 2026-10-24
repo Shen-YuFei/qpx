@@ -288,8 +288,8 @@ class CdapBaseAdapter(BaseConverter):
     ) -> list[dict]:
         """Apply *transform_fn* to each row of *df*, tolerating per-row errors.
 
-        Returns the list of successfully transformed records.  Rows that raise
-        or return ``None`` are counted and logged as warnings.
+        Returns successful records. Supported row errors are counted and logged;
+        rows returning ``None`` are ignored.
 
         Args:
             df: pandas DataFrame (one DuckDB batch).
@@ -297,29 +297,9 @@ class CdapBaseAdapter(BaseConverter):
                 record dict or ``None``.
             row_label: Label used in log messages (e.g. "PSM", "feature").
         """
-        records: list[dict] = []
-        skipped = 0
         col_arrays = {col: df[col].values for col in df.columns}
-        n_rows = len(df)
-        for i in range(n_rows):
-            try:
-                row = {col: vals[i] for col, vals in col_arrays.items()}
-                rec = transform_fn(row)
-                if rec is not None:
-                    records.append(rec)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as exc:
-                skipped += 1
-                self.logger.debug("Skipping CDAP %s row: %s", row_label, exc)
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d %s rows (%.1f%%) in batch",
-                skipped,
-                total,
-                row_label,
-                100 * skipped / total if total else 0.0,
-            )
-        return records
+        rows = ({col: vals[i] for col, vals in col_arrays.items()} for i in range(len(df)))
+        return self._transform_rows_with_skip(rows, transform_fn, f"CDAP {row_label}", f" {row_label}")
 
     # ------------------------------------------------------------------
     # NaN-safe value extraction helpers

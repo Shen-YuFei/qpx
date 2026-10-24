@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 import pandas as pd
 
@@ -20,6 +21,32 @@ from qpx.writers.run import RunWriter
 from qpx.writers.sample import SampleWriter
 
 logger = logging.getLogger(__name__)
+
+
+def convert_sdrf_views(sdrf_path: str, output_folder: Path, prefix: str, ontology_entries: list[dict]) -> bool:
+    """Write the sample and run views and add the run ontology terms to ``ontology_entries``.
+
+    An SDRF the converter cannot handle (value, key, OS or type error) is logged
+    and its partial files removed; returns whether both views were written.
+    """
+    try:
+        with SdrfConverter() as sdrf_conv:
+            sdrf_conv.convert(
+                sdrf_path=sdrf_path,
+                sample_output=str(output_folder / f"{prefix}.sample.parquet"),
+                run_output=str(output_folder / f"{prefix}.run.parquet"),
+            )
+            ontology_entries.extend(sdrf_conv.run_ontology_entries())
+    except (ValueError, KeyError, OSError, TypeError) as exc:
+        logger.warning("SDRF conversion skipped (incomplete SDRF?): %s", exc)
+        for suffix in (".sample.parquet", ".run.parquet"):
+            corrupt = output_folder / f"{prefix}{suffix}"
+            if corrupt.exists():
+                corrupt.unlink()
+                logger.debug("Removed corrupt %s", corrupt)
+        return False
+    return True
+
 
 # Standard SDRF column names (lower-cased)
 _COL_SOURCE_NAME = "source name"

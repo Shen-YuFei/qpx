@@ -118,6 +118,108 @@ class _DatasetMetadata:
     compute_integrity: bool
 
 
+def _verbose_option(func):
+    """Add the shared verbose flag."""
+    return click.option("--verbose", help="Enable verbose logging", is_flag=True)(func)
+
+
+def _output_folder_option(func):
+    """Add the shared QPX output directory option."""
+    return click.option(
+        "--output-folder",
+        help="Output directory for generated QPX files",
+        required=True,
+        type=click.Path(file_okay=False, path_type=Path),
+    )(func)
+
+
+def _output_prefix_option(func):
+    """Add the shared optional output prefix."""
+    return click.option("--output-prefix", help="Prefix for output file names")(func)
+
+
+def _compression_option(func):
+    """Add the shared Parquet compression option."""
+    return click.option(
+        "--compression",
+        type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
+        default="zstd",
+        show_default=True,
+        help="Parquet compression codec.",
+    )(func)
+
+
+def _sdrf_file_option(func):
+    """Add the shared required SDRF file option."""
+    return click.option(
+        "--sdrf-file",
+        help="SDRF metadata file path",
+        required=True,
+        type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    )(func)
+
+
+def _max_memory_option(func):
+    """Add the shared memory limit option."""
+    return click.option(
+        "--max-memory",
+        help="Maximum memory limit (e.g. '16GB')",
+    )(func)
+
+
+def _max_cpus_option(func):
+    """Add the shared thread limit option."""
+    return click.option(
+        "--max-cpus",
+        help="Maximum number of threads",
+        type=int,
+    )(func)
+
+
+def _project_accession_option(func):
+    """Add the shared project accession option."""
+    return click.option(
+        "--project-accession",
+        help="PRIDE / ProteomeXchange accession (e.g. PXD020192)",
+    )(func)
+
+
+def _openms_project_accession_option(func):
+    """Add the project accession option shared by OpenMS commands."""
+    return click.option(
+        "--project-accession",
+        help="PRIDE / ProteomeXchange accession (e.g. PXD001819)",
+    )(func)
+
+
+def _fasta_option(func):
+    """Add the shared optional protein FASTA option."""
+    return click.option(
+        "--fasta",
+        help=(
+            "Optional protein FASTA used for the search. When given, fills null pg.sequence_coverage, "
+            "pg.molecular_weight and feature.pg_positions for target rows after conversion; proteins "
+            "absent from it (e.g. DIA-NN internal decoys) stay null. See 'qpxc transform protein-properties'."
+        ),
+        default=None,
+        type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    )(func)
+
+
+def _mudata_option(func):
+    """Add the shared MuData output flag."""
+    return click.option(
+        "--mudata/--no-mudata",
+        default=True,
+        show_default=True,
+        help=(
+            "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
+            "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
+            "the build on very large datasets."
+        ),
+    )(func)
+
+
 def _dataset_metadata_options(func):
     """Add the dataset-metadata options shared by the convert commands.
 
@@ -305,12 +407,7 @@ def convert():
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--sdrf-file",
-    help="SDRF metadata file path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
+@_sdrf_file_option
 @click.option(
     "--mzml-info-folder",
     help=(
@@ -331,64 +428,25 @@ def convert():
     default=None,
     type=float,
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
-@click.option("--output-prefix", help="Prefix for output file names")
+@_output_folder_option
+@_output_prefix_option
 @click.option(
     "--pg-matrix-path",
     help="DIA-NN protein quantities matrix file (enables PG conversion)",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--max-memory",
-    help="Maximum memory limit (e.g. '16GB')",
-)
-@click.option(
-    "--max-cpus",
-    help="Maximum number of threads",
-    type=int,
-)
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD020192)",
-)
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
+@_max_memory_option
+@_max_cpus_option
+@_project_accession_option
+@_compression_option
 @click.option(
     "--diann-log",
     help="DIA-NN summary log file (version auto-detected from first line)",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--fasta",
-    help=(
-        "Optional protein FASTA used for the search. When given, fills null pg.sequence_coverage, "
-        "pg.molecular_weight and feature.pg_positions for target rows after conversion; proteins "
-        "absent from it (e.g. DIA-NN internal decoys) stay null. See 'qpxc transform protein-properties'."
-    ),
-    default=None,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--mudata/--no-mudata",
-    default=True,
-    show_default=True,
-    help=(
-        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
-        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
-        "the build on very large datasets."
-    ),
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_fasta_option
+@_mudata_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_diann_cmd(
     report_path: Path,
@@ -503,47 +561,23 @@ def convert_diann_cmd(
     help="SDRF metadata file (required for feature and PG)",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
-@click.option(
-    "--output-prefix",
-    help="Prefix for output file names",
-)
+@_output_folder_option
+@_output_prefix_option
 @click.option(
     "--structures",
     help="Comma-separated list of structures to produce (psm, feature, pg). Default: all available.",
     default=None,
 )
-@click.option(
-    "--max-cpus",
-    help="Maximum number of threads",
-    type=int,
-)
-@click.option(
-    "--max-memory",
-    help="Maximum memory limit (e.g. '16GB')",
-)
+@_max_cpus_option
+@_max_memory_option
 @click.option(
     "--spectral-data",
     help="Include spectral data fields in PSM output",
     is_flag=True,
 )
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD020192)",
-)
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_project_accession_option
+@_compression_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_maxquant_cmd(
     msms_file: Optional[Path],
@@ -656,37 +690,13 @@ def convert_maxquant_cmd(
     help=("FragPipe experiment_annotation.tsv mapping experiments to member raw files"),
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
-@click.option(
-    "--output-prefix",
-    help="Prefix for output file names",
-)
-@click.option(
-    "--max-memory",
-    help="Maximum memory limit (e.g. '16GB')",
-)
-@click.option(
-    "--max-cpus",
-    help="Maximum number of threads",
-    type=int,
-)
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD020192)",
-)
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_output_folder_option
+@_output_prefix_option
+@_max_memory_option
+@_max_cpus_option
+@_project_accession_option
+@_compression_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_fragpipe_cmd(
     psm_file: Optional[Path],
@@ -764,12 +774,7 @@ def convert_fragpipe_cmd(
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
+@_output_folder_option
 @click.option(
     "--output-prefix",
     help="Prefix for output file names",
@@ -790,14 +795,8 @@ def convert_fragpipe_cmd(
     "--project-accession",
     help="PRIDE / ProteomeXchange accession (e.g. PXD054720)",
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_compression_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_mzidentml_cmd(
     mzid_path: Path,
@@ -902,24 +901,15 @@ def convert_mzidentml_cmd(
     help="Prefix for output file names",
     default="openms",
 )
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD001819)",
-)
+@_openms_project_accession_option
 @click.option(
     "--enrich-pride",
     help="Fetch project metadata from PRIDE API after conversion",
     is_flag=True,
     default=False,
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_compression_option
+@_verbose_option
 def convert_openms_cmd(**kwargs):
     r"""[DEPRECATED] Enrich OpenMS ProteomicsLFQ -out_qpx output into a full QPX dataset.
 
@@ -1053,10 +1043,7 @@ def _consensusxml_list(ctx, param, value) -> tuple[Path, ...]:
     ),
 )
 @click.option("--verbose", is_flag=True, help="Enable verbose logging.")
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD001819)",
-)
+@_openms_project_accession_option
 @click.option(
     "--include-unassigned-psms/--no-include-unassigned-psms",
     default=True,
@@ -1069,33 +1056,9 @@ def _consensusxml_list(ctx, param, value) -> tuple[Path, ...]:
         "identification either way."
     ),
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option(
-    "--fasta",
-    help=(
-        "Optional protein FASTA used for the search. When given, fills null pg.sequence_coverage, "
-        "pg.molecular_weight and feature.pg_positions for target rows after conversion; proteins "
-        "absent from it (e.g. DIA-NN internal decoys) stay null. See 'qpxc transform protein-properties'."
-    ),
-    default=None,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--mudata/--no-mudata",
-    default=True,
-    show_default=True,
-    help=(
-        "Write the dataset's MuData (.h5mu) view after conversion. Best-effort: a view that "
-        "cannot be built is reported and the conversion still succeeds. Use --no-mudata to skip "
-        "the build on very large datasets."
-    ),
-)
+@_compression_option
+@_fasta_option
+@_mudata_option
 @_dataset_metadata_options
 def convert_openms_consensus_cmd(
     consensusxml_paths,
@@ -1160,31 +1123,15 @@ def convert_openms_consensus_cmd(
 
 
 @convert.command("sdrf")
-@click.option(
-    "--sdrf-file",
-    help="SDRF metadata file path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
+@_sdrf_file_option
+@_output_folder_option
 @click.option(
     "--output-prefix",
     help="Prefix for output file names",
     default="sdrf",
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_compression_option
+@_verbose_option
 def convert_sdrf_cmd(
     sdrf_file: Path,
     output_folder: Path,
@@ -1232,19 +1179,9 @@ def convert_sdrf_cmd(
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option(
-    "--sdrf-file",
-    help="SDRF metadata file path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
-@click.option("--output-prefix", help="Prefix for output file names")
+@_sdrf_file_option
+@_output_folder_option
+@_output_prefix_option
 @click.option(
     "--project-accession",
     help="PRIDE / ProteomeXchange accession (e.g. PXD007683)",
@@ -1258,14 +1195,8 @@ def convert_sdrf_cmd(
     help="Maximum number of DuckDB threads",
     type=int,
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_compression_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_quantms_msstats_cmd(
     msstats_file: Path,
@@ -1342,34 +1273,13 @@ def convert_quantms_msstats_cmd(
     default=None,
     type=float,
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
-@click.option("--output-prefix", help="Prefix for output file names")
-@click.option(
-    "--max-memory",
-    help="Maximum memory limit (e.g. '16GB')",
-)
-@click.option(
-    "--max-cpus",
-    help="Maximum number of threads",
-    type=int,
-)
-@click.option(
-    "--project-accession",
-    help="PRIDE / ProteomeXchange accession (e.g. PXD020192)",
-)
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_output_folder_option
+@_output_prefix_option
+@_max_memory_option
+@_max_cpus_option
+@_project_accession_option
+@_compression_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_spectronaut_cmd(
     report_path: Path,
@@ -1450,12 +1360,7 @@ def convert_spectronaut_cmd(
     required=True,
     type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
-@click.option(
-    "--output-folder",
-    help="Output directory for generated QPX files",
-    required=True,
-    type=click.Path(file_okay=False, path_type=Path),
-)
+@_output_folder_option
 @click.option(
     "--output-prefix",
     help="Prefix for output file names",
@@ -1471,23 +1376,10 @@ def convert_spectronaut_cmd(
     "--project-accession",
     help="PDC / ProteomeXchange accession (e.g. PDC000227)",
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["zstd", "snappy", "gzip", "none"], case_sensitive=False),
-    default="zstd",
-    show_default=True,
-    help="Parquet compression codec.",
-)
-@click.option(
-    "--max-memory",
-    help="Maximum memory limit (e.g. '16GB')",
-)
-@click.option(
-    "--max-cpus",
-    help="Maximum number of threads",
-    type=int,
-)
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_compression_option
+@_max_memory_option
+@_max_cpus_option
+@_verbose_option
 @_dataset_metadata_options
 def convert_cdap_cmd(
     psm_dir: Path,
@@ -1573,7 +1465,7 @@ def convert_cdap_cmd(
     default=None,
     help="Comma-separated MS levels to include (e.g. '2' or '1,2'). Default: all levels.",
 )
-@click.option("--verbose", help="Enable verbose logging", is_flag=True)
+@_verbose_option
 def convert_mz_cmd(
     mzml_dir: Path,
     output: Path,

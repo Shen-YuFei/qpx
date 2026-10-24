@@ -272,24 +272,9 @@ class FragPipePgAdapter(BaseConverter):
     # ------------------------------------------------------------------
 
     def _transform_batch(self, df: pd.DataFrame, experiments: list[str]) -> list[dict]:
-        records: list[dict] = []
-        skipped = 0
-        for row in df.to_dict("records"):
-            try:
-                recs = self._transform_row(row, experiments)
-                records.extend(recs)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as e:
-                skipped += 1
-                self.logger.debug(f"Skipping FragPipe PG row: {e}")
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d rows (%.1f%%) in batch",
-                skipped,
-                total,
-                100 * skipped / total if total else 0,
-            )
-        return records
+        return self._transform_rows_with_skip(
+            df.to_dict("records"), lambda row: self._transform_row(row, experiments), "FragPipe PG"
+        )
 
     def _transform_row(self, row, experiments: list[str]) -> list[dict]:
         """Transform a single combined_protein.tsv row.

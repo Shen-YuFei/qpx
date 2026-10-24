@@ -376,28 +376,14 @@ class FragPipeFeatureAdapter(BaseConverter):
         psm_lookup: dict[tuple, dict] | None = None,
         experiment_psm_sources: dict[str, str] | None = None,
     ) -> list[dict]:
-        records: list[dict] = []
-        skipped = 0
         # Pre-extract column arrays for faster per-row access than to_dict("records")
         col_arrays = {col: df[col].values for col in df.columns}
-        n_rows = len(df)
-        for i in range(n_rows):
-            try:
-                row = {col: vals[i] for col, vals in col_arrays.items()}
-                recs = self._transform_row(row, experiments, psm_lookup, experiment_psm_sources)
-                records.extend(recs)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as e:
-                skipped += 1
-                self.logger.debug(f"Skipping FragPipe feature row: {e}")
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d rows (%.1f%%) in batch",
-                skipped,
-                total,
-                100 * skipped / total if total else 0,
-            )
-        return records
+        rows = ({col: vals[i] for col, vals in col_arrays.items()} for i in range(len(df)))
+        return self._transform_rows_with_skip(
+            rows,
+            lambda row: self._transform_row(row, experiments, psm_lookup, experiment_psm_sources),
+            "FragPipe feature",
+        )
 
     def _transform_row(
         self,

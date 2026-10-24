@@ -24,9 +24,7 @@ from qpx.converters.base import resolve_columns
 from qpx.converters.diann.base_adapter import DiaNNBaseAdapter, decoy_protein_group_sql, run_name_sql
 from qpx.converters.diann.constants import to_modifications, to_proforma
 from qpx.converters.mappings import get_field_mappings
-from qpx.converters.ptm import compute_precursor_mz
 from qpx.converters.utils import pg_accessions_array
-from qpx.core.cleavage import count_missed_cleavages
 from qpx.core.query import _escape_sql_string
 from qpx.core.scan import scan_from_native_id
 from qpx.core.sql import sql_build, validate_identifier
@@ -159,7 +157,7 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
         channel_col = self._register_channel_labels(report_cols, sdrf_path)
 
         # 4. Pre-compute precursors: DuckDB temp table + Python modifications dict
-        mods_lookup = self._register_precursor_lookup(enzyme_name)
+        mods_lookup = self._register_precursor_lookup(self._resolved, enzyme_name, to_proforma, to_modifications)
 
         # 5. Get target Arrow schema
         target_schema = FeatureWriter._schema_class.get_arrow_schema()
@@ -218,13 +216,6 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
             for c in self._conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='report'").fetchall()
         }
 
-    def _load_sdrf_enzyme(self, sdrf_path: str) -> str | None:
-        """Load the first enzyme name from SDRF for missed-cleavage computation."""
-        from qpx.core.sdrf import SDRFHandler
-
-        enzymes = SDRFHandler(sdrf_path).get_enzymes()
-        return str(enzymes[0]) if enzymes else None
-
     def _discover_runs(self, mzml_info_folder: Optional[str]) -> list[str]:
         """Discover run names from ms_info files or from the report."""
         if mzml_info_folder:
@@ -269,61 +260,6 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
                 len(dropped),
                 ", ".join(dropped),
             )
-
-    # ------------------------------------------------------------------
-    # Precursor lookup (DuckDB temp table + Python modifications dict)
-    # ------------------------------------------------------------------
-
-    def _register_precursor_lookup(self, enzyme_name: str | None) -> dict:
-        """Pre-compute per-precursor values and register flat fields in DuckDB.
-
-        Returns:
-            Dict mapping (modified_seq, sequence, charge) -> modifications list.
-        """
-        mod_col = self._resolved["modified_sequence"]
-        seq_col = self._resolved["sequence"]
-        chg_col = self._resolved["charge"]
-
-        precursors = self._conn.execute(
-            sql_build(
-                "SELECT DISTINCT $mc, $sc, $cc FROM report",
-                mc=validate_identifier(mod_col),
-                sc=validate_identifier(seq_col),
-                cc=validate_identifier(chg_col),
-            )
-        ).fetchall()
-
-        self.logger.info(f"Pre-computing {len(precursors):,} unique precursors")
-
-        mods_lookup: dict[tuple[str, str, int], list | None] = {}
-        rows = []
-
-        for modified_seq, sequence, charge in precursors:
-            modified_seq = str(modified_seq)
-            sequence = str(sequence)
-            charge = int(charge)
-
-            peptidoform = to_proforma(modified_seq)
-            _, modifications = to_modifications(modified_seq, sequence)
-
-            calculated_mz = compute_precursor_mz(modified_seq, charge)
-
-            missed = count_missed_cleavages(sequence, enzyme_name) if enzyme_name else None
-
-            mods_lookup[(modified_seq, sequence, charge)] = modifications
-            rows.append((modified_seq, sequence, charge, peptidoform, calculated_mz, missed))
-
-        # Register flat lookup as DuckDB temp table for SQL JOIN
-        self._conn.execute("DROP TABLE IF EXISTS precursor_lookup")
-        self._conn.from_df(
-            pd.DataFrame(
-                rows,
-                columns=["modified_sequence", "sequence", "charge", "peptidoform", "calculated_mz", "missed_cleavages"],
-            )
-        ).create("precursor_lookup")
-        self.logger.info("Registered precursor_lookup temp table in DuckDB")
-
-        return mods_lookup
 
     # ------------------------------------------------------------------
     # SQL template builder
@@ -775,8 +711,6 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
         if len(table) == 0:
             return None
 
-        n = len(table)
-
         # --- Merge scan info from mzml files if available ---
         if mzml_info_folder:
             table = self._merge_scan_info_arrow(table, mzml_info_folder)
@@ -799,28 +733,7 @@ class DiannFeatureAdapter(DiaNNBaseAdapter):
         table = table.drop("_modified_sequence")
         table = table.drop("_pg_group")
 
-        # --- Assemble final table matching target schema ---
-        columns = {}
-        for field in target_schema:
-            if field.name == "modifications":
-                columns[field.name] = mods_array
-            elif field.name == "pg_accessions":
-                columns[field.name] = pg_array
-            elif field.name in table.schema.names:
-                col = table.column(field.name)
-                # Cast to target type if needed (e.g. large_string → string)
-                if col.type != field.type:
-                    try:
-                        col = col.cast(field.type, safe=False)
-                    except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
-                        # For complex nested types, rebuild via Python round-trip
-                        col = pa.array(col.to_pylist(), type=field.type)
-                columns[field.name] = col
-            else:
-                # Missing column → NULL array
-                columns[field.name] = pa.nulls(n, type=field.type)
-
-        return pa.table(columns, schema=target_schema)
+        return self._assemble_feature_table(table, target_schema, mods_array, pg_array)
 
     def _merge_scan_info_arrow(self, table: pa.Table, mzml_info_folder: str) -> pa.Table:
         """Merge MS scan info from mzml files into the Arrow table.

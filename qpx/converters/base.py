@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 
 import duckdb
+import pandas as pd
+import pyarrow as pa
 
+from qpx.converters.ptm import compute_precursor_mz
+from qpx.core.cleavage import count_missed_cleavages
 from qpx.core.engine import create_converter_connection
-from qpx.core.sql import escape_path, sql_build, validate_table
+from qpx.core.sql import escape_path, sql_build, validate_identifier, validate_table
 
 
 def resolve_columns(
@@ -114,6 +119,106 @@ class BaseConverter(ABC):
     # ------------------------------------------------------------------
     # Helpers shared by all converters
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_sdrf_enzyme(sdrf_path: str) -> str | None:
+        """Load the first enzyme name from SDRF for missed-cleavage computation."""
+        from qpx.core.sdrf import SDRFHandler
+
+        enzymes = SDRFHandler(sdrf_path).get_enzymes()
+        return str(enzymes[0]) if enzymes else None
+
+    def _register_precursor_lookup(self, resolved: dict, enzyme_name: str | None, to_proforma, to_modifications) -> dict:
+        """Register the distinct precursors of the ``report`` table as ``precursor_lookup``.
+
+        ``resolved`` maps the field names to the report columns; ``to_proforma`` and
+        ``to_modifications`` parse the tool's modified-sequence notation. Returns
+        ``(modified_seq, sequence, charge) -> modifications``.
+        """
+        precursors = self._conn.execute(
+            sql_build(
+                "SELECT DISTINCT $mc, $sc, $cc FROM report",
+                mc=validate_identifier(resolved["modified_sequence"]),
+                sc=validate_identifier(resolved["sequence"]),
+                cc=validate_identifier(resolved["charge"]),
+            )
+        ).fetchall()
+        self.logger.info("Pre-computing %d unique precursors", len(precursors))
+
+        mods_lookup: dict[tuple[str, str, int], list | None] = {}
+        rows = []
+        for modified_seq, sequence, charge in precursors:
+            modified_seq = str(modified_seq)
+            sequence = str(sequence)
+            charge = int(charge)
+            peptidoform = to_proforma(modified_seq)
+            _, modifications = to_modifications(modified_seq, sequence)
+            calculated_mz = compute_precursor_mz(peptidoform, charge)
+            missed = count_missed_cleavages(sequence, enzyme_name) if enzyme_name else None
+            mods_lookup[(modified_seq, sequence, charge)] = modifications
+            rows.append((modified_seq, sequence, charge, peptidoform, calculated_mz, missed))
+
+        self._conn.execute("DROP TABLE IF EXISTS precursor_lookup")
+        self._conn.from_df(
+            pd.DataFrame(
+                rows,
+                columns=["modified_sequence", "sequence", "charge", "peptidoform", "calculated_mz", "missed_cleavages"],
+            )
+        ).create("precursor_lookup")
+        self.logger.info("Registered precursor_lookup temp table in DuckDB")
+        return mods_lookup
+
+    @staticmethod
+    def _assemble_feature_table(table: pa.Table, target_schema: pa.Schema, mods_array: pa.Array, pg_array: pa.Array) -> pa.Table:
+        """Assemble feature columns in schema order, casting or filling nulls."""
+        columns = {}
+        for field in target_schema:
+            if field.name == "modifications":
+                columns[field.name] = mods_array
+            elif field.name == "pg_accessions":
+                columns[field.name] = pg_array
+            elif field.name in table.schema.names:
+                col = table.column(field.name)
+                if col.type != field.type:
+                    try:
+                        col = col.cast(field.type, safe=False)
+                    except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
+                        col = pa.array(col.to_pylist(), type=field.type)
+                columns[field.name] = col
+            else:
+                columns[field.name] = pa.nulls(len(table), type=field.type)
+        return pa.table(columns, schema=target_schema)
+
+    def _transform_rows_with_skip(
+        self,
+        rows: Iterable[dict],
+        transform_fn: Callable[[dict], dict | list[dict] | None],
+        debug_label: str,
+        warning_label: str = "",
+    ) -> list[dict]:
+        """Transform rows, skipping and counting only the supported row errors."""
+        records: list[dict] = []
+        skipped = 0
+        for row in rows:
+            try:
+                rec = transform_fn(row)
+                if isinstance(rec, list):
+                    records.extend(rec)
+                elif rec is not None:
+                    records.append(rec)
+            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as exc:
+                skipped += 1
+                self.logger.debug("Skipping %s row: %s", debug_label, exc)
+        if skipped:
+            total = skipped + len(records)
+            self.logger.warning(
+                "Skipped %d / %d%s rows (%.1f%%) in batch",
+                skipped,
+                total,
+                warning_label,
+                100 * skipped / total,
+            )
+        return records
 
     def _table_exists(self, name: str) -> bool:
         """Return True if *name* is registered as a DuckDB table or view."""
