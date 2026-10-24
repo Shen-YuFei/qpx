@@ -26,7 +26,7 @@ from qpx.core.data import (
     Site,
 )
 from qpx.core.data.schema import ValidationIssue, ValidationResult
-from qpx.core.data.validation import _LINK_CONTEXT_MESSAGE, _LINK_SQL
+from qpx.core.data.validation import _LINK_CONTEXT_MESSAGE, _LINK_MEMBERSHIP_MESSAGE, _LINK_SQL
 from qpx.core.engine import DuckDBEngine
 from qpx.core.files import sha256_file
 from qpx.core.sql import escape_path, sql_build, validate_table
@@ -892,6 +892,7 @@ class Dataset:
         grouped runs, for a site (no label) the identification row (null label) of
         its grouped runs. ``best_psm_id`` must name a psm row when the psm view is
         present.
+        The pg row must hold the site's protein or the proteoform's family in ``pg_accessions``.
         """
         severity = "error" if strict else "warning"
         checks = []
@@ -900,6 +901,7 @@ class Dataset:
                 ("dangling_pg_id", "pg_id", _LINK_SQL[view]["dangling_pg"], "have a pg_id that does not resolve to a pg.pg_id")
             )
             checks.append(("pg_link_context", "pg_id", _LINK_SQL[view]["pg_context"], _LINK_CONTEXT_MESSAGE[view]))
+            checks.append(("pg_link_membership", "pg_id", _LINK_SQL[view]["pg_membership"], _LINK_MEMBERSHIP_MESSAGE[view]))
         if self.psm is not None:
             checks.append(
                 (

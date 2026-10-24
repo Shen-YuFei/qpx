@@ -65,6 +65,9 @@ _UNIT_INTERVAL_COLUMNS = {
 }
 # Tolerance for a residue's evidence fractions summing to 1.
 _FRACTION_SUM_TOLERANCE = 1e-6
+# Producers round candidate probabilities (MaxQuant to three decimals), so an
+# alternative group can sum to a few thousandths above 1.
+_CANDIDATE_SUM_TOLERANCE = 0.01
 # Closed vocabularies of the site and proteoform views. ``prior_evidence`` and
 # ``source`` are open: producers name their own evidence classes and sources.
 _VOCABULARIES = {
@@ -226,7 +229,7 @@ def _modification_candidate_counts(table: pa.Table | pa.RecordBatch) -> tuple[in
     grouped = flat.filter(pc.is_valid(flat.column("alternative_group")))
     if grouped.num_rows:
         sums = grouped.group_by(["row", "alternative_group"]).aggregate([("probability", "sum")])
-        over = pc.greater(sums.column("probability_sum"), 1.0 + _FRACTION_SUM_TOLERANCE)
+        over = pc.greater(sums.column("probability_sum"), 1.0 + _CANDIDATE_SUM_TOLERANCE)
         over = pc.sum(pc.cast(pc.fill_null(over, False), pa.int64())).as_py() or 0
     return bad, over
 
@@ -239,7 +242,7 @@ def _modification_candidate_issues(counts: tuple[int, int], structure: str, seve
         message = f"{bad} modification candidate probabilities are not finite numbers in [0, 1]"
         issues.append(_issue(structure, "value_out_of_range", severity, "modification_candidates", message))
     if over:
-        message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1"
+        message = f"{over} alternative group(s) have candidate probabilities that sum to more than 1.01"
         issues.append(_issue(structure, "candidate_probability_sum", severity, "modification_candidates", message))
     return issues
 
@@ -383,6 +386,10 @@ _LINK_SQL = {
             "WHERE p.label IS NOT NULL "
             "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
         ),
+        "pg_membership": (
+            'SELECT count(*) FROM "site" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE NOT list_contains(p.pg_accessions, v.protein_accession)"
+        ),
         "dangling_psm": (
             'SELECT count(*) FROM "site" v WHERE v.best_psm_id IS NOT NULL '
             "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
@@ -398,6 +405,10 @@ _LINK_SQL = {
             "WHERE NOT (v.label IS NOT DISTINCT FROM p.label) "
             "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
         ),
+        "pg_membership": (
+            'SELECT count(*) FROM "proteoform" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE NOT list_contains(p.pg_accessions, v.family)"
+        ),
         "dangling_psm": (
             'SELECT count(*) FROM "proteoform" v WHERE v.best_psm_id IS NOT NULL '
             "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
@@ -407,4 +418,8 @@ _LINK_SQL = {
 _LINK_CONTEXT_MESSAGE = {
     "site": "link to a pg row that has a label or other grouped_runs (a site links to the null-label row of its runs)",
     "proteoform": "link to a pg row whose label or grouped_runs differ from the row's",
+}
+_LINK_MEMBERSHIP_MESSAGE = {
+    "site": "link to a pg row whose pg_accessions do not hold the protein_accession",
+    "proteoform": "link to a pg row whose pg_accessions do not hold the family",
 }
