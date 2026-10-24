@@ -26,6 +26,7 @@ from qpx.core.data import (
     Site,
 )
 from qpx.core.data.schema import ValidationIssue, ValidationResult
+from qpx.core.data.validation import _LINK_CONTEXT_MESSAGE, _LINK_SQL
 from qpx.core.engine import DuckDBEngine
 from qpx.core.files import sha256_file
 from qpx.core.sql import escape_path, sql_build, validate_table
@@ -111,44 +112,6 @@ def _row_count(path: Path) -> int | None:
     except Exception as exc:  # noqa: BLE001 - verification must not raise on a bad file
         _log.debug("Could not read a row count for %s: %s", path, exc)
         return None
-
-
-# Link checks of the site and proteoform views, as constant queries.
-_LINK_SQL = {
-    "site": {
-        "dangling_pg": (
-            'SELECT count(*) FROM "site" v WHERE v.pg_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg p WHERE p.pg_id = v.pg_id)'
-        ),
-        "pg_context": (
-            'SELECT count(*) FROM "site" v JOIN pg p ON p.pg_id = v.pg_id '
-            "WHERE p.label IS NOT NULL "
-            "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
-        ),
-        "dangling_psm": (
-            'SELECT count(*) FROM "site" v WHERE v.best_psm_id IS NOT NULL '
-            "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
-        ),
-    },
-    "proteoform": {
-        "dangling_pg": (
-            'SELECT count(*) FROM "proteoform" v WHERE v.pg_id IS NOT NULL '
-            "AND NOT EXISTS (SELECT 1 FROM pg p WHERE p.pg_id = v.pg_id)"
-        ),
-        "pg_context": (
-            'SELECT count(*) FROM "proteoform" v JOIN pg p ON p.pg_id = v.pg_id '
-            "WHERE NOT (v.label IS NOT DISTINCT FROM p.label) "
-            "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
-        ),
-        "dangling_psm": (
-            'SELECT count(*) FROM "proteoform" v WHERE v.best_psm_id IS NOT NULL '
-            "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
-        ),
-    },
-}
-_LINK_CONTEXT_MESSAGE = {
-    "site": "link to a pg row that has a label or other grouped_runs (a site links to the null-label row of its runs)",
-    "proteoform": "link to a pg row whose label or grouped_runs differ from the row's",
-}
 
 
 def _skipped_check_reason(exc: duckdb.Error) -> str:
@@ -892,10 +855,12 @@ class Dataset:
             else:
                 results[name] = struct.validate(strict=strict)
 
+        present = {name for name in results if self._structures.get(name) is not None}
+
         # Cross-structure invariant: every pg.grouped_runs element must be a
         # real run.run_file_name. A grouped run that names no acquisition run is
         # dropped by every sample-joined view, so flag it as an error on pg.
-        if "pg" in results and self.pg is not None and self.run is not None:
+        if "pg" in present and self.run is not None:
             self._check_grouped_runs_referential(results["pg"], strict=strict)
             self._check_grouped_runs_sample_mapping(results["pg"], strict=strict)
 
@@ -904,18 +869,18 @@ class Dataset:
         # feature.feature_id, and every feature.psm_ids element a real psm.psm_id.
         # Unresolved references are warnings during normal use and errors under
         # strict validation, but only when both views are present.
-        if "feature" in results and "psm" in results and self.feature is not None and self.psm is not None:
+        if {"feature", "psm"} <= present:
             self._check_feature_psm_referential(results["feature"], results["psm"], strict=strict)
 
         # feature.pg_ids is the canonical feature -> protein-group reference.
         # When both views are present, every populated id must resolve to pg.pg_id.
-        if "feature" in results and "pg" in results and self.feature is not None and self.pg is not None:
+        if {"feature", "pg"} <= present:
             self._check_feature_pg_referential(results["feature"], strict=strict)
 
         # site/proteoform links: pg_id names one pg row of the row's run (and, for a
         # proteoform, label) context; best_psm_id names a psm row.
         for view in ("site", "proteoform"):
-            if view in results and self._structures.get(view) is not None:
+            if view in present:
                 self._check_pg_link(view, results[view], strict=strict)
 
         return results
