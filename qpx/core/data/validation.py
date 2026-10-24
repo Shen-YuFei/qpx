@@ -383,6 +383,10 @@ _LINK_SQL = {
             "WHERE p.label IS NOT NULL "
             "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
         ),
+        "pg_membership": (
+            'SELECT count(*) FROM "site" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE NOT list_contains(p.pg_accessions, v.protein_accession)"
+        ),
         "dangling_psm": (
             'SELECT count(*) FROM "site" v WHERE v.best_psm_id IS NOT NULL '
             "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
@@ -398,6 +402,10 @@ _LINK_SQL = {
             "WHERE NOT (v.label IS NOT DISTINCT FROM p.label) "
             "OR list_sort(list_distinct(v.grouped_runs)) <> list_sort(list_distinct(p.grouped_runs))"
         ),
+        "pg_membership": (
+            'SELECT count(*) FROM "proteoform" v JOIN pg p ON p.pg_id = v.pg_id '
+            "WHERE NOT list_contains(p.pg_accessions, v.family)"
+        ),
         "dangling_psm": (
             'SELECT count(*) FROM "proteoform" v WHERE v.best_psm_id IS NOT NULL '
             "AND NOT EXISTS (SELECT 1 FROM psm s WHERE s.psm_id = v.best_psm_id)"
@@ -407,4 +415,8 @@ _LINK_SQL = {
 _LINK_CONTEXT_MESSAGE = {
     "site": "link to a pg row that has a label or other grouped_runs (a site links to the null-label row of its runs)",
     "proteoform": "link to a pg row whose label or grouped_runs differ from the row's",
+}
+_LINK_MEMBERSHIP_MESSAGE = {
+    "site": "link to a pg row whose pg_accessions do not hold the protein_accession",
+    "proteoform": "link to a pg row whose pg_accessions do not hold the family",
 }

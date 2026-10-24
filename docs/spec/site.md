@@ -71,6 +71,7 @@ Under `qpxc validate` (strict):
 - a row's evidence fraction and its alternatives' sum to 1, and a row without alternatives has a fraction of 1 (or null);
 - alternatives are listed in decreasing evidence fraction;
 - a populated `pg_id` resolves to a pg row with a null label and the same `grouped_runs`;
+- that pg row's `pg_accessions` hold the site's `protein_accession`;
 - a populated `best_psm_id` resolves to a `psm.psm_id` when the dataset has a psm view.
 
 `prior_evidence` is an open vocabulary: producers name their own evidence classes.
