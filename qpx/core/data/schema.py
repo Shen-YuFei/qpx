@@ -330,29 +330,27 @@ class _RowCounts:
         names = schema.names
         self.structure = structure
         self.nulls = dict.fromkeys(required, 0)
-        self.anchor = 0
         self.out_of_range = dict.fromkeys((name for name in _UNIT_INTERVAL_COLUMNS.get(structure, ()) if name in names), 0)
-        self.fractions = (0, 0, 0)
-        self.candidates = (0, 0)
-        self.edits = (0, 0)
         self.vocabulary = dict.fromkeys((name for name in _VOCABULARIES.get(structure, {}) if name in names), 0)
-        self.scan = 0
+        # Counts of the checks that are not kept per column.
+        self.totals = {"anchor": 0, "fractions": (0, 0, 0), "candidates": (0, 0), "edits": (0, 0), "scan": 0}
 
     def add(self, batch: pa.Table | pa.RecordBatch, scan_format: str | None) -> None:
         """Add one batch's counts."""
+        totals = self.totals
         for name in self.nulls:
             self.nulls[name] += batch.column(name).null_count
-        self.anchor += _anchor_without_membership(batch)
+        totals["anchor"] += _anchor_without_membership(batch)
         for name in self.out_of_range:
             self.out_of_range[name] += _out_of_range_count(batch.column(name))
         if self.structure == "site":
-            self.fractions = tuple(a + b for a, b in zip(self.fractions, _evidence_fraction_counts(batch)))
-        self.candidates = tuple(a + b for a, b in zip(self.candidates, _modification_candidate_counts(batch)))
-        self.edits = tuple(a + b for a, b in zip(self.edits, _sequence_edit_counts(batch, self.structure)))
+            totals["fractions"] = tuple(a + b for a, b in zip(totals["fractions"], _evidence_fraction_counts(batch)))
+        totals["candidates"] = tuple(a + b for a, b in zip(totals["candidates"], _modification_candidate_counts(batch)))
+        totals["edits"] = tuple(a + b for a, b in zip(totals["edits"], _sequence_edit_counts(batch, self.structure)))
         for name in self.vocabulary:
             self.vocabulary[name] += _vocabulary_count(batch.column(name), _VOCABULARIES[self.structure][name])
         if scan_format is not None:
-            self.scan += _scan_format_violations(batch.column("scan"), scan_format)
+            totals["scan"] += _scan_format_violations(batch.column("scan"), scan_format)
 
     def null_issues(self, rows: int, severity: str) -> list[ValidationIssue]:
         """Issues for the non-nullable columns that hold nulls."""
@@ -371,12 +369,12 @@ class _RowCounts:
     def value_issues(self, severity: str) -> list[ValidationIssue]:
         """Issues from the value checks counted over the batches."""
         return [
-            *_anchor_membership_issues(self.anchor, self.structure, severity),
+            *_anchor_membership_issues(self.totals["anchor"], self.structure, severity),
             *_unit_interval_issues(self.out_of_range, self.structure, severity),
-            *_evidence_fraction_issues(self.fractions, self.structure, severity),
+            *_evidence_fraction_issues(self.totals["fractions"], self.structure, severity),
             *_vocabulary_issues(self.vocabulary, self.structure, severity),
-            *_modification_candidate_issues(self.candidates, self.structure, severity),
-            *_sequence_edit_issues(self.edits, self.structure, severity),
+            *_modification_candidate_issues(self.totals["candidates"], self.structure, severity),
+            *_sequence_edit_issues(self.totals["edits"], self.structure, severity),
         ]
 
 
@@ -527,7 +525,7 @@ class ViewSchema:
         result.issues.extend(_primary_key_issues(keys, self._primary_key, self._view_name, severity))
         result.issues.extend(referential)
         result.issues.extend(counts.value_issues(severity))
-        result.issues.extend(_scan_format_issues(scan_format, counts.scan, self._view_name, severity))
+        result.issues.extend(_scan_format_issues(scan_format, counts.totals["scan"], self._view_name, severity))
         return result
 
     def _column_issues(self, schema: pa.Schema) -> list[ValidationIssue]:

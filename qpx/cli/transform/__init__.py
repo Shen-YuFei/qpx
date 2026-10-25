@@ -23,7 +23,6 @@ __all__ = [
 @click.group()
 def transform():
     """Transform QPX data into derived representations."""
-    pass
 
 
 for _command in (

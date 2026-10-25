@@ -103,7 +103,7 @@ def _show_dataset_summary(dataset_path: Path, verbose: bool):
             rows = struct.count()
 
             total_rows += rows
-            rel_path = struct._file_path.name
+            rel_path = struct.file_paths[0].name
             click.echo(f"  {name:<15} {rows:>12,} {rel_path}")
 
         click.echo(f"  {'-' * 15} {'-' * 12}")

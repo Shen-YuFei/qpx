@@ -33,7 +33,6 @@ __all__ = [
 @click.group()
 def convert():
     """Convert external tool outputs to QPX format."""
-    pass
 
 
 for _command in (

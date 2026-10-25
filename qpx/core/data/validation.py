@@ -37,14 +37,17 @@ class ValidationResult:
 
     @property
     def errors(self) -> list[ValidationIssue]:
+        """The issues of severity error."""
         return [i for i in self.issues if i.severity == "error"]
 
     @property
     def warnings(self) -> list[ValidationIssue]:
+        """The issues of severity warning."""
         return [i for i in self.issues if i.severity == "warning"]
 
     @property
     def summary(self) -> str:
+        """The structure name, VALID or INVALID, and the error and warning counts."""
         n_err = len(self.errors)
         n_warn = len(self.warnings)
         status = "VALID" if self.is_valid else "INVALID"

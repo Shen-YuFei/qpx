@@ -82,7 +82,7 @@ def _maybe_enrich_pride(output_folder, project_accession: str | None, enrich: bo
         with Dataset(str(output_folder), file_prefix=prefix) as ds:
             ds.enrich_from_pride(project_accession)
         click.echo(f"Enriched dataset with PRIDE metadata for {project_accession}")
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         _warn(f"Could not enrich from PRIDE: {exc}")
 
 

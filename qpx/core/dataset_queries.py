@@ -1,7 +1,8 @@
-"""Dataset softlinks and abundance queries."""
+"""Dataset softlinks, abundance queries and analysis views."""
 
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class _DatasetQueryMixin:
-    """Query links and intensities across registered structures."""
+    """Query links, intensities and analysis views across registered structures."""
 
     # --- Cross-structure queries ---
     def sql(self, query: str) -> QueryResult:
@@ -278,7 +279,7 @@ class _DatasetQueryMixin:
               AND p.is_decoy = false
             """,
             )
-        elif level == "peptide":
+        if level == "peptide":
             if self.feature is None or self.run is None:
                 raise ValueError("level='peptide' requires feature and run structures.")
             return sql_build(
@@ -296,8 +297,7 @@ class _DatasetQueryMixin:
             GROUP BY rs.sample_accession, f.sequence
             """,
             )
-        else:
-            raise ValueError(f"level must be 'protein' or 'peptide', got '{level}'")
+        raise ValueError(f"level must be 'protein' or 'peptide', got '{level}'")
 
     def intensity(self, level: str = "protein") -> QueryResult:
         """Lazy long-form intensity query — scalable for large datasets.
@@ -400,3 +400,60 @@ class _DatasetQueryMixin:
             matrix = matrix.fillna(fillna)
 
         return matrix
+
+    # --- View accessors (cached) ---
+    @cached_property
+    def protein_view(self):
+        """Protein intensity per sample (pg joined with run)."""
+        from qpx.views.api import ProteinView
+
+        return ProteinView(self)
+
+    @cached_property
+    def peptide_view(self):
+        """Peptide intensity per sample (feature joined with run)."""
+        from qpx.views.api import PeptideView
+
+        return PeptideView(self)
+
+    @cached_property
+    def identification_summary(self):
+        """Per-run counts of proteins, peptides and features."""
+        from qpx.views.api import IdentificationSummaryView
+
+        return IdentificationSummaryView(self)
+
+    @cached_property
+    def run_summary(self):
+        """Per-run statistics with the intensity distribution."""
+        from qpx.views.api import RunSummaryView
+
+        return RunSummaryView(self)
+
+    @cached_property
+    def modification_view(self):
+        """Modification frequency across PSMs."""
+        from qpx.views.api import ModificationView
+
+        return ModificationView(self)
+
+    @cached_property
+    def qc_view(self):
+        """Dataset-wide QC metrics."""
+        from qpx.views.api import QualityControlView
+
+        return QualityControlView(self)
+
+    @cached_property
+    def sample_summary(self):
+        """Per-sample and per-run peptide and protein counts."""
+        from qpx.views.api import SampleSummaryView
+
+        return SampleSummaryView(self)
+
+    @cached_property
+    def ae_view(self):
+        """AnnData view of the absolute expression file."""
+        from qpx.views.api import AbsoluteExpressionView
+
+        return AbsoluteExpressionView(self)

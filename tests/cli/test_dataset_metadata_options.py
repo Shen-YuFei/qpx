@@ -142,7 +142,7 @@ def test_enrich_pride_failure_is_a_warning(tmp_path, monkeypatch):
 
     def _unavailable(acc):
         """Simulate a PRIDE API outage."""
-        raise RuntimeError("PRIDE unavailable")
+        raise ConnectionError("PRIDE unavailable")
 
     monkeypatch.setattr("qpx.core.pride.fetch_pride_metadata", _unavailable)
 
