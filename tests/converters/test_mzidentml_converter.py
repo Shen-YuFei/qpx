@@ -1,18 +1,15 @@
 """Tests for the mzIdentML PSM adapter (including XL-MS cross-linking)."""
 
-import pytest
-
-lxml = pytest.importorskip("lxml", reason="lxml required for mzIdentML tests")
-
 from pathlib import Path
 
 import pyarrow.parquet as pq
+import pytest
 
-from qpx.converters.mzidentml.psm_adapter import (
-    MzIdentMLPsmAdapter,
-    _group_siis,
-    _parse_native_id,
-)
+from qpx.converters.mzidentml.crosslinks import _group_siis
+from qpx.converters.mzidentml.psm_adapter import MzIdentMLPsmAdapter
+from qpx.converters.mzidentml.psm_records import _build_psm_records, _parse_native_id
+
+lxml = pytest.importorskip("lxml", reason="lxml required for mzIdentML tests")
 
 XL_EXAMPLES = Path(__file__).parent.parent / "examples" / "mzidentml" / "xl"
 
@@ -249,7 +246,7 @@ class TestPepExtraction:
 
     def test_extract_pep_from_cvparams(self):
         """PEP should be extracted from MS:1001493 cvParam."""
-        from qpx.converters.mzidentml.psm_adapter import _extract_pep
+        from qpx.converters.mzidentml.scores import _extract_pep
 
         cv_params = [
             {"accession": "MS:1001171", "name": "Mascot:score", "value": "45.2"},
@@ -263,7 +260,7 @@ class TestPepExtraction:
 
     def test_extract_pep_global(self):
         """Should extract PEP from MS:1002352 (global PEP)."""
-        from qpx.converters.mzidentml.psm_adapter import _extract_pep
+        from qpx.converters.mzidentml.scores import _extract_pep
 
         cv_params = [
             {
@@ -277,7 +274,7 @@ class TestPepExtraction:
 
     def test_extract_pep_missing(self):
         """Should return None when PEP is not present."""
-        from qpx.converters.mzidentml.psm_adapter import _extract_pep
+        from qpx.converters.mzidentml.scores import _extract_pep
 
         cv_params = [
             {"accession": "MS:1001171", "name": "Mascot:score", "value": "45.2"},
@@ -286,7 +283,7 @@ class TestPepExtraction:
 
     def test_extract_pep_invalid_value(self):
         """Should return None for non-numeric PEP values."""
-        from qpx.converters.mzidentml.psm_adapter import _extract_pep
+        from qpx.converters.mzidentml.scores import _extract_pep
 
         cv_params = [
             {
@@ -299,7 +296,7 @@ class TestPepExtraction:
 
     def test_pep_also_in_additional_scores(self):
         """PEP should appear in both dedicated field and additional_scores."""
-        from qpx.converters.mzidentml.psm_adapter import _extract_pep, _extract_scores
+        from qpx.converters.mzidentml.scores import _extract_pep, _extract_scores
 
         cv_params = [
             {
@@ -603,8 +600,7 @@ class TestSharedModificationsNoCrossContamination:
 
     def test_each_psm_keeps_only_its_own_score(self):
         parsed = self._parsed()
-        with MzIdentMLPsmAdapter() as adapter:
-            records = adapter._build_psm_records(parsed)
+        records = _build_psm_records(parsed)
 
         assert len(records) == 2
         scores_per_psm = [rec["modifications"][0]["positions"][0]["scores"] for rec in records]
@@ -620,8 +616,7 @@ class TestSharedModificationsNoCrossContamination:
     def test_shared_source_modifications_untouched(self):
         parsed = self._parsed()
         shared = parsed["peptides"]["SharedPep"]["modifications"]
-        with MzIdentMLPsmAdapter() as adapter:
-            adapter._build_psm_records(parsed)
+        _build_psm_records(parsed)
 
         # The Peptide's shared modification list must remain pristine — scoring
         # happened on per-PSM copies, not on this source object.

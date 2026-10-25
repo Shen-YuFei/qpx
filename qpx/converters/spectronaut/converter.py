@@ -9,6 +9,7 @@ from qpx._version import __version__
 from qpx.converters.base import resolve_columns
 from qpx.converters.mappings import get_field_mappings, get_tool_meta
 from qpx.converters.orchestrator import BaseOrchestrator
+from qpx.converters.sdrf import convert_sdrf_views
 from qpx.converters.spectronaut.feature_adapter import SpectronautFeatureAdapter
 from qpx.converters.spectronaut.pg_adapter import SpectronautPgAdapter
 from qpx.core.constants import FEATURE, ONTOLOGY, PG, RUN, SAMPLE
@@ -31,8 +32,8 @@ class SpectronautConverter(BaseOrchestrator):
         """Initialize converter with report path and DuckDB settings."""
         self.report_path = str(report_path)
         self.sdrf_path = str(sdrf_path) if sdrf_path else None
-        self._memory = max_memory or "16GB"
-        self._threads = max_cpus or 4
+        self._memory = max_memory
+        self._threads = max_cpus
         self._compression = compression
         self._ontology_entries: list[dict] = []
         self._resolved_mappings_by_view: dict[str, dict] = {}
@@ -94,24 +95,8 @@ class SpectronautConverter(BaseOrchestrator):
         if not self.sdrf_path:
             logger.warning("No SDRF path provided — skipping sample/run conversion")
             return
-        try:
-            from qpx.converters.sdrf import SdrfConverter
-
-            with SdrfConverter() as sdrf_conv:
-                sdrf_conv.convert(
-                    sdrf_path=self.sdrf_path,
-                    sample_output=str(output_folder / f"{prefix}.sample.parquet"),
-                    run_output=str(output_folder / f"{prefix}.run.parquet"),
-                )
-                self._ontology_entries.extend(sdrf_conv.run_ontology_entries())
+        if convert_sdrf_views(self.sdrf_path, output_folder, prefix, self._ontology_entries):
             logger.info("SDRF conversion complete (sample + run)")
-        except (ValueError, KeyError, OSError, TypeError) as exc:
-            logger.warning("SDRF conversion skipped (incomplete SDRF?): %s", exc)
-            for suffix in (".sample.parquet", ".run.parquet"):
-                corrupt = output_folder / f"{prefix}{suffix}"
-                if corrupt.exists():
-                    corrupt.unlink()
-                    logger.debug("Removed corrupt %s", corrupt)
 
     def write_ontology(
         self,

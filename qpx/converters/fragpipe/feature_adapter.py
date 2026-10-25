@@ -26,6 +26,20 @@ from qpx.writers.feature import FeatureWriter
 
 logger = logging.getLogger(__name__)
 
+_PSM_LOOKUP_SQL = """
+            SELECT
+                CAST("Spectrum" AS VARCHAR) AS spectrum,
+                CAST("Peptide" AS VARCHAR) AS sequence,
+                COALESCE(CAST("Assigned Modifications" AS VARCHAR), '') AS assigned_mods,
+                CAST("Charge" AS INTEGER) AS charge,
+                $obs_expr AS obs_mz,
+                $calc_expr AS calc_mz,
+                $pp_expr AS pp_prob,
+                CAST("Protein" AS VARCHAR) AS protein,
+                $im_expr AS ion_mobility,
+                $mc_expr AS missed_cleavages
+            FROM _fp_psm_lookup"""
+
 # Derive field map from central YAML mappings
 _FEATURE_MAP = get_field_mappings("fragpipe", "feature")
 _FEATURE_IDENTITY_COMPOSITE = (
@@ -36,16 +50,12 @@ _FEATURE_IDENTITY_COMPOSITE = (
 )
 
 
-def _extract_pg_proteins(
-    protein_str: str,
-    start: int | None = None,
-    end: int | None = None,
-) -> list[dict]:
+def _extract_pg_proteins(protein_str: str) -> list[dict]:
     """Extract pg_protein structs from a FragPipe Protein field.
 
     Handles formats like ``sp|P12345|PROT_HUMAN`` or plain accession ``P12345``.
-    Returns list of {accession, start, end, pre, post}. When the tool does not
-    provide positional info, pass None and they will be stored as null.
+    Returns list of {accession, start, end, pre, post}; FragPipe gives no
+    positions, so those are null.
     """
     if not protein_str:
         return []
@@ -59,8 +69,8 @@ def _extract_pg_proteins(
             result.append(
                 {
                     "accession": acc,
-                    "start": start,
-                    "end": end,
+                    "start": None,
+                    "end": None,
                     "pre": None,
                     "post": None,
                 }
@@ -273,6 +283,98 @@ class FragPipeFeatureAdapter(BaseConverter):
             ).fetchall()
         }
 
+        sql = self._psm_lookup_query(actual_cols)
+        rows = self._conn.execute(sql).fetchall()
+
+        for values in rows:
+            self._add_psm_lookup_row(lookup, values)
+
+        # Clean up temporary table
+        self._conn.execute("DROP TABLE IF EXISTS _fp_psm_lookup")
+        self.logger.info(f"PSM lookup: {len(lookup):,} unique keys built")
+
+        return lookup
+
+    # ------------------------------------------------------------------
+    # Transform
+    # ------------------------------------------------------------------
+
+    def _transform_batch(
+        self,
+        df: pd.DataFrame,
+        experiments: list[str],
+        psm_lookup: dict[tuple, dict] | None = None,
+        experiment_psm_sources: dict[str, str] | None = None,
+    ) -> list[dict]:
+        # Pre-extract column arrays for faster per-row access than to_dict("records")
+        col_arrays = {col: df[col].values for col in df.columns}
+        rows = ({col: vals[i] for col, vals in col_arrays.items()} for i in range(len(df)))
+        return self._transform_rows_with_skip(
+            rows,
+            lambda row: self._transform_row(row, experiments, psm_lookup, experiment_psm_sources),
+            "FragPipe feature",
+        )
+
+    def _transform_row(
+        self,
+        row,
+        experiments: list[str],
+        psm_lookup: dict[tuple, dict] | None = None,
+        experiment_psm_sources: dict[str, str] | None = None,
+    ) -> list[dict]:
+        """Transform a single row into one or more feature records.
+
+        Expands into one record per experiment with non-zero intensity.
+        """
+        records: list[dict] = []
+        common_fields, mz, protein_raw = self._feature_identity_fields(row)
+
+        # Expand per experiment
+        for experiment in experiments:
+            int_col = f"{experiment} Intensity"
+            intensity_val = safe_float(row.get(int_col)) or 0.0
+            if intensity_val <= 0:
+                continue
+
+            intensities = [{"label": "LFQ", "intensity": float(intensity_val)}]
+
+            # PSM lookup: enrich only through the exact raw source resolved for
+            # this experiment. Multi-run experiments intentionally have no
+            # source here because one combined Feature cannot represent one
+            # arbitrarily selected fraction's PSM.
+            psm_info = {}
+            psm_source = (experiment_psm_sources or {}).get(experiment)
+            if psm_lookup and psm_source:
+                psm_info = psm_lookup.get((psm_source, common_fields["peptidoform"], str(common_fields["charge"])), {})
+
+            psm_fields = self._feature_psm_fields(psm_info, mz, protein_raw)
+
+            rec = {
+                **common_fields,
+                **psm_fields,
+                "additional_scores": None,
+                "predicted_rt": None,
+                "run_file_name": experiment,
+                "quantification_unit_id": experiment,
+                "cv_params": None,
+                "rt": None,
+                "intensities": intensities,
+                "additional_intensities": None,
+                "pg_global_qvalue": None,
+                "ion_mobility_start": None,
+                "ion_mobility_stop": None,
+                "gg_accessions": None,
+                "id_run_file_name": experiment,
+                "rt_start": None,
+                "rt_stop": None,
+            }
+            records.append(rec)
+
+        return records
+
+    @staticmethod
+    def _psm_lookup_query(actual_cols: set[str]) -> str:
+        """Build the typed PSM enrichment query."""
         # Observed m/z: prefer calibrated
         obs_col = "Calibrated Observed M/Z" if "Calibrated Observed M/Z" in actual_cols else "Observed M/Z"
         calc_col = "Calculated M/Z"
@@ -295,28 +397,32 @@ class FragPipeFeatureAdapter(BaseConverter):
         mc_expr = 'TRY_CAST("Number of Missed Cleavages" AS INTEGER)' if has_mc else "NULL"
 
         sql = sql_build(
-            """
-            SELECT
-                CAST("Spectrum" AS VARCHAR) AS spectrum,
-                CAST("Peptide" AS VARCHAR) AS sequence,
-                COALESCE(CAST("Assigned Modifications" AS VARCHAR), '') AS assigned_mods,
-                CAST("Charge" AS INTEGER) AS charge,
-                $obs_expr AS obs_mz,
-                $calc_expr AS calc_mz,
-                $pp_expr AS pp_prob,
-                CAST("Protein" AS VARCHAR) AS protein,
-                $im_expr AS ion_mobility,
-                $mc_expr AS missed_cleavages
-            FROM _fp_psm_lookup""",
+            _PSM_LOOKUP_SQL,
             obs_expr=obs_expr,
             calc_expr=calc_expr,
             pp_expr=pp_expr,
             im_expr=im_expr,
             mc_expr=mc_expr,
         )
-        rows = self._conn.execute(sql).fetchall()
+        return sql
 
-        for (
+    @staticmethod
+    def _psm_source_scan(spectrum) -> tuple[str, int]:
+        """Run name and scan number from a FragPipe ``Spectrum`` value; the scan is 0 when it does not parse."""
+        # Parse source file and scan from Spectrum column
+        tokens = str(spectrum).split(".") if spectrum else []
+        source_file = normalize_run_name(tokens[0]) if tokens else ""
+        scan_number = 0
+        if len(tokens) >= 2:
+            try:
+                scan_number = int(tokens[1].lstrip("0") or "0")
+            except ValueError:
+                pass
+        return source_file, scan_number
+
+    def _add_psm_lookup_row(self, lookup: dict, values: tuple) -> None:
+        """Register the first PSM for an exact source and precursor key."""
+        (
             spectrum,
             sequence,
             assigned_mods,
@@ -327,94 +433,36 @@ class FragPipeFeatureAdapter(BaseConverter):
             protein,
             ion_mobility,
             missed_cleavages_val,
-        ) in rows:
-            # Parse source file and scan from Spectrum column
-            tokens = str(spectrum).split(".") if spectrum else []
-            source_file = normalize_run_name(tokens[0]) if tokens else ""
-            scan_number = 0
-            if len(tokens) >= 2:
-                try:
-                    scan_number = int(tokens[1].lstrip("0") or "0")
-                except ValueError:
-                    pass
+        ) = values
+        source_file, scan_number = self._psm_source_scan(spectrum)
 
-            sequence = str(sequence) if sequence else ""
-            assigned_mods = str(assigned_mods) if assigned_mods else ""
-            peptidoform = to_proforma(assigned_mods, sequence)
-            charge_str = str(charge) if charge is not None else "0"
+        sequence = str(sequence) if sequence else ""
+        assigned_mods = str(assigned_mods) if assigned_mods else ""
+        peptidoform = to_proforma(assigned_mods, sequence)
+        charge_str = str(charge) if charge is not None else "0"
 
-            key = (source_file, peptidoform, charge_str)
-            if key not in lookup:
-                # PEP = 1 - PeptideProphet Probability
-                pep = None
-                if pp_prob is not None:
-                    pep = 1.0 - pp_prob if pp_prob <= 1.0 else pp_prob
+        key = (source_file, peptidoform, charge_str)
+        if key not in lookup:
+            # PEP = 1 - PeptideProphet Probability
+            pep = None
+            if pp_prob is not None:
+                pep = 1.0 - pp_prob if pp_prob <= 1.0 else pp_prob
 
-                is_decoy = is_decoy_accession(protein)
+            is_decoy = is_decoy_accession(protein)
 
-                info = {
-                    "observed_mz": float(obs_mz) if obs_mz is not None else None,
-                    "calculated_mz": (float(calc_mz) if calc_mz is not None else None),
-                    "pep": pep,
-                    "is_decoy": is_decoy,
-                    "scan": [scan_number] if scan_number > 0 else [],
-                    "ion_mobility": (float(ion_mobility) if ion_mobility is not None else None),
-                    "missed_cleavages": (int(missed_cleavages_val) if missed_cleavages_val is not None else None),
-                }
-                lookup[key] = info
+            info = {
+                "observed_mz": float(obs_mz) if obs_mz is not None else None,
+                "calculated_mz": (float(calc_mz) if calc_mz is not None else None),
+                "pep": pep,
+                "is_decoy": is_decoy,
+                "scan": [scan_number] if scan_number > 0 else [],
+                "ion_mobility": (float(ion_mobility) if ion_mobility is not None else None),
+                "missed_cleavages": (int(missed_cleavages_val) if missed_cleavages_val is not None else None),
+            }
+            lookup[key] = info
 
-        # Clean up temporary table
-        self._conn.execute("DROP TABLE IF EXISTS _fp_psm_lookup")
-        self.logger.info(f"PSM lookup: {len(lookup):,} unique keys built")
-
-        return lookup
-
-    # ------------------------------------------------------------------
-    # Transform
-    # ------------------------------------------------------------------
-
-    def _transform_batch(
-        self,
-        df: pd.DataFrame,
-        experiments: list[str],
-        psm_lookup: dict[tuple, dict] | None = None,
-        experiment_psm_sources: dict[str, str] | None = None,
-    ) -> list[dict]:
-        records: list[dict] = []
-        skipped = 0
-        # Pre-extract column arrays for faster per-row access than to_dict("records")
-        col_arrays = {col: df[col].values for col in df.columns}
-        n_rows = len(df)
-        for i in range(n_rows):
-            try:
-                row = {col: vals[i] for col, vals in col_arrays.items()}
-                recs = self._transform_row(row, experiments, psm_lookup, experiment_psm_sources)
-                records.extend(recs)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as e:
-                skipped += 1
-                self.logger.debug(f"Skipping FragPipe feature row: {e}")
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d rows (%.1f%%) in batch",
-                skipped,
-                total,
-                100 * skipped / total if total else 0,
-            )
-        return records
-
-    def _transform_row(
-        self,
-        row,
-        experiments: list[str],
-        psm_lookup: dict[tuple, dict] | None = None,
-        experiment_psm_sources: dict[str, str] | None = None,
-    ) -> list[dict]:
-        """Transform a single row into one or more feature records.
-
-        Expands into one record per experiment with non-zero intensity.
-        """
-        records: list[dict] = []
+    def _feature_identity_fields(self, row: dict) -> tuple:
+        """Parse the feature peptide and protein identity fields."""
         r = self._resolved  # shorthand for resolved column mappings
 
         # Sequence
@@ -428,7 +476,7 @@ class FragPipeFeatureAdapter(BaseConverter):
 
         # Protein mapping (schema: list<pg_protein>; FragPipe does not provide start/end)
         protein_raw = str(row.get(r.get("pg_accessions", "Protein"), ""))
-        pg_accessions = _extract_pg_proteins(protein_raw, start=None, end=None) or None
+        pg_accessions = _extract_pg_proteins(protein_raw) or None
         anchor_protein = pg_accessions[0]["accession"] if pg_accessions else ""
 
         # Gene
@@ -445,67 +493,39 @@ class FragPipeFeatureAdapter(BaseConverter):
         compensation_voltage = safe_float(row.get(r.get("compensation_voltage", "Compensation Voltage"))) or 0.0
 
         charge = int(row.get(r.get("charge", "Charge"), 0))
-
-        # Expand per experiment
-        for experiment in experiments:
-            int_col = f"{experiment} Intensity"
-            intensity_val = safe_float(row.get(int_col)) or 0.0
-            if intensity_val <= 0:
-                continue
-
-            intensities = [{"label": "LFQ", "intensity": float(intensity_val)}]
-
-            # PSM lookup: enrich only through the exact raw source resolved for
-            # this experiment. Multi-run experiments intentionally have no
-            # source here because one combined Feature cannot represent one
-            # arbitrarily selected fraction's PSM.
-            psm_info = {}
-            psm_source = (experiment_psm_sources or {}).get(experiment)
-            if psm_lookup and psm_source:
-                psm_info = psm_lookup.get((psm_source, peptidoform, str(charge)), {})
-
-            _calc = psm_info.get("calculated_mz")
-            _obs = psm_info.get("observed_mz")
-            mass_error_ppm = 1e6 * (_obs - _calc) / _calc if _calc and _obs else None
-
-            # Is decoy: prefer PSM lookup; fall back to the decoy prefix on the RAW
-            # protein field (before parse_uniprot_id strips e.g. the "rev_" prefix).
-            _is_decoy_fallback = is_decoy_accession(protein_raw)
-
-            rec = {
+        return (
+            {
                 "sequence": sequence,
                 "peptidoform": peptidoform,
                 "modifications": modifications,
                 "charge": charge,
-                "posterior_error_probability": psm_info.get("pep"),
-                "is_decoy": psm_info.get("is_decoy", _is_decoy_fallback),
-                "calculated_mz": _calc or mz,
-                "observed_mz": _obs or mz,
-                "mass_error_ppm": mass_error_ppm,
-                "additional_scores": None,
-                "predicted_rt": None,
-                "run_file_name": experiment,
-                "quantification_unit_id": experiment,
-                "cv_params": None,
-                "scan": psm_info.get("scan", []),
-                "rt": None,
-                "ion_mobility": psm_info.get("ion_mobility"),
                 "compensation_voltage": compensation_voltage,
-                "missed_cleavages": psm_info.get("missed_cleavages"),
-                "intensities": intensities,
-                "additional_intensities": None,
                 "pg_accessions": pg_accessions,
                 "anchor_protein": anchor_protein,
                 "unique": len(pg_accessions) <= 1 if pg_accessions else True,
-                "pg_global_qvalue": None,
-                "ion_mobility_start": None,
-                "ion_mobility_stop": None,
-                "gg_accessions": None,
                 "gg_names": gg_names,
-                "id_run_file_name": experiment,
-                "rt_start": None,
-                "rt_stop": None,
-            }
-            records.append(rec)
+            },
+            mz,
+            protein_raw,
+        )
 
-        return records
+    @staticmethod
+    def _feature_psm_fields(psm_info: dict, mz: float | None, protein_raw: str) -> dict:
+        """Resolve spectrum fields from exact PSM enrichment or feature values."""
+        _calc = psm_info.get("calculated_mz")
+        _obs = psm_info.get("observed_mz")
+        mass_error_ppm = 1e6 * (_obs - _calc) / _calc if _calc and _obs else None
+
+        # Is decoy: prefer PSM lookup; fall back to the decoy prefix on the RAW
+        # protein field (before parse_uniprot_id strips e.g. the "rev_" prefix).
+        _is_decoy_fallback = is_decoy_accession(protein_raw)
+        return {
+            "posterior_error_probability": psm_info.get("pep"),
+            "is_decoy": psm_info.get("is_decoy", _is_decoy_fallback),
+            "calculated_mz": _calc or mz,
+            "observed_mz": _obs or mz,
+            "mass_error_ppm": mass_error_ppm,
+            "scan": psm_info.get("scan", []),
+            "ion_mobility": psm_info.get("ion_mobility"),
+            "missed_cleavages": psm_info.get("missed_cleavages"),
+        }

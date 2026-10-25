@@ -272,24 +272,9 @@ class FragPipePgAdapter(BaseConverter):
     # ------------------------------------------------------------------
 
     def _transform_batch(self, df: pd.DataFrame, experiments: list[str]) -> list[dict]:
-        records: list[dict] = []
-        skipped = 0
-        for row in df.to_dict("records"):
-            try:
-                recs = self._transform_row(row, experiments)
-                records.extend(recs)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as e:
-                skipped += 1
-                self.logger.debug(f"Skipping FragPipe PG row: {e}")
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d rows (%.1f%%) in batch",
-                skipped,
-                total,
-                100 * skipped / total if total else 0,
-            )
-        return records
+        return self._transform_rows_with_skip(
+            df.to_dict("records"), lambda row: self._transform_row(row, experiments), "FragPipe PG"
+        )
 
     def _transform_row(self, row, experiments: list[str]) -> list[dict]:
         """Transform a single combined_protein.tsv row.
@@ -297,53 +282,7 @@ class FragPipePgAdapter(BaseConverter):
         Expands into one record per experiment (run).
         """
         records: list[dict] = []
-        r = self._resolved  # shorthand for resolved column mappings
-
-        # Protein group identity
-        protein_raw = str(row.get(r.get("pg_accessions", "Protein"), ""))
-        pg_accessions = protein_raw.split(",") if protein_raw else []
-
-        gene_raw = row.get(r.get("gg_accessions", "Gene"), "")
-        gg_accessions = str(gene_raw).split(",") if pd.notna(gene_raw) and gene_raw else None
-
-        # Protein description/name
-        description = row.get(r.get("pg_names", "Description"), "")
-        pg_names = None
-        if pd.notna(description) and description:
-            pg_names = [str(description)]
-
-        anchor_protein = pg_accessions[0] if pg_accessions else ""
-
-        # Is decoy: detected from a decoy prefix on any RAW accession
-        is_decoy = is_decoy_accession(protein_raw)
-
-        # Combined counts
-        total_peptides = int(row.get(r.get("peptide_count_total", "Combined Total Peptides"), 0) or 0)
-        unique_peptides = int(row.get(r.get("peptide_count_unique", "Combined Unique Peptides"), 0) or 0)
-
-        # Sequence coverage
-        seq_coverage = safe_float(row.get(r.get("sequence_coverage", "Percent Coverage")))
-
-        # Molecular weight
-        mol_weight = safe_float(row.get(r.get("molecular_weight", "Protein Molecular Weight (Da)")))
-        if mol_weight is not None:
-            mol_weight = mol_weight / 1000.0  # Convert Da to kDa
-
-        # Protein group q-value. Real FDR/Q-Value columns are preferred (see the
-        # ordered mapping in column_mappings.yaml). "Protein Probability" is a
-        # confidence score (~1.0 = best), so when it is the only column present it
-        # is converted to an FDR-like value as 1 - probability, never used raw.
-        pg_qvalue_col = r.get("pg_qvalue")
-        pg_qvalue_raw = safe_float(row.get(pg_qvalue_col)) if pg_qvalue_col else None
-        if pg_qvalue_raw is None:
-            pg_qvalue = None
-        elif pg_qvalue_col == "Protein Probability":
-            pg_qvalue = 1.0 - pg_qvalue_raw
-        else:
-            pg_qvalue = pg_qvalue_raw
-
-        # Peptides per protein
-        peptides = [{"protein_name": acc, "peptide_count": total_peptides} for acc in pg_accessions]
+        common_fields, total_peptides, unique_peptides = self._pg_common_fields(row)
 
         # Expand per experiment
         for experiment in experiments:
@@ -379,23 +318,13 @@ class FragPipePgAdapter(BaseConverter):
             exp_total = safe_float(row.get(spec_count_col)) or 0
 
             rec = {
-                "pg_accessions": pg_accessions,
-                "pg_names": pg_names,
-                "gg_accessions": gg_accessions,
-                "gg_names": gg_accessions,  # Gene symbols serve as both accession and name
-                "gg_qvalue": None,
-                "anchor_protein": anchor_protein,
+                **common_fields,
                 # Expand the FragPipe experiment to its member run files (results
                 # mapping, else SDRF); the tool-reported per-experiment intensity
                 # is kept as-is (FragPipe already aggregated across the fractions).
                 "grouped_runs": self._resolve_grouped_runs(experiment),
-                "global_qvalue": None,
-                "pg_qvalue": pg_qvalue,
                 "intensities": intensities,
                 "additional_intensities": additional_intensities or None,
-                "is_decoy": is_decoy,
-                "contaminant": None,
-                "peptides": peptides,
                 "peptide_counts": {
                     "unique_sequences": unique_peptides,
                     "total_sequences": total_peptides,
@@ -404,11 +333,83 @@ class FragPipePgAdapter(BaseConverter):
                     "unique_features": int(exp_unique),
                     "total_features": int(exp_total),
                 },
-                "sequence_coverage": seq_coverage,
-                "molecular_weight": mol_weight,
                 "additional_scores": additional_scores or None,
-                "cv_params": None,
             }
             records.append(rec)
 
         return records
+
+    def _pg_qvalue(self, row: dict) -> float | None:
+        """Resolve FDR or convert the source protein probability."""
+        r = self._resolved
+        # Protein group q-value. Real FDR/Q-Value columns are preferred (see the
+        # ordered mapping in column_mappings.yaml). "Protein Probability" is a
+        # confidence score (~1.0 = best), so when it is the only column present it
+        # is converted to an FDR-like value as 1 - probability, never used raw.
+        pg_qvalue_col = r.get("pg_qvalue")
+        pg_qvalue_raw = safe_float(row.get(pg_qvalue_col)) if pg_qvalue_col else None
+        if pg_qvalue_raw is None:
+            pg_qvalue = None
+        elif pg_qvalue_col == "Protein Probability":
+            pg_qvalue = 1.0 - pg_qvalue_raw
+        else:
+            pg_qvalue = pg_qvalue_raw
+        return pg_qvalue
+
+    def _pg_common_fields(self, row: dict) -> tuple:
+        """Build protein-group fields shared across experiments."""
+        r = self._resolved
+        # Protein group identity
+        protein_raw = str(row.get(r.get("pg_accessions", "Protein"), ""))
+        pg_accessions = protein_raw.split(",") if protein_raw else []
+
+        gene_raw = row.get(r.get("gg_accessions", "Gene"), "")
+        gg_accessions = str(gene_raw).split(",") if pd.notna(gene_raw) and gene_raw else None
+
+        # Protein description/name
+        description = row.get(r.get("pg_names", "Description"), "")
+        pg_names = None
+        if pd.notna(description) and description:
+            pg_names = [str(description)]
+
+        anchor_protein = pg_accessions[0] if pg_accessions else ""
+
+        # Is decoy: detected from a decoy prefix on any RAW accession
+        is_decoy = is_decoy_accession(protein_raw)
+
+        # Combined counts
+        total_peptides = int(row.get(r.get("peptide_count_total", "Combined Total Peptides"), 0) or 0)
+        unique_peptides = int(row.get(r.get("peptide_count_unique", "Combined Unique Peptides"), 0) or 0)
+
+        # Sequence coverage
+        seq_coverage = safe_float(row.get(r.get("sequence_coverage", "Percent Coverage")))
+
+        # Molecular weight
+        mol_weight = safe_float(row.get(r.get("molecular_weight", "Protein Molecular Weight (Da)")))
+        if mol_weight is not None:
+            mol_weight = mol_weight / 1000.0  # Convert Da to kDa
+
+        pg_qvalue = self._pg_qvalue(row)
+
+        # Peptides per protein
+        peptides = [{"protein_name": acc, "peptide_count": total_peptides} for acc in pg_accessions]
+        return (
+            {
+                "pg_accessions": pg_accessions,
+                "pg_names": pg_names,
+                "gg_accessions": gg_accessions,
+                "gg_names": gg_accessions,
+                "gg_qvalue": None,
+                "anchor_protein": anchor_protein,
+                "global_qvalue": None,
+                "pg_qvalue": pg_qvalue,
+                "is_decoy": is_decoy,
+                "contaminant": None,
+                "peptides": peptides,
+                "sequence_coverage": seq_coverage,
+                "molecular_weight": mol_weight,
+                "cv_params": None,
+            },
+            total_peptides,
+            unique_peptides,
+        )

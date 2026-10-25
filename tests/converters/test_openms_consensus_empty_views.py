@@ -148,7 +148,7 @@ def test_failed_conversion_preserves_quantification_view(existing_view, empty_vi
     if streaming:
         monkeypatch.setattr(converter, "_convert_streaming", fail)
     else:
-        monkeypatch.setattr(converter.OpenMSConsensusConverter, "_convert_in_memory", fail)
+        monkeypatch.setattr(converter, "_convert_in_memory", fail)
     with pytest.raises(RuntimeError, match="conversion failed"):
         converter.OpenMSConsensusConverter().convert(
             str(empty_view_xml), str(existing_view.parent), output_prefix="rerun", structures=(empty_view,), streaming=streaming

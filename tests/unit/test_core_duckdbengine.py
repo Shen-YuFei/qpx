@@ -1,5 +1,7 @@
 """Tests for QPX core layer: DuckDBEngine, LazyQuery, QueryResult, Parquet I/O."""
 
+import os
+
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -74,6 +76,17 @@ def test_duckdb_engine(feature_parquet, tmp_path):
     engine = DuckDBEngine()
     try:
         assert engine.execute("SELECT ? + ? AS sum", [10, 20]).fetchone()[0] == 30
+    finally:
+        engine.close()
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="no CPU affinity API")
+def test_default_threads_follow_cpu_affinity(monkeypatch):
+    """Without a thread count, DuckDB is kept to the CPUs the process may run on."""
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0})
+    engine = DuckDBEngine()
+    try:
+        assert engine.execute("SELECT current_setting('threads')").fetchall()[0][0] == 1
     finally:
         engine.close()
 

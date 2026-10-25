@@ -67,7 +67,6 @@ __all__ = [
     "SampleWriter",
     "SiteWriter",
     "open_dataset",
-    "open",
     "read_feature",
     "read_psm",
     "read_pg",
@@ -85,23 +84,6 @@ __all__ = [
 def open_dataset(path: str, structures: list[str] | None = None, **kwargs) -> Dataset:
     """Open a QPX dataset directory."""
     return Dataset(path, structures=structures, **kwargs)
-
-
-def open(path: str, structures: list[str] | None = None, **kwargs) -> Dataset:
-    """Open a QPX dataset directory.
-
-    .. deprecated:: 0.5.0
-        Use :func:`open_dataset` instead to avoid shadowing the built-in
-        ``open()``.
-    """
-    import warnings
-
-    warnings.warn(
-        "qpx.open() is deprecated, use qpx.open_dataset() instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return open_dataset(path, structures=structures, **kwargs)
 
 
 def read_feature(path: str, **kwargs):

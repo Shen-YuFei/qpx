@@ -18,8 +18,8 @@ See the full YAML schema in [`mz.yaml`](schemas/mz.yaml).
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
 | `id` | Unique identifier for the scan or spectrum | `string` | Yes |
-| `run_file_name` | Run file containing this spectrum; links to PSM/feature `run_file_name` | `string` | No |
-| `scan` | Scan identifier parsed from the native ID as an array of integer components (see [Scan Numbers](scan.md)); links to PSM/feature `scan` | `array[int32]` | No |
+| `run_file_name` | Run file containing this spectrum; links to PSM/feature `run_file_name` | `string` | Optional |
+| `scan` | Scan identifier parsed from the native ID as an array of integer components (see [Scan Numbers](scan.md)); links to PSM/feature `scan` | `array[int32]` | Optional |
 | `ms_level` | The MS level (1 for MS1, 2 for MS2, etc.) | `int` | Yes |
 | `centroid` | Whether the data is centroided (`true`) or profile mode (`false`) | `boolean` | Yes |
 
@@ -28,15 +28,15 @@ See the full YAML schema in [`mz.yaml`](schemas/mz.yaml).
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
 | `scan_start_time` | Start time of the scan in minutes | `float` | Yes |
-| `inverse_ion_mobility` | Inverse ion mobility, used for TIMS data (1/K0) | `float` | No |
-| `ion_injection_time` | Ion injection time in milliseconds; null when the source does not record it | `float` | No |
+| `inverse_ion_mobility` | Inverse ion mobility, used for TIMS data (1/K0) | `float` | Optional |
+| `ion_injection_time` | Ion injection time in milliseconds; null when the source does not record it | `float` | Optional |
 | `total_ion_current` | Total ion current (TIC) for the scan | `float` | Yes |
 
 ### Precursors
 
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
-| `precursors` | List of precursor ions for this MS/MS scan | `array[struct]` | No |
+| `precursors` | List of precursor ions for this MS/MS scan | `array[struct]` | Optional |
 
 Each precursor struct contains:
 
@@ -61,7 +61,7 @@ Each precursor struct contains:
 
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
-| `cv_params` | Optional list of controlled vocabulary parameters for additional metadata | `array[struct{name, value}]` | No |
+| `cv_params` | Optional list of controlled vocabulary parameters for additional metadata | `array[struct{name, value}]` | Optional |
 
 Each CV param struct contains:
 

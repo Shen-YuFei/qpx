@@ -158,6 +158,53 @@ def _write_sample_run(
                 tmp.unlink()
 
 
+def _pdc_sample_records(plex_channels: dict, biospecimen: dict) -> dict[str, dict]:
+    """Build one sample record per referenced aliquot."""
+    # Sample rows: one per referenced aliquot, keyed by aliquot_submitter_id.
+    sample_records: dict[str, dict] = {}
+    for channels in plex_channels.values():
+        for _label, aliquot_id, aliquot_submitter_id in channels:
+            if aliquot_submitter_id not in sample_records:
+                sample_records[aliquot_submitter_id] = _sample_record(aliquot_id, aliquot_submitter_id, biospecimen)
+
+    return sample_records
+
+
+def _pdc_run_records(run_to_plex: dict, plex_channels: dict) -> tuple[list[dict], int]:
+    """Build run records and count runs without channel mappings."""
+    # Run rows: one per run file, samples = its plex's channels.
+    run_records: list[dict] = []
+    runs_without_channels = 0
+    for run_file_name, info in sorted(run_to_plex.items()):
+        channels = plex_channels.get(info["plex"], [])
+        if not channels:
+            runs_without_channels += 1
+        samples = [
+            {
+                "sample_accession": aliquot_submitter_id,
+                "label": label,
+                "biological_replicate": None,
+                "technical_replicate": None,
+            }
+            for label, _aliquot_id, aliquot_submitter_id in channels
+        ]
+        run_records.append(
+            {
+                "run_accession": run_file_name,
+                "run_file_name": run_file_name,
+                "file_name": info.get("file_name"),
+                "samples": samples,
+                "fraction": str(info["fraction"]) if info.get("fraction") is not None else None,
+                "instrument": info.get("instrument"),
+                "enzymes": None,
+                "dissociation_method": None,
+                "modification_parameters": None,
+            }
+        )
+
+    return run_records, runs_without_channels
+
+
 def build_sample_run_from_pdc(
     pdc_study_id: str,
     output_folder: str | Path,
@@ -190,42 +237,9 @@ def build_sample_run_from_pdc(
         if plex.get("study_run_metadata_submitter_id")
     }
 
-    # Sample rows: one per referenced aliquot, keyed by aliquot_submitter_id.
-    sample_records: dict[str, dict] = {}
-    for channels in plex_channels.values():
-        for _label, aliquot_id, aliquot_submitter_id in channels:
-            if aliquot_submitter_id not in sample_records:
-                sample_records[aliquot_submitter_id] = _sample_record(aliquot_id, aliquot_submitter_id, biospecimen)
+    sample_records = _pdc_sample_records(plex_channels, biospecimen)
 
-    # Run rows: one per run file, samples = its plex's channels.
-    run_records: list[dict] = []
-    runs_without_channels = 0
-    for run_file_name, info in sorted(run_to_plex.items()):
-        channels = plex_channels.get(info["plex"], [])
-        if not channels:
-            runs_without_channels += 1
-        samples = [
-            {
-                "sample_accession": aliquot_submitter_id,
-                "label": label,
-                "biological_replicate": None,
-                "technical_replicate": None,
-            }
-            for label, _aliquot_id, aliquot_submitter_id in channels
-        ]
-        run_records.append(
-            {
-                "run_accession": run_file_name,
-                "run_file_name": run_file_name,
-                "file_name": info.get("file_name"),
-                "samples": samples,
-                "fraction": str(info["fraction"]) if info.get("fraction") is not None else None,
-                "instrument": info.get("instrument"),
-                "enzymes": None,
-                "dissociation_method": None,
-                "modification_parameters": None,
-            }
-        )
+    run_records, runs_without_channels = _pdc_run_records(run_to_plex, plex_channels)
 
     if runs_without_channels:
         logger.warning(

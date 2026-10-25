@@ -49,10 +49,6 @@ class PG(BaseStructure):
         """Filter to target proteins only (exclude decoys)."""
         return self.filter("is_decoy = false")
 
-    def _intensity_label_field(self) -> str:
-        """The pg view is flattened since 1.1 with a scalar ``label`` column."""
-        return "label"
-
     def protein_intensities(self) -> QueryResult:
         """One row per (protein, label, intensity).
 

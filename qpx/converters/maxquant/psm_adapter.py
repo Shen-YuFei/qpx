@@ -138,6 +138,65 @@ class MaxQuantPsmAdapter(MaxQuantBaseAdapter):
         """Transform a single msms.txt row into a QPX PSM record."""
         r = self._resolved  # shorthand for resolved column mappings
 
+        identity = self._psm_identity(row)
+        if identity is None:
+            return None
+        sequence, peptidoform, modifications, site_scores = identity
+        charge_raw = row.get(r.get("charge", "Charge"), 0)
+        charge = int(charge_raw) if pd.notna(charge_raw) else 0
+
+        # is_decoy (bool) -- MaxQuant uses '+' for Reverse
+        is_decoy = mq_flag_to_bool(row.get(r.get("is_decoy", "Reverse"), ""))
+
+        spectrum_fields = self._psm_spectrum_fields(row, charge)
+
+        # Protein accessions — normalise sp|/tr| prefixes for consistency
+        proteins_cell = row.get("Proteins")
+        protein_accessions = (
+            [self._norm_uniprot_id(a.strip()) for a in str(proteins_cell).split(";") if a.strip()]
+            if pd.notna(proteins_cell) and proteins_cell is not None
+            else []
+        )
+
+        # Mass error (ppm) — direct column from msms.txt
+        mass_error_ppm = safe_float(row.get(r.get("mass_error_ppm", "Mass error [ppm]")))
+
+        # Ion mobility
+        ion_mobility = safe_float(row.get("1/K0"))
+
+        # Missed cleavages (dedicated field from msms.txt)
+        mc_raw = row.get(r.get("missed_cleavages", "Missed cleavages"))
+        missed_cleavages = int(mc_raw) if pd.notna(mc_raw) else None
+
+        additional_scores, cv_params = self._psm_annotations(row)
+
+        mz_array, intensity_array = self._spectral_arrays(row, spectral_data)
+
+        return {
+            **spectrum_fields,
+            "sequence": sequence,
+            "peptidoform": peptidoform,
+            "modifications": modifications,
+            "modification_candidates": phospho_candidates(site_scores, sequence, modifications),
+            "charge": charge,
+            "is_decoy": is_decoy,
+            "mass_error_ppm": mass_error_ppm,
+            "additional_scores": additional_scores or None,
+            "predicted_rt": None,
+            "cv_params": cv_params or None,
+            "ion_mobility": ion_mobility,
+            "missed_cleavages": missed_cleavages,
+            "protein_accessions": protein_accessions or None,
+            "mz_array": mz_array,
+            "intensity_array": intensity_array,
+            "charge_array": None,
+            "ion_type_array": None,
+            "ion_mobility_array": None,
+        }
+
+    def _psm_identity(self, row: dict) -> tuple | None:
+        """Parse the peptide identity and phospho localization."""
+        r = self._resolved
         sequence = str(row.get(r.get("sequence", "Sequence"), ""))
         peptidoform = to_proforma(
             str(row.get(r.get("modified_sequence", "Modified sequence"), "")),
@@ -167,12 +226,11 @@ class MaxQuantPsmAdapter(MaxQuantBaseAdapter):
             # "Modified sequence" is skipped rather than aborting the whole view.
             self.logger.debug("Skipping PSM row with empty modified sequence (sequence=%r)", sequence)
             return None
-        charge_raw = row.get(r.get("charge", "Charge"), 0)
-        charge = int(charge_raw) if pd.notna(charge_raw) else 0
+        return sequence, peptidoform, modifications, site_scores
 
-        # is_decoy (bool) -- MaxQuant uses '+' for Reverse
-        is_decoy = mq_flag_to_bool(row.get(r.get("is_decoy", "Reverse"), ""))
-
+    def _psm_spectrum_fields(self, row: dict, charge: int) -> dict:
+        """Extract PSM spectrum, m/z, and retention-time fields."""
+        r = self._resolved
         # Scan (list<int32>)
         scan_raw = row.get(r.get("scan", "Scan number"))
         scan = []
@@ -202,25 +260,18 @@ class MaxQuantPsmAdapter(MaxQuantBaseAdapter):
 
         # PEP
         pep = safe_float(row.get(r.get("posterior_error_probability", "PEP")))
+        return {
+            "scan": scan,
+            "run_file_name": run_file_name,
+            "observed_mz": observed_mz,
+            "calculated_mz": calculated_mz,
+            "rt": rt,
+            "posterior_error_probability": pep,
+        }
 
-        # Protein accessions — normalise sp|/tr| prefixes for consistency
-        proteins_cell = row.get("Proteins")
-        protein_accessions = (
-            [self._norm_uniprot_id(a.strip()) for a in str(proteins_cell).split(";") if a.strip()]
-            if pd.notna(proteins_cell) and proteins_cell is not None
-            else []
-        )
-
-        # Mass error (ppm) — direct column from msms.txt
-        mass_error_ppm = safe_float(row.get(r.get("mass_error_ppm", "Mass error [ppm]")))
-
-        # Ion mobility
-        ion_mobility = safe_float(row.get("1/K0"))
-
-        # Missed cleavages (dedicated field from msms.txt)
-        mc_raw = row.get(r.get("missed_cleavages", "Missed cleavages"))
-        missed_cleavages = int(mc_raw) if pd.notna(mc_raw) else None
-
+    def _psm_annotations(self, row: dict) -> tuple[list[dict], list[dict]]:
+        """Collect PSM scores and spectrum annotations."""
+        r = self._resolved
         # Additional scores
         additional_scores = []
         andromeda_score = safe_float(row.get(r.get("andromeda_score", "Score")))
@@ -257,12 +308,16 @@ class MaxQuantPsmAdapter(MaxQuantBaseAdapter):
             val = row.get(cv_col)
             if pd.notna(val) and val:
                 cv_params.append({"cv_name": cv_col.lower(), "cv_value": str(val)})
+        return additional_scores, cv_params
 
-        # Spectral arrays
+    @staticmethod
+    def _spectral_arrays(row: dict, spectral_data: bool) -> tuple:
+        """m/z and intensity arrays from the ``Masses``/``Intensities`` columns when ``spectral_data`` is set.
+
+        An array that does not parse as numbers stays None.
+        """
         mz_array = None
         intensity_array = None
-        charge_array = None
-        ion_type_array = None
         if spectral_data:
             masses_raw = row.get("Masses")
             if pd.notna(masses_raw) and masses_raw:
@@ -277,30 +332,4 @@ class MaxQuantPsmAdapter(MaxQuantBaseAdapter):
                     intensity_array = [float(x) for x in str(intensities_raw).split(";") if x.strip()]
                 except ValueError:
                     pass
-
-        return {
-            "sequence": sequence,
-            "peptidoform": peptidoform,
-            "modifications": modifications,
-            "modification_candidates": phospho_candidates(site_scores, sequence, modifications),
-            "charge": charge,
-            "posterior_error_probability": pep,
-            "is_decoy": is_decoy,
-            "calculated_mz": calculated_mz,
-            "observed_mz": observed_mz,
-            "mass_error_ppm": mass_error_ppm,
-            "additional_scores": additional_scores or None,
-            "predicted_rt": None,
-            "run_file_name": run_file_name,
-            "cv_params": cv_params or None,
-            "scan": scan,
-            "rt": rt,
-            "ion_mobility": ion_mobility,
-            "missed_cleavages": missed_cleavages,
-            "protein_accessions": protein_accessions or None,
-            "mz_array": mz_array,
-            "intensity_array": intensity_array,
-            "charge_array": charge_array,
-            "ion_type_array": ion_type_array,
-            "ion_mobility_array": None,
-        }
+        return mz_array, intensity_array

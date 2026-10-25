@@ -11,9 +11,11 @@ fields:
     doc: "Unique scan/spectrum identifier"
   run_file_name:
     type: string
+    optional: true
     doc: "Run file containing this spectrum (links to PSM/feature run_file_name)"
   scan:
     type: "list<int32>"
+    optional: true
     doc: "Scan ID from native ID (array of int components; links to PSM/feature scan)"
   ms_level:
     type: int32
@@ -31,9 +33,11 @@ fields:
     doc: "Scan start time (minutes)"
   inverse_ion_mobility:
     type: float32
+    optional: true
     doc: "Inverse ion mobility (TIMS)"
   ion_injection_time:
     type: float32
+    optional: true
     doc: "Ion injection time (ms); null when the source does not record it"
   total_ion_current:
     type: float32
@@ -43,6 +47,7 @@ fields:
   # Precursor info (MS2+ only)
   precursors:
     type: "list<precursor>"
+    optional: true
     doc: "Precursor ions"
 
   # Spectral data
@@ -58,4 +63,5 @@ fields:
   # Metadata
   cv_params:
     type: "list<cv_param>"
+    optional: true
     doc: "CV parameters"

@@ -127,28 +127,17 @@ class SDRFHandler:
 
         labeling_values = [i.upper() for i in labeling_values]
 
-        if len([i for i in labeling_values if "LABEL FREE" in i]) > 0:
+        if any("LABEL FREE" in i for i in labeling_values):
             return "LFQ"
-        elif len([i for i in labeling_values if "TMT" in i]) > 0:
-            if len(labeling_values) == 10:
-                return "TMT10"
-            elif len(labeling_values) == 11:
-                return "TMT11"
-            elif len(labeling_values) == 16:
-                return "TMT16"
-            elif len(labeling_values) == 6:
-                return "TMT6"
-            else:
-                raise ValueError("The SDRF file provided does not contain a supported TMT comment[label] value")
-        elif len([i for i in labeling_values if "ITRAQ" in i]) > 0:
-            if len(labeling_values) == 4:
-                return "ITRAQ4"
-            elif len(labeling_values) == 8:
-                return "ITRAQ8"
-            else:
-                raise ValueError("The SDRF file provided does not contain a supported iTRAQ comment[label] value")
-        else:
-            raise ValueError("The SDRF file provided does not contain any supported comment[label] value")
+        if any("TMT" in i for i in labeling_values):
+            if len(labeling_values) in (6, 10, 11, 16):
+                return f"TMT{len(labeling_values)}"
+            raise ValueError("The SDRF file provided does not contain a supported TMT comment[label] value")
+        if any("ITRAQ" in i for i in labeling_values):
+            if len(labeling_values) in (4, 8):
+                return f"ITRAQ{len(labeling_values)}"
+            raise ValueError("The SDRF file provided does not contain a supported iTRAQ comment[label] value")
+        raise ValueError("The SDRF file provided does not contain any supported comment[label] value")
 
     def get_sample_map_run(self):
         validate_sdrf_data_files(self.sdrf_table)

@@ -33,7 +33,7 @@ step in `provenance.parquet`.
 | `sequence` | Unmodified peptide amino acid sequence | string | yes |
 | `peptidoform` | Peptide sequence with modifications in ProForma notation | string | yes |
 | `modifications` | Structured list of modifications with name, accession, position, and localization scores | array[struct], null | no |
-| `modification_candidates` | Every modification considered at each position, assigned or competing, with its probability given this identification (see [Competing interpretations](modifications.md#competing-interpretations)); optional column | array[struct], null | no |
+| `modification_candidates` | Every modification considered at each position, assigned or competing, with its probability given this identification (see [Competing interpretations](modifications.md#competing-interpretations)); optional column | array[struct], null | optional |
 | `charge` | Charge state of the precursor ion | int16 | yes |
 | `posterior_error_probability` | Posterior error probability (PEP) for the peptide-spectrum match — the probability that the PSM is incorrect. **Lower values indicate higher confidence** (lower is better). Ranges from 0.0 (confident) to 1.0 (likely incorrect) | float64, null | no |
 | `is_decoy` | Whether the PSM is a decoy match (`true`) or a target match (`false`); use `false` when no target-decoy search was used. A peptide that matches both target and decoy proteins (OpenMS `target_decoy = target+decoy`) is a target match | bool | yes |
@@ -47,6 +47,7 @@ step in `provenance.parquet`.
 | `scan` | Scan identifier as an array of integer components (e.g., `[43920]` for single-scan instruments, `[10, 1, 345]` for Waters function/process/scan) | array[int32] | yes |
 | `additional_scores` | List of score structures with name, value, and direction indicator | array[struct], null | no |
 | `cv_params` | Optional list of controlled vocabulary parameters for additional metadata | array[struct], null | no |
+| `protein_accessions` | Protein accessions of all proteins that the peptide maps to; null when the producer has no protein mapping, which can be recovered from the feature and protein group views | array[string], null | no |
 
 ### Optional Fields
 
@@ -54,18 +55,17 @@ These fields are optional and may not exist in the file at all. They are include
 
 | Field | Description                                                                                                                                             | Type | Required |
 |-------|---------------------------------------------------------------------------------------------------------------------------------------------------------|------|----------|
-| `protein_accessions` | Protein accessions of all proteins that the peptide maps to. Optional because protein mapping can be recovered from the feature and protein group views | array[string], null | no |
-| `cross_links` | Cross-link information for XL-MS experiments. Each entry describes one cross-link site. `null` for non-cross-linked PSMs                                | array[struct], null | no |
-| `ion_mobility` | Ion mobility value for the precursor ion                                                                                                                | float32, null | no |
-| `mz_array` | Array of m/z values for the spectrum                                                                                                                    | array[float32], null | no |
-| `intensity_array` | Array of intensity values for the spectrum                                                                                                              | array[float32], null | no |
-| `charge_array` | Array of fragment ion charge values                                                                                                                     | array[int32], null | no |
-| `ion_type_array` | Array of fragment ion type annotations (e.g., b1, y2, a2)                                                                                               | array[string], null | no |
-| `ion_mobility_array` | Array of fragment ion mobility values                                                                                                                   | array[float32], null | no |
-| `feature_id` | **Authoritative** (optional) foreign key to the linked Feature row through `feature.feature_id`; the producer's assignment of this PSM to a consensus feature (null when unlinked). It is NOT recomputable from shared identification fields, so it is materialized. Its inverse, `feature.psm_ids`, is a **computed softlink** — `Dataset.link_feature_psm()` groups `(feature_id, psm_id)` by `feature_id`; qpx does not materialize it ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). | int64, null | no |
+| `cross_links` | Cross-link information for XL-MS experiments. Each entry describes one cross-link site. `null` for non-cross-linked PSMs                                | array[struct], null | optional |
+| `ion_mobility` | Ion mobility value for the precursor ion                                                                                                                | float32, null | optional |
+| `mz_array` | Array of m/z values for the spectrum                                                                                                                    | array[float32], null | optional |
+| `intensity_array` | Array of intensity values for the spectrum                                                                                                              | array[float32], null | optional |
+| `charge_array` | Array of fragment ion charge values                                                                                                                     | array[int32], null | optional |
+| `ion_type_array` | Array of fragment ion type annotations (e.g., b1, y2, a2)                                                                                               | array[string], null | optional |
+| `ion_mobility_array` | Array of fragment ion mobility values                                                                                                                   | array[float32], null | optional |
+| `feature_id` | **Authoritative** (optional) foreign key to the linked Feature row through `feature.feature_id`; the producer's assignment of this PSM to a consensus feature (null when unlinked). It is NOT recomputable from shared identification fields, so it is materialized. Its inverse, `feature.psm_ids`, is a **computed softlink** — `Dataset.link_feature_psm()` groups `(feature_id, psm_id)` by `feature_id`; qpx does not materialize it ([bigbio/qpx#267](https://github.com/bigbio/qpx/issues/267)). | int64, null | optional |
 
 !!! note "Nullable vs Optional"
-    Core fields marked as "not required" are **nullable** -- the column always exists in the file but individual values may be null. Optional fields (protein accessions, spectral data) may be **absent from the file entirely**, depending on conversion settings. Protein mappings can be recovered by joining with the feature and protein group views.
+    Core fields marked as "not required" are **nullable** -- the column always exists in the file but individual values may be null. Optional fields (for example the spectral arrays) may be **absent from the file entirely**, depending on conversion settings.
 
 ### Cross-Linking Fields
 

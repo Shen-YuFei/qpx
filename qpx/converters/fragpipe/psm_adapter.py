@@ -121,29 +121,10 @@ class FragPipePsmAdapter(BaseConverter):
     # ------------------------------------------------------------------
 
     def _transform_batch(self, df: pd.DataFrame) -> list[dict]:
-        records: list[dict] = []
-        skipped = 0
         # Pre-extract column arrays for faster per-row access than to_dict("records")
         col_arrays = {col: df[col].values for col in df.columns}
-        n_rows = len(df)
-        for i in range(n_rows):
-            try:
-                row = {col: vals[i] for col, vals in col_arrays.items()}
-                rec = self._transform_row(row)
-                if rec:
-                    records.append(rec)
-            except (ValueError, TypeError, KeyError, IndexError, ArithmeticError) as e:
-                skipped += 1
-                self.logger.debug(f"Skipping FragPipe PSM row: {e}")
-        if skipped:
-            total = skipped + len(records)
-            self.logger.warning(
-                "Skipped %d / %d rows (%.1f%%) in batch",
-                skipped,
-                total,
-                100 * skipped / total if total else 0,
-            )
-        return records
+        rows = ({col: vals[i] for col, vals in col_arrays.items()} for i in range(len(df)))
+        return self._transform_rows_with_skip(rows, self._transform_row, "FragPipe PSM")
 
     def _transform_row(self, row) -> Optional[dict]:
         """Transform a single FragPipe psm.tsv row."""
@@ -152,6 +133,64 @@ class FragPipePsmAdapter(BaseConverter):
         sequence = str(row.get(r.get("sequence", "Peptide"), ""))
         charge = int(row.get(r.get("charge", "Charge"), 0))
 
+        spectrum_fields = self._psm_spectrum_fields(row)
+        observed_mz = spectrum_fields["observed_mz"]
+        calculated_mz = spectrum_fields["calculated_mz"]
+
+        # Protein accessions
+        protein_id = str(row.get(r.get("pg_accessions", "Protein"), ""))
+        protein_accessions = [protein_id] if protein_id else []
+
+        # Is decoy (bool) -- decoy prefix on any accession in the RAW protein field
+        # (rev_/REV_/DECOY_/decoy_), kept consistent with the feature/pg adapters.
+        is_decoy = is_decoy_accession(protein_id)
+
+        # Peptidoform -- build ProForma from sequence + Assigned Modifications
+        assigned_mods_raw = row.get("Assigned Modifications")
+        assigned_mods_str = str(assigned_mods_raw) if pd.notna(assigned_mods_raw) and assigned_mods_raw else ""
+        peptidoform = to_proforma(assigned_mods_str, sequence)
+
+        # Mass error (ppm) — compute from observed and calculated m/z
+        if observed_mz and calculated_mz:
+            mass_error_ppm = 1e6 * (observed_mz - calculated_mz) / calculated_mz
+        else:
+            mass_error_ppm = None
+
+        # Ion mobility
+        ion_mobility = safe_float(row.get("Ion Mobility"))
+
+        additional_scores, missed_cleavages, cv_params = self._psm_annotations(row)
+
+        # Modifications -- parse Assigned Modifications if present
+        modifications = None
+        assigned_mods = row.get("Assigned Modifications")
+        if pd.notna(assigned_mods) and assigned_mods:
+            _, modifications = to_modifications(str(assigned_mods), sequence)
+
+        return {
+            **spectrum_fields,
+            "sequence": sequence,
+            "peptidoform": peptidoform,
+            "modifications": modifications,
+            "charge": charge,
+            "is_decoy": is_decoy,
+            "mass_error_ppm": mass_error_ppm,
+            "additional_scores": additional_scores or None,
+            "predicted_rt": None,
+            "cv_params": cv_params or None,
+            "ion_mobility": ion_mobility,
+            "missed_cleavages": missed_cleavages,
+            "protein_accessions": protein_accessions or None,
+            "mz_array": None,
+            "intensity_array": None,
+            "charge_array": None,
+            "ion_type_array": None,
+            "ion_mobility_array": None,
+        }
+
+    def _psm_spectrum_fields(self, row: dict) -> dict:
+        """Extract source, spectrum, and precursor confidence fields."""
+        r = self._resolved
         # Parse Spectrum column for source file and scan
         spectrum_raw = str(row.get("Spectrum", ""))
         source_file, scan_number = _parse_spectrum_id(spectrum_raw)
@@ -182,29 +221,18 @@ class FragPipePsmAdapter(BaseConverter):
         pep = None
         if pp_prob is not None:
             pep = 1.0 - pp_prob if pp_prob <= 1.0 else pp_prob
+        return {
+            "run_file_name": run_file_name,
+            "scan": scan,
+            "observed_mz": observed_mz,
+            "calculated_mz": calculated_mz,
+            "rt": rt,
+            "posterior_error_probability": pep,
+        }
 
-        # Protein accessions
-        protein_id = str(row.get(r.get("pg_accessions", "Protein"), ""))
-        protein_accessions = [protein_id] if protein_id else []
-
-        # Is decoy (bool) -- decoy prefix on any accession in the RAW protein field
-        # (rev_/REV_/DECOY_/decoy_), kept consistent with the feature/pg adapters.
-        is_decoy = is_decoy_accession(protein_id)
-
-        # Peptidoform -- build ProForma from sequence + Assigned Modifications
-        assigned_mods_raw = row.get("Assigned Modifications")
-        assigned_mods_str = str(assigned_mods_raw) if pd.notna(assigned_mods_raw) and assigned_mods_raw else ""
-        peptidoform = to_proforma(assigned_mods_str, sequence)
-
-        # Mass error (ppm) — compute from observed and calculated m/z
-        if observed_mz and calculated_mz:
-            mass_error_ppm = 1e6 * (observed_mz - calculated_mz) / calculated_mz
-        else:
-            mass_error_ppm = None
-
-        # Ion mobility
-        ion_mobility = safe_float(row.get("Ion Mobility"))
-
+    @staticmethod
+    def _psm_annotations(row: dict) -> tuple:
+        """Collect search scores, cleavage count, and enzymatic termini."""
         # Additional scores
         additional_scores = []
         hyperscore = safe_float(row.get("Hyperscore"))
@@ -240,35 +268,4 @@ class FragPipePsmAdapter(BaseConverter):
                     "cv_value": str(int(termini)),
                 }
             )
-
-        # Modifications -- parse Assigned Modifications if present
-        modifications = None
-        assigned_mods = row.get("Assigned Modifications")
-        if pd.notna(assigned_mods) and assigned_mods:
-            _, modifications = to_modifications(str(assigned_mods), sequence)
-
-        return {
-            "sequence": sequence,
-            "peptidoform": peptidoform,
-            "modifications": modifications,
-            "charge": charge,
-            "posterior_error_probability": pep,
-            "is_decoy": is_decoy,
-            "calculated_mz": calculated_mz,
-            "observed_mz": observed_mz,
-            "mass_error_ppm": mass_error_ppm,
-            "additional_scores": additional_scores or None,
-            "predicted_rt": None,
-            "run_file_name": run_file_name,
-            "cv_params": cv_params or None,
-            "scan": scan,
-            "rt": rt,
-            "ion_mobility": ion_mobility,
-            "missed_cleavages": missed_cleavages,
-            "protein_accessions": protein_accessions or None,
-            "mz_array": None,
-            "intensity_array": None,
-            "charge_array": None,
-            "ion_type_array": None,
-            "ion_mobility_array": None,
-        }
+        return additional_scores, missed_cleavages, cv_params

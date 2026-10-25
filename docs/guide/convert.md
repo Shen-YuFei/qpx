@@ -362,7 +362,6 @@ qpxc convert maxquant \
     --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
     --output-folder ./output \
     --structures feature \
-    --batch-size 500000 \
     --verbose
 ```
 
@@ -376,7 +375,6 @@ qpxc convert maxquant \
     --sdrf-file tests/examples/maxquant/maxquant_full/PXD001819.sdrf.tsv \
     --output-folder ./output \
     --structures psm,feature,pg \
-    --batch-size 500000 \
     --verbose
 ```
 
@@ -392,7 +390,7 @@ Depending on `--structures` parameter:
 
 **Issue**: Memory errors with compressed evidence files
 
-- **Solution**: Reduce `--batch-size` or increase available RAM
+- **Solution**: Increase available RAM
 
 **Issue**: Missing Q-value information
 
@@ -404,7 +402,6 @@ Depending on `--structures` parameter:
 - Always provide `--protein-groups-file` when available for better data quality
 - Ensure SDRF sample names match MaxQuant experiment names
 - Use compressed files (.gz) to save disk space
-- Adjust `--batch-size` based on available memory
 - Use `--spectral-data` flag if downstream analysis requires spectral information
 
 ---
@@ -443,9 +440,8 @@ print(generate_example(convert_fragpipe_cmd, "Convert FragPipe PSM data with def
 
 ```bash
 qpxc convert fragpipe \
-    --msms-file /path/to/psm.tsv \
+    --psm-file /path/to/psm.tsv \
     --output-folder ./output \
-    --batch-size 500000 \
     --output-prefix fragpipe_psm
 ```
 
@@ -617,7 +613,6 @@ Depending on `--structures`:
 - Point `--psm-dir` to one CPTAC study directory containing `*.psm` files
 - Use `--structures` to skip views that are not needed
 - Increase `--max-memory` and `--max-cpus` for full-scale CPTAC studies
-- Use `--batch-size` to tune processing throughput for large study directories
 
 ---
 

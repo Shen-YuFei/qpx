@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -45,8 +44,8 @@ import click
     default=None,
     help="MS levels for the mz view (e.g. '2' or '1,2'). Default: all levels.",
 )
-@click.option("--max-cpus", default=24, show_default=True, help="Threads for the CDAP conversion")
-@click.option("--max-memory", default="16GB", show_default=True, help="Memory limit for the CDAP conversion")
+@click.option("--max-cpus", type=int, help="Threads for the CDAP conversion")
+@click.option("--max-memory", help="Memory limit for the CDAP conversion")
 @click.option(
     "--download-threads",
     default=24,
@@ -66,20 +65,7 @@ import click
     help="With multiple studies, abort on the first failure (default: continue and report)",
 )
 @click.option("--verbose", is_flag=True, help="Enable verbose logging")
-def pdc2qpx_cmd(
-    accession: str,
-    download_dir: Path,
-    output_folder: Path,
-    include_spectra: bool,
-    no_metadata: bool,
-    ms_levels: Optional[str],
-    max_cpus: int,
-    max_memory: str,
-    download_threads: int,
-    skip_download: bool,
-    stop_on_error: bool,
-    verbose: bool,
-):
+def pdc2qpx_cmd(**kwargs):
     """Download PDC/CPTAC studies and convert them to QPX datasets.
 
     ``--accession`` accepts a single ID, comma-separated IDs, or a CSV with a
@@ -101,6 +87,19 @@ def pdc2qpx_cmd(
         qpxc pdc2qpx -a cptac_lfq.csv \\
             --download-dir ./downloads --output-folder ./qpx --max-cpus 24
     """
+    accession = kwargs["accession"]
+    download_dir = kwargs["download_dir"]
+    output_folder = kwargs["output_folder"]
+    include_spectra = kwargs["include_spectra"]
+    no_metadata = kwargs["no_metadata"]
+    ms_levels = kwargs["ms_levels"]
+    max_cpus = kwargs["max_cpus"]
+    max_memory = kwargs["max_memory"]
+    download_threads = kwargs["download_threads"]
+    skip_download = kwargs["skip_download"]
+    stop_on_error = kwargs["stop_on_error"]
+    verbose = kwargs["verbose"]
+
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 

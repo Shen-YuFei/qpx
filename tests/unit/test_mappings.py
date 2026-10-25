@@ -74,13 +74,3 @@ class TestGetToolMeta:
 
         with pytest.raises(KeyError):
             get_tool_meta("nonexistent")
-
-
-class TestGetExtra:
-    """get_extra returns tool-specific config sections."""
-
-    def test_missing_extra_returns_none(self):
-        from qpx.converters.mappings import get_extra
-
-        result = get_extra("diann", "phospho_site_columns")
-        assert result is None

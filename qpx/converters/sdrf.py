@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 import pandas as pd
 
@@ -20,6 +21,32 @@ from qpx.writers.run import RunWriter
 from qpx.writers.sample import SampleWriter
 
 logger = logging.getLogger(__name__)
+
+
+def convert_sdrf_views(sdrf_path: str, output_folder: Path, prefix: str, ontology_entries: list[dict]) -> bool:
+    """Write the sample and run views and add the run ontology terms to ``ontology_entries``.
+
+    An SDRF the converter cannot handle (value, key, OS or type error) is logged
+    and its partial files removed; returns whether both views were written.
+    """
+    try:
+        with SdrfConverter() as sdrf_conv:
+            sdrf_conv.convert(
+                sdrf_path=sdrf_path,
+                sample_output=str(output_folder / f"{prefix}.sample.parquet"),
+                run_output=str(output_folder / f"{prefix}.run.parquet"),
+            )
+            ontology_entries.extend(sdrf_conv.run_ontology_entries())
+    except (ValueError, KeyError, OSError, TypeError) as exc:
+        logger.warning("SDRF conversion skipped (incomplete SDRF?): %s", exc)
+        for suffix in (".sample.parquet", ".run.parquet"):
+            corrupt = output_folder / f"{prefix}{suffix}"
+            if corrupt.exists():
+                corrupt.unlink()
+                logger.debug("Removed corrupt %s", corrupt)
+        return False
+    return True
+
 
 # Standard SDRF column names (lower-cased)
 _COL_SOURCE_NAME = "source name"
@@ -131,6 +158,108 @@ def _add_unique_run_label(
     seen_labels[label] = (sample_acc, str(label_raw))
 
 
+def _sample_characteristic_maps(sdrf_df: pd.DataFrame, skip_empty_properties: bool) -> tuple[dict, dict]:
+    """Resolve standard and extra sample characteristic columns."""
+    # Required fields — always written
+    _required_fields = {
+        "organism": _COL_ORGANISM,
+        "organism_part": _COL_ORGANISM_PART,
+    }
+
+    # Optional fields — only written when SDRF has meaningful values
+    _optional_fields = {
+        "disease": _COL_DISEASE,
+        "cell_line": _COL_CELL_LINE,
+        "cell_type": _COL_CELL_TYPE,
+        "sex": _COL_SEX,
+        "age": _COL_AGE,
+        "developmental_stage": _COL_DEV_STAGE,
+        "ancestry": _COL_ANCESTRY,
+        "individual": _COL_INDIVIDUAL,
+    }
+
+    # Determine which optional fields have real data across the full SDRF
+    active_optional: dict[str, str] = {}
+    for field_name, col_pattern in _optional_fields.items():
+        if skip_empty_properties and _all_sentinels(sdrf_df, col_pattern):
+            continue
+        active_optional[field_name] = col_pattern
+
+    # Combine into the full char_map for per-sample extraction
+    char_map = {**_required_fields, **active_optional}
+
+    # Discover extra characteristics columns not in the standard set
+    # biological replicate belongs in run.parquet, not sample.parquet
+    known_prefixes = (
+        set(_required_fields.values())
+        | set(_optional_fields.values())
+        | {
+            "characteristics[sample description",
+            _COL_BIO_REP,
+        }
+    )
+    extra_char_cols = [
+        c for c in sdrf_df.columns if c.startswith("characteristics[") and not any(c.startswith(k) for k in known_prefixes)
+    ]
+    # Group all SDRF columns that map to the same output characteristic.
+    extra_col_map: dict[str, list[str]] = {}
+    for col in extra_char_cols:
+        extra_col_map.setdefault(_normalize_char_name(col), []).append(col)
+    return char_map, extra_col_map
+
+
+def _run_samples(group: pd.DataFrame, run_file: str) -> list[dict]:
+    """Build run samples and their replicate values."""
+    # Build per-run samples list
+    samples = []
+    seen_labels: dict[str, tuple[str, str]] = {}
+    for row in group.to_dict("records"):
+        label_raw = row.get(_COL_LABEL, "")
+        # Normalize to the canonical channel label (e.g. the SDRF ontology
+        # form "label free sample" -> "LFQ") so run.samples[].label is the
+        # same join key that feature/pg intensities[].label carry.
+        label = normalize_label(_extract_nt(label_raw)) if pd.notna(label_raw) else ""
+
+        sample_acc = str(row.get(_COL_SOURCE_NAME, ""))
+        _add_unique_run_label(seen_labels, run_file, label, sample_acc, label_raw)
+
+        bio_rep = None
+        if _COL_BIO_REP in row and pd.notna(row[_COL_BIO_REP]):
+            try:
+                bio_rep = int(row[_COL_BIO_REP])
+            except (ValueError, TypeError):
+                bio_rep = None
+
+        tech_rep = None
+        if _COL_TECH_REP in row and pd.notna(row[_COL_TECH_REP]):
+            try:
+                tech_rep = int(row[_COL_TECH_REP])
+            except (ValueError, TypeError):
+                tech_rep = None
+
+        samples.append(
+            {
+                "sample_accession": sample_acc,
+                "label": label,
+                "biological_replicate": bio_rep,
+                "technical_replicate": tech_rep,
+            }
+        )
+
+    return samples
+
+
+def _run_term(group: pd.DataFrame, column: str, terms: set[tuple[str, str]]) -> str | None:
+    """Extract one run term and collect its ontology accession."""
+    name = None
+    values = _collect_column_values(group, column)
+    if values:
+        name = _extract_nt(str(values[0]))
+        if name:
+            terms.add((name, _extract_ac(str(values[0]))))
+    return name
+
+
 class SdrfConverter(BaseConverter):
     """Convert an SDRF TSV into ``sample.parquet`` and ``run.parquet``.
 
@@ -213,51 +342,7 @@ class SdrfConverter(BaseConverter):
                 "none") across every sample. Set to False to write all fields.
         """
 
-        # Required fields — always written
-        _required_fields = {
-            "organism": _COL_ORGANISM,
-            "organism_part": _COL_ORGANISM_PART,
-        }
-
-        # Optional fields — only written when SDRF has meaningful values
-        _optional_fields = {
-            "disease": _COL_DISEASE,
-            "cell_line": _COL_CELL_LINE,
-            "cell_type": _COL_CELL_TYPE,
-            "sex": _COL_SEX,
-            "age": _COL_AGE,
-            "developmental_stage": _COL_DEV_STAGE,
-            "ancestry": _COL_ANCESTRY,
-            "individual": _COL_INDIVIDUAL,
-        }
-
-        # Determine which optional fields have real data across the full SDRF
-        active_optional: dict[str, str] = {}
-        for field_name, col_pattern in _optional_fields.items():
-            if skip_empty_properties and _all_sentinels(sdrf_df, col_pattern):
-                continue
-            active_optional[field_name] = col_pattern
-
-        # Combine into the full char_map for per-sample extraction
-        char_map = {**_required_fields, **active_optional}
-
-        # Discover extra characteristics columns not in the standard set
-        # biological replicate belongs in run.parquet, not sample.parquet
-        known_prefixes = (
-            set(_required_fields.values())
-            | set(_optional_fields.values())
-            | {
-                "characteristics[sample description",
-                _COL_BIO_REP,
-            }
-        )
-        extra_char_cols = [
-            c for c in sdrf_df.columns if c.startswith("characteristics[") and not any(c.startswith(k) for k in known_prefixes)
-        ]
-        # Group all SDRF columns that map to the same output characteristic.
-        extra_col_map: dict[str, list[str]] = {}
-        for col in extra_char_cols:
-            extra_col_map.setdefault(_normalize_char_name(col), []).append(col)
+        char_map, extra_col_map = _sample_characteristic_maps(sdrf_df, skip_empty_properties)
         extra_column_names = sorted(extra_col_map)
 
         sample_groups = sdrf_df.groupby(_COL_SOURCE_NAME)
@@ -320,81 +405,12 @@ class SdrfConverter(BaseConverter):
         for run_file, group in run_groups:
             run_file = str(run_file)
 
-            # Build per-run samples list
-            samples = []
-            seen_labels: dict[str, tuple[str, str]] = {}
-            for row in group.to_dict("records"):
-                label_raw = row.get(_COL_LABEL, "")
-                # Normalize to the canonical channel label (e.g. the SDRF ontology
-                # form "label free sample" -> "LFQ") so run.samples[].label is the
-                # same join key that feature/pg intensities[].label carry.
-                label = normalize_label(_extract_nt(label_raw)) if pd.notna(label_raw) else ""
-
-                sample_acc = str(row.get(_COL_SOURCE_NAME, ""))
-                _add_unique_run_label(seen_labels, run_file, label, sample_acc, label_raw)
-
-                bio_rep = None
-                if _COL_BIO_REP in row and pd.notna(row[_COL_BIO_REP]):
-                    try:
-                        bio_rep = int(row[_COL_BIO_REP])
-                    except (ValueError, TypeError):
-                        bio_rep = None
-
-                tech_rep = None
-                if _COL_TECH_REP in row and pd.notna(row[_COL_TECH_REP]):
-                    try:
-                        tech_rep = int(row[_COL_TECH_REP])
-                    except (ValueError, TypeError):
-                        tech_rep = None
-
-                samples.append(
-                    {
-                        "sample_accession": sample_acc,
-                        "label": label,
-                        "biological_replicate": bio_rep,
-                        "technical_replicate": tech_rep,
-                    }
-                )
+            samples = _run_samples(group, run_file)
 
             # Assay name / run accession
             run_accession = run_file
 
-            # Fraction
-            fraction = None
-            if _COL_FRACTION in group.columns:
-                frac_vals = group[_COL_FRACTION].dropna().unique()
-                if len(frac_vals) > 0:
-                    fraction = str(frac_vals[0])
-
-            # Instrument (plain string; CV mapping in ontology.parquet)
-            instrument = None
-            inst_vals = _collect_column_values(group, _COL_INSTRUMENT)
-            if inst_vals:
-                instrument = _extract_nt(str(inst_vals[0]))
-                if instrument:
-                    self._run_instruments.add((instrument, _extract_ac(str(inst_vals[0]))))
-
-            # Enzymes (list of plain strings)
-            enzymes = None
-            enz_vals = _collect_column_values(group, _COL_ENZYME)
-            if enz_vals:
-                enzyme_pairs = [(_extract_nt(str(v)), _extract_ac(str(v))) for v in enz_vals if pd.notna(v)]
-                enzymes = [name for name, _ in enzyme_pairs]
-                self._run_enzymes.update(pair for pair in enzyme_pairs if pair[0])
-
-            # Dissociation method (plain string)
-            dissoc = None
-            dissoc_vals = _collect_column_values(group, _COL_DISSOC)
-            if dissoc_vals:
-                dissoc = _extract_nt(str(dissoc_vals[0]))
-                if dissoc:
-                    self._run_dissociation.add((dissoc, _extract_ac(str(dissoc_vals[0]))))
-
-            # Acquisition method (plain string; e.g. DDA / DIA)
-            acquisition_method = None
-            acq_vals = _collect_column_values(group, _COL_ACQUISITION)
-            if acq_vals:
-                acquisition_method = _extract_nt(str(acq_vals[0])) or None
+            acquisition_fields = self._run_acquisition_fields(group)
 
             # Original file name with extension (e.g. "S1_Frontal_1.raw")
             file_name_vals = group["_file_name"].dropna().unique()
@@ -405,11 +421,7 @@ class SdrfConverter(BaseConverter):
                 "run_file_name": run_file,
                 "file_name": file_name,
                 "samples": samples,
-                "fraction": fraction,
-                "instrument": instrument,
-                "enzymes": enzymes,
-                "dissociation_method": dissoc,
-                "acquisition_method": acquisition_method,
+                **acquisition_fields,
                 "modification_parameters": mod_params or None,
             }
             records.append(rec)
@@ -418,6 +430,43 @@ class SdrfConverter(BaseConverter):
             writer.write_batch(records)
 
         self.logger.info(f"Wrote {len(records)} runs to {output_path}")
+
+    def _run_acquisition_fields(self, group: pd.DataFrame) -> dict:
+        """Extract acquisition fields and collect their ontology terms."""
+        # Fraction
+        fraction = None
+        if _COL_FRACTION in group.columns:
+            frac_vals = group[_COL_FRACTION].dropna().unique()
+            if len(frac_vals) > 0:
+                fraction = str(frac_vals[0])
+
+        # Instrument (plain string; CV mapping in ontology.parquet)
+        instrument = _run_term(group, _COL_INSTRUMENT, self._run_instruments)
+
+        # Enzymes (list of plain strings)
+        enzymes = None
+        enz_vals = _collect_column_values(group, _COL_ENZYME)
+        if enz_vals:
+            enzyme_pairs = [(_extract_nt(str(v)), _extract_ac(str(v))) for v in enz_vals if pd.notna(v)]
+            enzymes = [name for name, _ in enzyme_pairs]
+            self._run_enzymes.update(pair for pair in enzyme_pairs if pair[0])
+
+        # Dissociation method (plain string)
+        dissoc = _run_term(group, _COL_DISSOC, self._run_dissociation)
+
+        # Acquisition method (plain string; e.g. DDA / DIA)
+        acquisition_method = None
+        acq_vals = _collect_column_values(group, _COL_ACQUISITION)
+        if acq_vals:
+            acquisition_method = _extract_nt(str(acq_vals[0])) or None
+
+        return {
+            "fraction": fraction,
+            "instrument": instrument,
+            "enzymes": enzymes,
+            "dissociation_method": dissoc,
+            "acquisition_method": acquisition_method,
+        }
 
     # ------------------------------------------------------------------
     # Ontology enrichment — resolve run metadata to CV accessions

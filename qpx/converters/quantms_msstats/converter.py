@@ -19,14 +19,17 @@ from qpx.core.scores import field_ontology_entries
 
 logger = logging.getLogger(__name__)
 
+# Feature rows per written batch; also the Parquet row-group size.
+_BATCH_SIZE = 500_000
+
 
 class QuantmsMsstatsConverter(BaseOrchestrator):
     """Convert QuantMS legacy MSstats plus SDRF input to QPX Parquet."""
 
     def __init__(
         self,
-        max_memory: str = "16GB",
-        max_cpus: int = 4,
+        max_memory: str | None = None,
+        max_cpus: int | None = None,
         compression: str = "zstd",
     ):
         self._max_memory = max_memory
@@ -40,7 +43,6 @@ class QuantmsMsstatsConverter(BaseOrchestrator):
         output_folder: str | Path,
         output_prefix: str | None = None,
         project_accession: str | None = None,
-        batch_size: int = 50_000,
     ) -> str:
         """Run Feature, SDRF, and metadata conversion."""
         msstats_file = Path(msstats_file)
@@ -52,18 +54,7 @@ class QuantmsMsstatsConverter(BaseOrchestrator):
             prefix = "quantms_msstats"
 
         feature_path = output_folder / f"{prefix}.feature.parquet"
-        with QuantmsMsstatsFeatureAdapter(
-            duckdb_memory=self._max_memory,
-            duckdb_threads=self._max_cpus,
-            compression=self._compression,
-        ) as adapter:
-            adapter.convert(
-                msstats_path=str(msstats_file),
-                sdrf_path=str(sdrf_file),
-                output_path=str(feature_path),
-                chunksize=batch_size,
-            )
-            resolved = adapter.get_resolved_columns()
+        resolved = self._write_features(msstats_file, sdrf_file, feature_path)
 
         with SdrfConverter(
             duckdb_memory=self._max_memory,
@@ -96,6 +87,21 @@ class QuantmsMsstatsConverter(BaseOrchestrator):
             provenance_records=provenance_records,
         )
         return prefix
+
+    def _write_features(self, msstats_file: Path, sdrf_file: Path, feature_path: Path) -> dict[str, str]:
+        """Write feature batches and return the resolved source columns."""
+        with QuantmsMsstatsFeatureAdapter(
+            duckdb_memory=self._max_memory,
+            duckdb_threads=self._max_cpus,
+            compression=self._compression,
+        ) as adapter:
+            adapter.convert(
+                msstats_path=str(msstats_file),
+                sdrf_path=str(sdrf_file),
+                output_path=str(feature_path),
+                chunksize=_BATCH_SIZE,
+            )
+            return adapter.get_resolved_columns()
 
     @staticmethod
     def provenance_records(

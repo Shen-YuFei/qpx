@@ -85,7 +85,7 @@ consumers MUST filter on `is_decoy` themselves (for example with
 
 | Field | Description | Type | Required |
 |-------|-------------|------|----------|
-| `label` | Channel/label (e.g., TMT126, LFQ); **one row per label** in each unit where the group has identification evidence, including labels without a quantity (see [Missing quantities and absent groups](#missing-quantities-and-absent-groups)). Null only when identification-only input provides no label context. Part of the default identity composite. | `string` | Yes (nullable) |
+| `label` | Channel/label (e.g., TMT126, LFQ); **one row per label** in each unit where the group has identification evidence, including labels without a quantity (see [Missing quantities and absent groups](#missing-quantities-and-absent-groups)). Null only when identification-only input provides no label context. Part of the default identity composite. | `string` | No |
 | `intensity` | Primary raw intensity value for this label. Null when the identified group has no reported quantity. | `float32` | No |
 | `additional_intensities` | Pre-computed intensity values from the upstream tool (normalized, LFQ, iBAQ, etc.) for this row's label. See [Intensities](intensities.md) | `array[struct]` | No |
 | `additional_scores` | Additional scores and metrics (posterior error probability, confidence, etc.). See [Scores](scores.md) | `array[struct]` | No |

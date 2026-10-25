@@ -18,6 +18,9 @@ from qpx.core.scores import field_ontology_entries, score_ontology_entries
 
 logger = logging.getLogger(__name__)
 
+# Rows per DuckDB->pandas batch.
+_BATCH_SIZE = 200_000
+
 
 class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
     """Orchestrate full CDAP conversion to QPX format.
@@ -33,8 +36,8 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
 
     def __init__(
         self,
-        max_memory: str = "16GB",
-        max_cpus: int = 4,
+        max_memory: str | None = None,
+        max_cpus: int | None = None,
         compression: str = "zstd",
     ):
         self._max_memory = max_memory
@@ -52,7 +55,6 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
         output_folder: str | Path,
         output_prefix: str = "cdap",
         structures: Optional[Iterable[str]] = None,
-        batch_size: int = 200_000,
         project_accession: Optional[str] = None,
     ) -> None:
         """Convert a single CDAP study directory to QPX Parquet files.
@@ -63,7 +65,6 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
             output_prefix: Prefix for output filenames (default: ``cdap``).
             structures: Iterable of structures to produce (subset of
                 ``{psm, feature, pg}``). When ``None`` all three are produced.
-            batch_size: Rows per DuckDB->pandas batch.
             project_accession: PDC study accession written into
                 ``dataset.parquet``.
         """
@@ -79,15 +80,15 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
         feature_path = output_folder / f"{prefix}.feature.parquet"
         pg_path = output_folder / f"{prefix}.pg.parquet"
 
-        self._convert_psm_and_feature(requested, psm_dir, psm_path, feature_path, batch_size, ontology_entries)
-        self._convert_pg(requested, feature_path, pg_path, batch_size, ontology_entries)
+        self._convert_psm_and_feature(requested, psm_dir, psm_path, feature_path, ontology_entries)
+        self._convert_pg(requested, feature_path, pg_path, ontology_entries)
         self._write_metadata(output_folder, prefix, requested, ontology_entries, project_accession)
 
     # ------------------------------------------------------------------
     # Conversion sub-steps
     # ------------------------------------------------------------------
 
-    def _convert_psm_and_feature(self, requested, psm_dir, psm_path, feature_path, batch_size, ontology_entries):
+    def _convert_psm_and_feature(self, requested, psm_dir, psm_path, feature_path, ontology_entries):
         """Run PSM and Feature adapters with shared DuckDB connection."""
         need_shared = PSM in requested and FEATURE in requested
         shared_conn = create_converter_connection(memory_limit=self._max_memory, threads=self._max_cpus) if need_shared else None
@@ -99,7 +100,7 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
                     compression=self._compression,
                     conn=shared_conn,
                 ) as adapter:
-                    adapter.convert(psm_dir=str(psm_dir), output_path=str(psm_path), chunksize=batch_size)
+                    adapter.convert(psm_dir=str(psm_dir), output_path=str(psm_path), chunksize=_BATCH_SIZE)
                     ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PSM))
                     self._resolved_mappings_by_view[PSM] = adapter.get_resolved_columns()
                 logger.info("CDAP PSM conversion complete")
@@ -111,7 +112,7 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
                     compression=self._compression,
                     conn=shared_conn,
                 ) as adapter:
-                    adapter.convert(psm_dir=str(psm_dir), output_path=str(feature_path), chunksize=batch_size)
+                    adapter.convert(psm_dir=str(psm_dir), output_path=str(feature_path), chunksize=_BATCH_SIZE)
                     ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=FEATURE))
                     self._resolved_mappings_by_view[FEATURE] = adapter.get_resolved_columns()
                 logger.info("CDAP feature conversion complete")
@@ -119,7 +120,7 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
             if shared_conn is not None:
                 shared_conn.close()
 
-    def _convert_pg(self, requested, feature_path, pg_path, batch_size, ontology_entries):
+    def _convert_pg(self, requested, feature_path, pg_path, ontology_entries):
         """Run PG adapter using existing feature.parquet."""
         if PG not in requested:
             return
@@ -135,7 +136,7 @@ class CdapConverter(BaseOrchestrator):  # pylint: disable=too-few-public-methods
             duckdb_threads=self._max_cpus,
             compression=self._compression,
         ) as adapter:
-            adapter.convert(feature_path=str(feature_path), output_path=str(pg_path), chunksize=batch_size)
+            adapter.convert(feature_path=str(feature_path), output_path=str(pg_path), chunksize=_BATCH_SIZE)
             ontology_entries.extend(score_ontology_entries(adapter.get_discovered_scores(), view=PG))
         logger.info("CDAP PG conversion complete")
 

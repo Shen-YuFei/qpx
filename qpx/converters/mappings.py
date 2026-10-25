@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -38,8 +37,3 @@ def get_tool_meta(tool: str) -> dict[str, str]:
         "tool_versions": entry["tool_versions"],
         "rt_unit": entry.get("rt_unit", "minute"),
     }
-
-
-def get_extra(tool: str, key: str) -> Any:
-    """Return a tool-specific extra config section, or None if absent."""
-    return _load()[tool].get(key)

@@ -66,6 +66,22 @@ def _assert_cdap_psm(study_dir: Path) -> None:
         )
 
 
+def _add_pdc_metadata(study: str, output_folder: Path, download_threads: int, outputs: dict[str, Path]) -> None:
+    """Build the sample/run views from PDC metadata into ``outputs``; a failure only logs a warning."""
+    try:
+        from qpx.converters.cdap.pdc_sample_run import build_sample_run_from_pdc
+
+        built = build_sample_run_from_pdc(study, output_folder, prefix=study, threads=download_threads)
+        if built:
+            outputs.update(built)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        # Best-effort: network (OSError/URLError), GraphQL (RuntimeError), or
+        # data-shape failures must not break the main conversion. The builder
+        # writes via temp files + atomic rename, so a failure here never
+        # clobbers a previously-good sample/run parquet.
+        logger.warning("PDC metadata sample/run build skipped for %s: %s", study, exc)
+
+
 def run_pdc2qpx(
     study: str,
     download_dir: Path,
@@ -74,8 +90,8 @@ def run_pdc2qpx(
     include_spectra: bool = False,
     include_metadata: bool = True,
     ms_levels: Optional[list[int]] = None,
-    max_cpus: int = 24,
-    max_memory: str = "16GB",
+    max_cpus: int | None = None,
+    max_memory: str | None = None,
     download_threads: int = 24,
     skip_download: bool = False,
 ) -> dict[str, Path]:
@@ -131,18 +147,7 @@ def run_pdc2qpx(
 
     # 2. Optional sample/run views from PDC metadata (channel -> sample mapping).
     if include_metadata:
-        try:
-            from qpx.converters.cdap.pdc_sample_run import build_sample_run_from_pdc
-
-            built = build_sample_run_from_pdc(study, output_folder, prefix=study, threads=download_threads)
-            if built:
-                outputs.update(built)
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
-            # Best-effort: network (OSError/URLError), GraphQL (RuntimeError), or
-            # data-shape failures must not break the main conversion. The builder
-            # writes via temp files + atomic rename, so a failure here never
-            # clobbers a previously-good sample/run parquet.
-            logger.warning("PDC metadata sample/run build skipped for %s: %s", study, exc)
+        _add_pdc_metadata(study, output_folder, download_threads, outputs)
 
     # 3. Optional full-spectra mz.parquet from mzML files.
     if include_spectra:
@@ -198,8 +203,8 @@ def run_pdc2qpx_batch(
     include_spectra: bool = False,
     include_metadata: bool = True,
     ms_levels: Optional[list[int]] = None,
-    max_cpus: int = 24,
-    max_memory: str = "16GB",
+    max_cpus: int | None = None,
+    max_memory: str | None = None,
     download_threads: int = 24,
     skip_download: bool = False,
     continue_on_error: bool = True,

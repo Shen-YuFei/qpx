@@ -61,6 +61,7 @@ Under `qpxc validate` (strict):
 - `proteoform_qvalue` is finite and in [0, 1];
 - `kind` is one of `canonical`, `isoform`, `variant`, `chain`, and `evidence` one of `specific`, `shared` (or null);
 - a populated `pg_id` resolves to a pg row with the same `label` and `grouped_runs`;
+- that pg row's `pg_accessions` hold the row's `family`;
 - a populated `best_psm_id` resolves to a `psm.psm_id` when the dataset has a psm view.
 
 `source` and `prior_evidence` are open vocabularies: producers name their own sources and evidence classes.

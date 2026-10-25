@@ -30,6 +30,16 @@ from qpx.writers.pg import PgWriter
 
 logger = logging.getLogger(__name__)
 
+_BATCH_SQL = """
+            SELECT
+                $select_clause
+            FROM report
+            $channel_join
+            WHERE $run_col IN ($placeholders)
+              AND $pg_col IS NOT NULL
+              $qvalue_filter
+            """
+
 _EXT_RE = re.compile(rf"\.({RUN_EXTENSIONS})$", re.IGNORECASE)
 
 # Extra columns needed for PG aggregation but not in the field mappings
@@ -383,15 +393,8 @@ class DiannPgAdapter(DiaNNBaseAdapter):
     # Batch processing
     # ------------------------------------------------------------------
 
-    def _process_batch(
-        self,
-        runs: list[str],
-        pg_matrix_indexed: pd.DataFrame,
-        actual_report_cols: set[str],
-        channel_col: str | None = None,
-        qvalue_threshold: Optional[float] = None,
-    ) -> list[dict]:
-        """Process a batch of runs for PG quantification."""
+    def _batch_select_parts(self, actual_report_cols: set[str], channel_col: str | None) -> list[str]:
+        """Build the source and aggregation columns for a PG batch."""
         # Build SQL SELECT clause from resolved field mappings
         r = self._resolved_pg
 
@@ -412,6 +415,19 @@ class DiannPgAdapter(DiaNNBaseAdapter):
         # Push run_file_name extension stripping into SQL
         run_col = r["run_file_name"]
         select_parts.append(f"{run_name_sql(validate_identifier(run_col))} AS run_file_name_clean")
+
+        return select_parts
+
+    def _build_batch_sql(
+        self,
+        runs: list[str],
+        actual_report_cols: set[str],
+        channel_col: str | None,
+        qvalue_threshold: Optional[float],
+    ) -> str:
+        """Build a PG batch query with run, channel, and q-value constraints."""
+        r = self._resolved_pg
+        select_parts = self._batch_select_parts(actual_report_cols, channel_col)
 
         select_clause = ",\n                ".join(select_parts)
 
@@ -443,22 +459,26 @@ class DiannPgAdapter(DiaNNBaseAdapter):
                 channel_col=validate_identifier(channel_col),
             )
         stmt = sql_build(
-            """
-            SELECT
-                $select_clause
-            FROM report
-            $channel_join
-            WHERE $run_col IN ($placeholders)
-              AND $pg_col IS NOT NULL
-              $qvalue_filter
-            """,
+            _BATCH_SQL,
             select_clause=select_clause,
             channel_join=channel_join,
-            run_col=validate_identifier(run_col),
+            run_col=validate_identifier(r["run_file_name"]),
             placeholders=placeholders,
             pg_col=validate_identifier(pg_col),
             qvalue_filter=qvalue_filter,
         )
+        return stmt
+
+    def _process_batch(
+        self,
+        runs: list[str],
+        pg_matrix_indexed: pd.DataFrame,
+        actual_report_cols: set[str],
+        channel_col: str | None = None,
+        qvalue_threshold: Optional[float] = None,
+    ) -> list[dict]:
+        """Process a batch of runs for PG quantification."""
+        stmt = self._build_batch_sql(runs, actual_report_cols, channel_col, qvalue_threshold)
         report_df = self._conn.execute(stmt, runs).df()
 
         if report_df.empty:

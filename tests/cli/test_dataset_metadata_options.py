@@ -1,13 +1,15 @@
 """Shared dataset-metadata options of the convert commands."""
 
 import json
+from http.client import IncompleteRead
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import pytest
 from click.testing import CliRunner
 
-from qpx.cli.convert import _apply_software, _finish_conversion, convert
+from qpx.cli.convert import convert
+from qpx.cli.convert.postprocess import _apply_software, _finish_conversion
 from qpx.dataset import Dataset
 from tests.converters.test_openms_consensus import _invoke_consensus_convert
 
@@ -136,12 +138,13 @@ def test_enrich_pride_sets_project_title(tmp_path, monkeypatch):
     assert pq.read_table(folder / "t.dataset.parquet").to_pylist()[0]["project_title"] == "T"
 
 
-def test_enrich_pride_failure_is_a_warning(tmp_path, monkeypatch):
-    """A PRIDE lookup failure prints a warning and the conversion still succeeds."""
+@pytest.mark.parametrize("error", [ConnectionError("PRIDE unavailable"), IncompleteRead(b"")])
+def test_enrich_pride_failure_is_a_warning(tmp_path, monkeypatch, error):
+    """A PRIDE lookup failure, or a response cut off while read, prints a warning and the conversion still succeeds."""
 
     def _unavailable(acc):
         """Simulate a PRIDE API outage."""
-        raise RuntimeError("PRIDE unavailable")
+        raise error
 
     monkeypatch.setattr("qpx.core.pride.fetch_pride_metadata", _unavailable)
 
@@ -266,7 +269,8 @@ def test_openms_consensus_and_diann_finish_conversion_once_with_their_prefix(tmp
         calls.append(prefix)
         return _finish_conversion(output_folder, prefix, *args, **kwargs)
 
-    monkeypatch.setattr("qpx.cli.convert._finish_conversion", spy)
+    monkeypatch.setattr("qpx.cli.convert.openms_consensus._finish_conversion", spy)
+    monkeypatch.setattr("qpx.cli.convert.diann._finish_conversion", spy)
 
     consensus, _ = _run(tmp_path / "consensus", prefix="t")
     assert consensus.exit_code == 0, consensus.output
