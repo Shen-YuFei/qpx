@@ -121,8 +121,8 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         }
         self._resolved = resolve_columns(_FEATURE_MAP, actual_cols)
 
-        # Step 3: Load SDRF for sample mapping
-        sample_map, experiment_type, tmt_channels = self._load_sdrf(sdrf_path)
+        # Step 3: Load the experiment type and TMT channels from the SDRF
+        _, experiment_type, tmt_channels = self._load_sdrf(sdrf_path)
 
         # Step 3b: Build lookup maps from proteinGroups.txt
         pg_maps = self._build_protein_group_maps(protein_groups_path)
@@ -139,7 +139,7 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
         ) as writer:
             for batch in self._query_batched(evidence_query, chunksize):
                 df = batch.to_pandas()
-                records = self._transform_batch(df, sample_map, experiment_type, tmt_channels, pg_maps)
+                records = self._transform_batch(df, experiment_type, tmt_channels, pg_maps)
                 if records:
                     self._track_scores(records)
                     writer.write_batch(records)
@@ -376,7 +376,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
     def _transform_batch(
         self,
         df: pd.DataFrame,
-        sample_map: dict,
         experiment_type: str,
         tmt_channels: list[str],
         pg_maps: dict | None = None,
@@ -394,7 +393,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
             row = {col: vals[i] for col, vals in col_arrays.items()}
             rec = self._transform_row(
                 row,
-                sample_map,
                 experiment_type,
                 tmt_channels,
                 pg_maps,
@@ -407,7 +405,6 @@ class MaxQuantFeatureAdapter(MaxQuantBaseAdapter):
     def _transform_row(
         self,
         row,
-        sample_map: dict,
         experiment_type: str,
         tmt_channels: list[str],
         pg_maps: dict | None = None,

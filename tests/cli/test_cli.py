@@ -2,6 +2,7 @@
 
 import re
 
+import pytest
 from click.testing import CliRunner
 
 from qpx.cli.main import qpx_main
@@ -294,6 +295,57 @@ class TestTransformNormalizeAccessionsCLI:
 
         assert result.exit_code == 0, result.output
         assert normalized == ["openms.feature.parquet", "openms.pg.parquet"]
+
+    @pytest.mark.parametrize("in_place", [False, True])
+    def test_normalize_accessions_preserves_site_proteoform_pg_links(self, tmp_path, in_place):
+        """Normalize linked site/proteoform accessions without changing ids or other fields."""
+        import pyarrow.parquet as pq
+
+        from qpx.dataset import Dataset
+        from qpx.writers import FeatureWriter, PgWriter, ProteoformWriter, SiteWriter
+        from tests.conftest import make_feature_record, make_pg_record
+        from tests.unit.test_site_proteoform import make_proteoform_record, make_site_record
+
+        source = tmp_path / "input"
+        source.mkdir()
+        family, protein, accession = "sp|P04637|P53_HUMAN", "sp|P04637-2|P53_HUMAN", "sp|P04637-3|P53_HUMAN"
+        with PgWriter(source / "exp.pg.parquet") as writer:
+            writer.write_batch([make_pg_record(anchor_protein=family, pg_accessions=[family, protein], intensities=[])])
+        pg_id = pq.read_table(source / "exp.pg.parquet").column("pg_id")[0].as_py()
+        feature = make_feature_record(anchor_protein=family)
+        feature["pg_accessions"] = [{"accession": a, "start": None, "end": None} for a in (family, protein)]
+        feature["pg_ids"] = [pg_id]
+        records = {
+            "feature": (FeatureWriter, feature),
+            "site": (SiteWriter, make_site_record(protein_accession=protein, family=family, pg_id=pg_id)),
+            "proteoform": (
+                ProteoformWriter,
+                make_proteoform_record(family=family, accession=accession, kind="isoform", pg_id=pg_id),
+            ),
+        }
+        for view, (writer_class, record) in records.items():
+            with writer_class(source / f"exp.{view}.parquet") as writer:
+                writer.write_batch([record])
+        before = {view: pq.read_table(source / f"exp.{view}.parquet") for view in ("site", "proteoform")}
+        with Dataset(source) as dataset:
+            assert all(result.is_valid for result in dataset.validate(strict=True).values())
+        output = source if in_place else tmp_path / "output"
+        destination = ["--in-place"] if in_place else ["--output", str(output)]
+        result = CliRunner().invoke(qpx_main, ["transform", "normalize-accessions", "--dataset", str(source), *destination])
+        assert result.exit_code == 0, result.output
+        with Dataset(output) as dataset:
+            validation = dataset.validate(strict=True)
+            assert all(result.is_valid for result in validation.values()), validation
+        expected = {
+            "site": {"protein_accession": "P04637-2", "family": "P04637"},
+            "proteoform": {"family": "P04637", "accession": "P04637-3"},
+        }
+        for view, columns in expected.items():
+            table = pq.read_table(output / f"exp.{view}.parquet")
+            for name, value in columns.items():
+                assert table.column(name).to_pylist() == [value]
+            assert table.drop(list(columns)).equals(before[view].drop(list(columns)))
+            assert f"exp.{view}.parquet: 1 rows, 1 accessions normalized" in result.output
 
 
 class TestTransformUpdateMetadataCLI:

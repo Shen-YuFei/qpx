@@ -251,3 +251,22 @@ def test_channel_keyed_feature_is_rejected(tmp_path, caplog):
         ds = Dataset(tmp_path, file_prefix="old")
     assert ds.feature is None
     assert any("feature" in rec.message for rec in caplog.records)
+
+
+def test_feature_with_another_intensity_layout_reaches_validation(tmp_path):
+    """A feature file whose intensities are not label structs opens, and validation reports the type."""
+    from qpx.dataset import Dataset
+
+    pq.write_table(
+        pa.table(
+            {
+                "sequence": ["PEPTIDE"],
+                "run_file_name": ["run_01"],
+                "intensities": pa.array([[1.0]], type=pa.list_(pa.float64())),
+            }
+        ),
+        str(tmp_path / "bad.feature.parquet"),
+    )
+
+    issues = Dataset(tmp_path, file_prefix="bad").validate()["feature"].issues
+    assert any(issue.check == "type_mismatch" and issue.column == "intensities" for issue in issues)

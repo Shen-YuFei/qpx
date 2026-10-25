@@ -174,9 +174,16 @@ def check_feature_schema_compatible(schema, source: str | Path) -> None:
     Takes the schema rather than a path so S3 datasets, whose glob PyArrow cannot
     open, can pass the schema of the registered DuckDB view.
     """
+    import pyarrow as pa
+
     if "intensities" not in schema.names:
         return
-    keys = {field.name for field in schema.field("intensities").type.value_type}
+    intensities = schema.field("intensities").type
+    # Any other layout is reported by the schema checks.
+    is_list = pa.types.is_list(intensities) or pa.types.is_large_list(intensities)
+    if not (is_list and pa.types.is_struct(intensities.value_type)):
+        return
+    keys = {field.name for field in intensities.value_type}
     if "channel" in keys and "label" not in keys:
         raise QpxVersionError(
             "Incompatible feature file: "

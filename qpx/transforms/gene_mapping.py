@@ -217,7 +217,7 @@ def _annotate_table(table: pa.Table, gene_map: dict[str, set[str]], names_type: 
     ).take(encoded.indices)
     names = mapped
     if "gg_names" in table.column_names:
-        names = pc.call_function("if_else", [mapped.is_valid(), mapped, table.column("gg_names")])
+        names = pc.call_function("if_else", [mapped.is_valid(), mapped, table.column("gg_names").cast(names_type)])
         table = table.drop_columns("gg_names")
     table = table.append_column("gg_names", names)
     return table, table.num_rows - mapped.null_count

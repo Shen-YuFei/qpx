@@ -425,7 +425,9 @@ class BaseWriter:
         names = set(table.schema.names)
         id_arrow_field = pa.field(id_field, pa.int64(), nullable=False)
         if self._keeps_every_id(table, id_field):
-            return table.set_column(table.schema.get_field_index(id_field), id_arrow_field, table.column(id_field))
+            return table.set_column(
+                table.schema.get_field_index(id_field), id_arrow_field, table.column(id_field).cast(pa.int64())
+            )
         n = table.num_rows
         # Hash the PERSISTED (schema-cast) value of each composite field so the id
         # is identical regardless of which write path built the table — e.g. a

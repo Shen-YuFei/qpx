@@ -29,6 +29,8 @@ _FULL_RE = re.compile(
     r"(?P<name>.+)$"
 )
 
+_SCALAR_ACCESSION_COLUMNS = ("anchor_protein", "protein_accession", "accession", "family")
+
 
 def to_bare(accession: str) -> str:
     """Convert full UniProt accession to bare form.
@@ -102,7 +104,7 @@ def normalize_parquet(
     Parquet encoding.
 
     Args:
-        parquet_path: Input parquet file (feature.parquet or pg.parquet).
+        parquet_path: Input feature, pg, site or proteoform Parquet file.
         output_path: Where to write the normalized file.
         direction: "forward" (full → bare) or "reverse" (bare → full).
         fasta_lookup: Required for reverse. {bare_accession: full_header}.
@@ -120,9 +122,9 @@ def normalize_parquet(
     parquet_path, output_path = Path(parquet_path), Path(output_path)
     parquet = pq.ParquetFile(str(parquet_path))
     total_rows = parquet.metadata.num_rows
-    anchor_counts, accessions = _scan_accessions(parquet)
+    accession_counts, accessions = _scan_accessions(parquet)
     changes = {accession: new for accession in accessions if accession and (new := transform_fn(accession)) != accession}
-    n_changed = sum(count for accession, count in anchor_counts.items() if accession in changes)
+    n_changed = sum(count for accession, count in accession_counts.items() if accession in changes)
 
     if not changes:
         if output_path.resolve() != parquet_path.resolve():
@@ -136,7 +138,7 @@ def normalize_parquet(
             staging.unlink(missing_ok=True)
 
     logger.info(
-        "Normalized %s → %s (%d rows, %d anchor_protein changes)",
+        "Normalized %s → %s (%d rows, %d accession changes)",
         parquet_path.name,
         output_path.name,
         total_rows,
@@ -146,25 +148,27 @@ def normalize_parquet(
 
 
 def _scan_accessions(parquet: pq.ParquetFile) -> tuple[dict[str, int], set[str]]:
-    """Count each ``anchor_protein`` value and collect every distinct accession."""
+    """Count the first scalar accession column and collect every distinct accession."""
     names = parquet.schema_arrow.names
-    columns = [name for name in ("anchor_protein", "pg_accessions") if name in names]
-    anchor_counts: dict[str, int] = {}
+    scalar_columns = [name for name in _SCALAR_ACCESSION_COLUMNS if name in names]
+    columns = [name for name in (*_SCALAR_ACCESSION_COLUMNS, "pg_accessions") if name in names]
+    accession_counts: dict[str, int] = {}
     accessions: set[str] = set()
     if not columns:
-        return anchor_counts, accessions
+        return accession_counts, accessions
     for batch in parquet.iter_batches(columns=columns):
-        if "anchor_protein" in columns:
-            for entry in pc.call_function("value_counts", [batch.column("anchor_protein")]).to_pylist():
+        for name in scalar_columns:
+            for entry in pc.call_function("value_counts", [batch.column(name)]).to_pylist():
                 if entry["values"] is not None:
-                    anchor_counts[entry["values"]] = anchor_counts.get(entry["values"], 0) + entry["counts"]
+                    accessions.add(entry["values"])
+                    if name == scalar_columns[0]:
+                        accession_counts[entry["values"]] = accession_counts.get(entry["values"], 0) + entry["counts"]
         if "pg_accessions" in columns:
             members = _member_accessions(batch.column("pg_accessions"))
             if members is not None:
                 accessions.update(pc.call_function("unique", [members]).to_pylist())
-    accessions.update(anchor_counts)
     accessions.discard(None)
-    return anchor_counts, accessions
+    return accession_counts, accessions
 
 
 def _member_accessions(column: pa.Array) -> pa.Array | None:
@@ -177,13 +181,14 @@ def _member_accessions(column: pa.Array) -> pa.Array | None:
 
 
 def _normalize_table(table: pa.Table, changes: dict[str, str]) -> pa.Table:
-    """Apply *changes* to ``anchor_protein`` and the ``pg_accessions`` members of one batch."""
-    if "anchor_protein" in table.schema.names:
-        index = table.schema.get_field_index("anchor_protein")
-        column = table.column(index)
-        table = table.set_column(
-            index, table.schema.field(index), pa.chunked_array([_mapped(c, changes) for c in column.chunks], column.type)
-        )
+    """Apply *changes* to scalar accession columns and the ``pg_accessions`` members of one batch."""
+    for name in _SCALAR_ACCESSION_COLUMNS:
+        if name in table.schema.names:
+            index = table.schema.get_field_index(name)
+            column = table.column(index)
+            table = table.set_column(
+                index, table.schema.field(index), pa.chunked_array([_mapped(c, changes) for c in column.chunks], column.type)
+            )
     if "pg_accessions" in table.schema.names:
         index = table.schema.get_field_index("pg_accessions")
         column = table.column(index)

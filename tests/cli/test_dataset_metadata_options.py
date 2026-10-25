@@ -1,6 +1,7 @@
 """Shared dataset-metadata options of the convert commands."""
 
 import json
+from http.client import IncompleteRead
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -137,12 +138,13 @@ def test_enrich_pride_sets_project_title(tmp_path, monkeypatch):
     assert pq.read_table(folder / "t.dataset.parquet").to_pylist()[0]["project_title"] == "T"
 
 
-def test_enrich_pride_failure_is_a_warning(tmp_path, monkeypatch):
-    """A PRIDE lookup failure prints a warning and the conversion still succeeds."""
+@pytest.mark.parametrize("error", [ConnectionError("PRIDE unavailable"), IncompleteRead(b"")])
+def test_enrich_pride_failure_is_a_warning(tmp_path, monkeypatch, error):
+    """A PRIDE lookup failure, or a response cut off while read, prints a warning and the conversion still succeeds."""
 
     def _unavailable(acc):
         """Simulate a PRIDE API outage."""
-        raise ConnectionError("PRIDE unavailable")
+        raise error
 
     monkeypatch.setattr("qpx.core.pride.fetch_pride_metadata", _unavailable)
 

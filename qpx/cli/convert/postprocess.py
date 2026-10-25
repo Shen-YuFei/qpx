@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from http.client import HTTPException
 from pathlib import Path
 from typing import Optional
 
@@ -82,7 +83,7 @@ def _maybe_enrich_pride(output_folder, project_accession: str | None, enrich: bo
         with Dataset(str(output_folder), file_prefix=prefix) as ds:
             ds.enrich_from_pride(project_accession)
         click.echo(f"Enriched dataset with PRIDE metadata for {project_accession}")
-    except (OSError, ValueError) as exc:
+    except (OSError, HTTPException, ValueError) as exc:
         _warn(f"Could not enrich from PRIDE: {exc}")
 
 

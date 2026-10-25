@@ -8,7 +8,7 @@ import click
 
 
 def _accession_target_files(dataset: Path) -> list[str]:
-    """Return the Feature and protein-group files for a QPX dataset."""
+    """Return the accession-bearing view files for a QPX dataset."""
     from qpx.transforms.utils import discover_qpx_file_prefix
 
     try:
@@ -21,6 +21,9 @@ def _accession_target_files(dataset: Path) -> list[str]:
     ]
     if not target_files:
         raise click.ClickException(f"No feature or protein-group Parquet file found in {dataset}")
+    target_files.extend(
+        name for name in (f"{file_prefix}.site.parquet", f"{file_prefix}.proteoform.parquet") if (dataset / name).is_file()
+    )
     return target_files
 
 
@@ -81,8 +84,8 @@ def transform_normalize_accessions_cmd(
     Reverse: converts bare accessions back to full UniProt format.
     Requires a FASTA database to look up the full identifiers.
 
-    Normalizes anchor_protein and pg_accessions in both
-    feature.parquet and pg.parquet files.
+    Normalizes protein accessions in feature.parquet, pg.parquet,
+    site.parquet and proteoform.parquet files.
 
     \b
     Examples:
