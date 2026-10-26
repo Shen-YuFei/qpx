@@ -283,6 +283,21 @@ def test_a_cross_label_pg_link_fails_strict_validation(tmp_path):
     assert any(i.check == "pg_link_context" for i in result.errors)
 
 
+def test_a_proteoform_pg_link_must_hold_the_family(tmp_path):
+    """A proteoform pg_id must name a pg row holding its family."""
+    from qpx.writers import PgWriter, ProteoformWriter
+    from tests.conftest import make_pg_record
+
+    with PgWriter(tmp_path / "exp.pg.parquet") as w:
+        w.write_batch([make_pg_record(anchor_protein="Q99999", intensities=[])])
+    pg_id = pq.read_table(tmp_path / "exp.pg.parquet").column("pg_id")[0].as_py()
+    with ProteoformWriter(tmp_path / "exp.proteoform.parquet") as w:
+        w.write_batch([make_proteoform_record(pg_id=pg_id)])
+    result = _validate(tmp_path, "proteoform")
+    assert any(i.check == "pg_link_membership" for i in result.errors)
+    assert not any(i.check == "pg_link_context" for i in result.errors)
+
+
 @pytest.mark.parametrize("overrides", [{"kind": "gene"}, {"evidence": "maybe"}])
 def test_proteoform_values_outside_the_vocabulary_fail_strict_validation(tmp_path, overrides):
     """A kind or evidence value outside its vocabulary fails strict validation."""
@@ -322,6 +337,21 @@ def test_a_site_links_to_the_identification_pg_row(tmp_path):
         w.write_batch([make_site_record(pg_id=labelled["TMT126"])])
     result = _validate(tmp_path, "site")
     assert any(i.check == "pg_link_context" for i in result.errors)
+
+
+def test_a_site_pg_link_must_hold_the_protein(tmp_path):
+    """A site pg_id must name a pg row holding its protein_accession."""
+    from qpx.writers import PgWriter, SiteWriter
+    from tests.conftest import make_pg_record
+
+    with PgWriter(tmp_path / "exp.pg.parquet") as w:
+        w.write_batch([make_pg_record(anchor_protein="Q99999", intensities=[])])
+    pg_id = pq.read_table(tmp_path / "exp.pg.parquet").column("pg_id")[0].as_py()
+    with SiteWriter(tmp_path / "exp.site.parquet") as w:
+        w.write_batch([make_site_record(pg_id=pg_id)])
+    result = _validate(tmp_path, "site")
+    assert any(i.check == "pg_link_membership" for i in result.errors)
+    assert not any(i.check == "pg_link_context" for i in result.errors)
 
 
 def test_best_psm_id_must_resolve_when_the_psm_view_is_present(tmp_path):

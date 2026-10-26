@@ -218,6 +218,22 @@ class TestOpenMSConverter:
         for fname in expected_files:
             assert (output / fname).exists(), f"Missing: {fname}"
 
+    def test_additional_scores_get_ontology_entries(self, tmp_path):
+        """Scores carried in additional_scores are annotated in the ontology view."""
+        qpx_dir = tmp_path / "openms_qpx"
+        qpx_dir.mkdir()
+        _write_minimal_qpx(qpx_dir)
+        psm = make_psm_record()
+        psm["additional_scores"] = [{"score_name": "percolator_score", "score_value": 1.2, "higher_better": True}]
+        with PsmWriter(qpx_dir / "quantms.psm.parquet") as w:
+            w.write_batch([psm])
+
+        output = tmp_path / "output"
+        OpenMSConverter(qpx_dir=qpx_dir).convert(output_folder=output, output_prefix="openms")
+
+        ontology = pq.read_table(output / "openms.ontology.parquet").to_pylist()
+        assert any(row["ontology_accession"] == "MS:1001492" and row["view"] == "psm" for row in ontology)
+
     def test_core_tables_validated(self, tmp_path):
         """Core tables should pass QPX schema validation after copy."""
         qpx_dir = tmp_path / "openms_qpx"

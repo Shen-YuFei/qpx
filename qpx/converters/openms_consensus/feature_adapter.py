@@ -10,13 +10,13 @@ the QPX feature schema. Protein-level quantity is not produced here.
 
 from __future__ import annotations
 
-import ast
 import logging
 import re
 from itertools import chain
 from typing import Optional
 
 from qpx.converters.channel_labels import normalize_label
+from qpx.converters.openms_consensus.modifications import localization_scores, to_modifications
 from qpx.converters.openms_consensus.protein_groups import ProteinGroupIndex, identification_identifier
 from qpx.converters.utils import safe_float
 from qpx.core.cleavage import count_missed_cleavages
@@ -303,125 +303,6 @@ def to_proforma(aa_sequence) -> str:
     s = re.sub(r"\.\(([^)]+)\)$", r"-[\1]", s)  # C-terminal
     s = re.sub(r"\(([^)]+)\)", r"[\1]", s)  # internal residue mods
     return s
-
-
-def _parse_site_scores(raw) -> dict[int, float]:
-    """Parse a Luciphor ``Luciphor_site_scores`` UserParam into {position: score}.
-
-    The value is a stringified dict (e.g. ``{1: -31.36, 9: 31.36}``) keyed by
-    1-based amino-acid index. Positional ``None`` values are dropped so a site
-    without a localisation score contributes no score entry.
-    """
-    if not raw:
-        return {}
-    try:
-        parsed = ast.literal_eval(str(raw))
-    except (ValueError, SyntaxError, TypeError):
-        return {}  # malformed literal -> no scores
-    if not isinstance(parsed, dict):
-        return {}
-    out = {}
-    for k, v in parsed.items():
-        try:
-            out[int(k)] = float(v)
-        except (TypeError, ValueError):
-            continue  # unparseable position or a None/non-numeric score
-    return out
-
-
-def to_modifications(aa_sequence, site_scores: dict[int, list[dict]] | None = None) -> list[dict]:
-    """Convert a pyopenms ``AASequence`` to the QPX ``modifications`` structure.
-
-    Each modification is ``{name, accession, positions: [{position, amino_acid,
-    scores}]}`` — the residue position (1-based) plus, when a site-localisation
-    score dict is supplied, the per-site localisation score(s) (as QPX ``score``
-    structs). N- and C-terminal modifications are reported at position 1 /
-    ``len(sequence)`` with an ``amino_acid`` of ``None`` (no single residue
-    carries them), mirroring ``to_proforma``'s ``[UNIMOD:N]-`` / ``-[UNIMOD:N]``
-    rendering.
-    """
-    if not aa_sequence.isModified():
-        return None
-    mods: list[dict] = []
-    seen: dict[tuple[str, str | None], dict] = {}
-
-    def _add_mod(name: str, accession: str | None, position: int, amino_acid: str | None, scores: list[dict] | None) -> None:
-        key = (name, accession)
-        entry = seen.get(key)
-        if entry is None:
-            entry = {"name": name, "accession": accession, "positions": []}
-            seen[key] = entry
-            mods.append(entry)
-        entry["positions"].append({"position": position, "amino_acid": amino_acid, "scores": scores})
-
-    def _acc(accession) -> str | None:
-        # Normalise pyopenms "UniMod:N" to QPX's canonical "UNIMOD:N".
-        if not accession:
-            return None
-        return str(accession).replace("UniMod:", "UNIMOD:")
-
-    for i in range(aa_sequence.size()):
-        mod = aa_sequence[i].getModification()
-        if not mod:
-            continue
-        _add_mod(
-            mod.getId() or "",
-            _acc(mod.getUniModAccession()),
-            i + 1,
-            aa_sequence[i].getOneLetterCode(),
-            site_scores.get(i + 1) if site_scores else None,
-        )
-
-    nterm = aa_sequence.getNTerminalModification()
-    if nterm:
-        # N-terminal position is always 0 (amino_acid null); see the QPX
-        # modifications spec.
-        _add_mod(nterm.getId() or "", _acc(nterm.getUniModAccession()), 0, None, None)
-    cterm = aa_sequence.getCTerminalModification()
-    if cterm:
-        # C-terminal position is always length + 1 (amino_acid null).
-        _add_mod(cterm.getId() or "", _acc(cterm.getUniModAccession()), aa_sequence.size() + 1, None, None)
-    return mods or None
-
-
-# Site-localisation algorithms whose UserParams OpenMS may stamp onto peptide
-# hits: ``<name>_pep_score`` (peptide-level score) and ``<name>_site_scores``
-# (a ``{position: score}`` dict keyed by 1-based residue index). Multiple
-# algorithms may be present in one file (e.g. a run localised by Ascore and
-# another by PhosphoRS), so all matches are collected rather than a single one.
-_LOCALIZATION_ALGORITHMS = ("Luciphor", "Ascore", "PhosphoRS", "AScore")
-
-
-def localization_scores(hit) -> tuple[list[dict] | None, dict[int, list[dict]]]:
-    """Return ``(additional_scores, site_scores)`` from a hit's site-localisation UserParams.
-
-    For each known localisation algorithm present on the hit, ``<Algo>_pep_score``
-    and ``<Algo>_global_flr`` (when present) become ``additional_scores`` entries
-    (the QPX ``score`` struct); ``<Algo>_site_scores`` is parsed into
-    ``{position: [score, ...]}`` so :func:`to_modifications` can attach the
-    per-site localisation score(s) to the matching modification position.
-    """
-    additional: list[dict] = []
-    site_scores: dict[int, list[dict]] = {}
-    for algo in _LOCALIZATION_ALGORITHMS:
-        pep_key = f"{algo}_pep_score"
-        if hit.metaValueExists(pep_key):
-            additional.append(
-                {"score_name": pep_key.lower(), "score_value": float(hit.getMetaValue(pep_key)), "higher_better": None}
-            )
-        flr_key = f"{algo}_global_flr"
-        if hit.metaValueExists(flr_key):
-            additional.append(
-                {"score_name": flr_key.lower(), "score_value": float(hit.getMetaValue(flr_key)), "higher_better": None}
-            )
-        site_key = f"{algo}_site_scores"
-        if hit.metaValueExists(site_key):
-            parsed = _parse_site_scores(hit.getMetaValue(site_key))
-            for pos, score in parsed.items():
-                site_scores.setdefault(pos, []).append(
-                    {"score_name": f"{algo.lower()}_site_score", "score_value": score, "higher_better": None}
-                )
-    return (additional or None), site_scores
 
 
 def load_consensus_map(consensusxml_path: str):
@@ -793,6 +674,39 @@ def _best_removed_per_run(pids, removed, map_info, cf_runs, resolve_run) -> list
     return best
 
 
+def _feature_peptide_fields(cf, hit, enzyme) -> dict:
+    """Build peptide, precursor and localisation fields shared by all runs."""
+    seq_obj = hit.getSequence()
+    peptidoform = to_proforma(seq_obj)
+    sequence = seq_obj.toUnmodifiedString()
+    additional_scores, site_scores = localization_scores(hit)
+    modifications = to_modifications(seq_obj, site_scores)
+    charge = int(cf.getCharge() or hit.getCharge() or 0)
+    is_decoy = is_decoy_hit(hit)
+    observed_mz = float(cf.getMZ()) if cf.getMZ() else 0.0
+    streamed_consensus_rt = getattr(cf, "consensus_rt", None)
+    consensus_rt = float(cf.getRT() if streamed_consensus_rt is None else streamed_consensus_rt)
+    calculated_mz = float(seq_obj.getMZ(charge)) if charge else observed_mz
+    error_ppm = mass_error_ppm(calculated_mz, observed_mz) if charge > 0 else None
+    # Missed cleavages are a property of the peptide and the search enzyme, both
+    # of which are in hand; the DIA-NN path already reports them (bigbio/qpx#300).
+    missed = count_missed_cleavages(sequence, enzyme) if enzyme else None
+
+    return {
+        "sequence": sequence,
+        "peptidoform": peptidoform,
+        "modifications": modifications,
+        "charge": charge,
+        "is_decoy": is_decoy,
+        "calculated_mz": calculated_mz,
+        "observed_mz": observed_mz,
+        "mass_error_ppm": error_ppm,
+        "missed_cleavages": missed,
+        "consensus_rt": consensus_rt,
+        "additional_scores": additional_scores,
+    }
+
+
 def feature_records_for_cf(
     cf,
     map_info: dict[int, tuple[str, str]],
@@ -822,26 +736,11 @@ def feature_records_for_cf(
     confidence_by_run = _confidence_by_run(pids, map_info, cf_runs=cf_runs, resolve_run=resolve_run, confidence=confidence)
     evidence_by_run, all_positions = _feature_evidence_by_run(pids, map_info, cf_runs, resolve_run)
     hit = pids[0].getHits()[0]
-    seq_obj = hit.getSequence()
-    peptidoform = to_proforma(seq_obj)
-    sequence = seq_obj.toUnmodifiedString()
-    additional_scores, site_scores = localization_scores(hit)
-    modifications = to_modifications(seq_obj, site_scores)
-    charge = int(cf.getCharge() or hit.getCharge() or 0)
-    is_decoy = is_decoy_hit(hit)
-    observed_mz = float(cf.getMZ()) if cf.getMZ() else 0.0
-    streamed_consensus_rt = getattr(cf, "consensus_rt", None)
-    consensus_rt = float(cf.getRT() if streamed_consensus_rt is None else streamed_consensus_rt)
-    calculated_mz = float(seq_obj.getMZ(charge)) if charge else observed_mz
+    peptide_fields = _feature_peptide_fields(cf, hit, enzyme)
     protein_fields = _protein_group_fields(pids[0], group_map, group_meta)
     protein_fields_by_run = _protein_groups_by_run(pids, map_info, cf_runs, group_map, group_meta, resolve_run=resolve_run)
     if any(fields != protein_fields for fields in protein_fields_by_run.values()):
         protein_fields = dict.fromkeys(protein_fields)
-    error_ppm = mass_error_ppm(calculated_mz, observed_mz) if charge > 0 else None
-    # Missed cleavages are a property of the peptide and the search enzyme, both
-    # of which are in hand; the DIA-NN path already reports them (bigbio/qpx#300).
-    missed = count_missed_cleavages(sequence, enzyme) if enzyme else None
-
     records: list[dict] = []
     for run, entry in by_run.items():
         intensities = [{"label": label, "intensity": inten} for label, inten in entry["labels"].items()]
@@ -849,25 +748,15 @@ def feature_records_for_cf(
         run_protein_fields = protein_fields_by_run.get(run, protein_fields)
         records.append(
             {
-                "sequence": sequence,
-                "peptidoform": peptidoform,
-                "modifications": modifications,
-                "charge": charge,
+                **peptide_fields,
                 "run_file_name": run,
                 "scan": scan_by_run.get(run, []),
                 "rt": entry["rt"],
                 "intensities": intensities,
                 "posterior_error_probability": posterior_error_probability,
                 "peptide_qvalue": peptide_qvalue,
-                "is_decoy": is_decoy,
-                "calculated_mz": calculated_mz,
-                "observed_mz": observed_mz,
-                "mass_error_ppm": error_ppm,
-                "missed_cleavages": missed,
-                "consensus_rt": consensus_rt,
                 **run_protein_fields,
                 **_feature_identification_fields(run, run_protein_fields, evidence_by_run, all_positions),
-                "additional_scores": additional_scores,
             }
         )
     return records

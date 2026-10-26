@@ -30,8 +30,8 @@ class DatasetCollection:
     def __init__(
         self,
         datasets: list[Dataset],
-        duckdb_memory: str = "32GB",
-        duckdb_threads: int = 4,
+        duckdb_memory: str | None = None,
+        duckdb_threads: int | None = None,
     ):
         self.datasets = datasets
         self._engine = DuckDBEngine(

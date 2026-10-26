@@ -16,6 +16,7 @@ from qpx.converters.channel_labels import (
     resolve_channel_labels,
 )
 from qpx.converters.openms_consensus.feature_adapter import to_modifications, to_proforma
+from qpx.converters.quantms_msstats.queries import _NORMALIZED_SQL
 from qpx.core.files import run_file_stem
 from qpx.core.sdrf import validate_sdrf_data_files
 from qpx.core.sql import escape_path, sql_build, validate_identifier, validate_table
@@ -45,6 +46,21 @@ def _run_alias_key(value: object) -> str:
     if match:
         return match.group(1)
     return run_file_stem(basename).lower()
+
+
+def _register_run_aliases(row: dict, run_file_name: str, alias_to_run: dict[str, str]) -> None:
+    """Register SDRF run aliases, rejecting ambiguous mappings."""
+    for column in _RUN_ALIAS_COLUMNS:
+        value = row.get(column)
+        if value is None or pd.isna(value) or not str(value).strip():
+            continue
+        key = _run_alias_key(value)
+        if not key:
+            continue
+        existing = alias_to_run.get(key)
+        if existing is not None and existing != run_file_name:
+            raise ValueError(f"SDRF run alias {key!r} maps to both {existing!r} and {run_file_name!r}")
+        alias_to_run[key] = run_file_name
 
 
 def _split_proteins(values: Iterable[str]) -> list[str]:
@@ -217,17 +233,7 @@ class QuantmsMsstatsFeatureAdapter(BaseConverter):
             seen_pairs[pair] = sample
             valid_pairs.append({"run_file_name": run_file_name, "label": label})
 
-            for column in _RUN_ALIAS_COLUMNS:
-                value = row.get(column)
-                if value is None or pd.isna(value) or not str(value).strip():
-                    continue
-                key = _run_alias_key(value)
-                if not key:
-                    continue
-                existing = alias_to_run.get(key)
-                if existing is not None and existing != run_file_name:
-                    raise ValueError(f"SDRF run alias {key!r} maps to both {existing!r} and {run_file_name!r}")
-                alias_to_run[key] = run_file_name
+            _register_run_aliases(row, run_file_name, alias_to_run)
 
         if not alias_to_run:
             raise ValueError("SDRF input contains no usable run aliases")
@@ -350,32 +356,7 @@ class QuantmsMsstatsFeatureAdapter(BaseConverter):
             order_expr = "1"
 
         query = sql_build(
-            """
-            CREATE OR REPLACE TEMP TABLE _normalized AS
-            SELECT trim(CAST(m.$protein AS VARCHAR)) AS protein_raw,
-                   trim(CAST(m.$peptide AS VARCHAR)) AS peptide_raw,
-                   p.sequence,
-                   p.peptidoform,
-                   TRY_CAST(m.$charge AS SMALLINT) AS charge,
-                   COALESCE(rr.run_file_name, ru.run_file_name) AS run_file_name,
-                   rr.run_file_name AS reference_file,
-                   ru.run_file_name AS run_file,
-                   TRY_CAST(m.$intensity AS FLOAT) AS intensity,
-                   $rt_expr AS rt,
-                   $scan_expr AS scan_number,
-                   $reference_expr AS reference_raw,
-                   $label_expr AS intensity_label,
-                   $order_expr AS channel_order,
-                   count(DISTINCT trim(CAST(m.$protein AS VARCHAR)))
-                     OVER (PARTITION BY p.sequence) = 1
-                     AND NOT contains(trim(CAST(m.$protein AS VARCHAR)), ';') AS is_unique
-            FROM _msstats_input m
-            LEFT JOIN _run_aliases rr ON rr.alias_key = $reference_key
-            LEFT JOIN _run_aliases ru ON ru.alias_key = $run_key
-            LEFT JOIN _peptide_lookup p
-              ON p.peptide_raw = trim(CAST(m.$peptide AS VARCHAR))
-            $channel_join
-            """,
+            _NORMALIZED_SQL,
             protein=protein,
             peptide=peptide,
             charge=charge,

@@ -101,13 +101,12 @@ pip install venn pyopenms
        --output-folder ./output
    ```
 
-4. For MaxQuant, use the `--batch-size` and `--max-memory` options:
+4. For MaxQuant, use the `--max-memory` option:
 
    ```bash
    qpxc convert maxquant \
        --msms-file msms.txt \
        --output-folder ./output \
-       --batch-size 50000 \
        --max-memory 8GB
    ```
 

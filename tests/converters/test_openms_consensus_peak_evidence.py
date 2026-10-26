@@ -5,9 +5,9 @@ from copy import deepcopy
 import pytest
 from defusedxml import ElementTree
 
-from qpx.converters.openms_consensus import converter
+from qpx.converters.openms_consensus import conversion
 from qpx.converters.openms_consensus import streaming as stream_reader
-from qpx.converters.openms_consensus.converter import _stream_feature_psm
+from qpx.converters.openms_consensus.conversion import _stream_feature_psm
 from qpx.core.data.identity import derive_id
 from tests.converters.test_openms_consensus_merged_ids import (
     _HEADER,
@@ -77,7 +77,7 @@ def _flush_every_record(monkeypatch):
         kwargs["batch"] = 1
         return _stream_feature_psm(*args, **kwargs)
 
-    monkeypatch.setattr(converter, "_stream_feature_psm", write_small_batches)
+    monkeypatch.setattr(conversion, "_stream_feature_psm", write_small_batches)
 
 
 @pytest.mark.parametrize("streaming", [False, True])

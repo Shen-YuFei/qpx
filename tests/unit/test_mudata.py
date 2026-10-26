@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 mudata = pytest.importorskip("mudata")
@@ -24,10 +25,9 @@ anndata = pytest.importorskip("anndata")
 from qpx.converters.orchestrator import BaseOrchestrator  # noqa: E402
 from qpx.dataset import Dataset  # noqa: E402
 from qpx.mudata import (  # noqa: E402
-    _LABEL_FIELD_QUERIES,
+    _LABEL_QUERIES,
     _attach_uns_metadata,
     _detect_intensity_label,
-    _detect_label_field,
     build_mudata,
 )
 from qpx.version import QPX_SPEC_VERSION  # noqa: E402
@@ -80,8 +80,6 @@ class _TableAwareEngine:
     def execute(self, sql: str, params=None) -> _FakeRowResult:  # noqa: ARG002
         for table, label in self._table_labels.items():
             if table in sql:
-                if "typeof" in sql.lower():
-                    return _FakeRowResult('STRUCT("label" VARCHAR, intensity FLOAT)[]')
                 return _FakeRowResult(label)
         return _FakeRowResult(None)
 
@@ -186,9 +184,9 @@ def test_attach_uns_metadata_allows_hdf5_write(tmp_path):
 
 
 def test_label_field_query_generates_table_specific_sql():
-    """_LABEL_FIELD_QUERIES must embed the table name, not hardcode 'feature'."""
-    sql_feat = _LABEL_FIELD_QUERIES[("label", "feature")]
-    sql_pg = _LABEL_FIELD_QUERIES[("label", "pg")]
+    """_LABEL_QUERIES must embed the table name, not hardcode 'feature'."""
+    sql_feat = _LABEL_QUERIES["feature"]
+    sql_pg = _LABEL_QUERIES["pg"]
     assert "feature" in sql_feat and "pg" not in sql_feat
     assert "pg" in sql_pg and "feature" not in sql_pg
 
@@ -478,6 +476,30 @@ def test_build_mudata_lfq_default_stays_run_level(tmp_path):
     assert list(precursor.obs["sample_accession"]) == ["lfq-run_01-LFQ", "lfq-run_02-LFQ"]
 
 
+def test_run_without_optional_columns_keeps_sample_metadata(tmp_path):
+    """fraction and instrument may be absent from run (bigbio/qpx#356); readers fill them with null."""
+    _write_quant_bundle(
+        tmp_path,
+        "z",
+        [{"label": "TMT126", "intensity": 100.0}, {"label": "TMT127N", "intensity": 200.0}],
+        [{"label": "TMT126", "intensity": 1000.0}, {"label": "TMT127N", "intensity": 2000.0}],
+    )
+    run_path = tmp_path / "z.run.parquet"
+    pq.write_table(pq.read_table(run_path, columns=["run_accession", "run_file_name", "samples"]), run_path)
+
+    dataset = Dataset(tmp_path, file_prefix="z")
+    try:
+        precursor = build_mudata(dataset, modalities=["precursors"]).mod["precursors"]
+        quantified = dataset.feature.for_quantification(dataset).to_df()
+    finally:
+        dataset.close()
+
+    assert list(precursor.obs["sample_accession"]) == ["z_TMT126", "z_TMT127N"]
+    assert {"fraction", "instrument"} <= set(precursor.obs.columns)
+    assert sorted(quantified["sample_accession"]) == ["z_TMT126", "z_TMT127N"]
+    assert quantified["fraction"].isna().all()
+
+
 def test_build_mudata_lfq_all_labels_keeps_sample_accession(tmp_path):
     """all_intensity_labels=True (orchestrator path) must not drop LFQ metadata.
 
@@ -506,11 +528,8 @@ def test_build_mudata_lfq_all_labels_keeps_sample_accession(tmp_path):
     assert list(precursor.obs["sample_accession"]) == ["lfq-run_01-LFQ", "lfq-run_02-LFQ"]
 
 
-def test_detect_label_field_uses_label_for_current_schema(tmp_path):
-    """The current intensities struct is {label, intensity}; queries must use i.label.
-
-    Guards the schema drift where some paths hardcoded i.channel.
-    """
+def test_precursor_queries_match_label_entries(tmp_path):
+    """The intensities struct is {label, intensity}; the precursor queries must match its rows."""
     _write_multi_run_bundle(
         tmp_path,
         "tmt",
@@ -519,8 +538,6 @@ def test_detect_label_field_uses_label_for_current_schema(tmp_path):
 
     dataset = Dataset(tmp_path, file_prefix="tmt")
     try:
-        assert _detect_label_field(dataset._engine, "feature") == "label"
-        assert _detect_label_field(dataset._engine, "pg") == "label"
         # The label queries must actually match rows (non-empty intensity matrix).
         mdata = build_mudata(dataset, modalities=["precursors"])
         assert mdata.mod["precursors"].X.nnz > 0

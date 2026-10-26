@@ -15,7 +15,6 @@ import pandas as pd
 from qpx.converters.base import resolve_columns
 from qpx.converters.cdap.base_adapter import CdapBaseAdapter
 from qpx.converters.mappings import get_field_mappings
-from qpx.converters.ptm import compute_precursor_mz
 from qpx.writers.psm import PsmWriter
 
 _PSM_MAP = get_field_mappings("cdap", "psm")
@@ -155,7 +154,7 @@ class CdapPsmAdapter(CdapBaseAdapter):
         # an unparseable token (e.g. a CHEMMOD unknown-mass tag), keep it NULL
         # rather than falling back to a measured precursor m/z, which would
         # silently corrupt the theoretical-mass semantics (bigbio/qpx#250).
-        calculated_mz = compute_precursor_mz(peptidoform, charge) if peptidoform and charge else None
+        calculated_mz = self._calculated_mz(peptidoform, charge)
 
         mass_error_ppm = self._optional_float(row.get("mass_error_ppm"))
         rt = self._optional_float(row.get("rt"))

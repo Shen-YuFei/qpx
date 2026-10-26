@@ -1,0 +1,118 @@
+"""Convert CLI fragpipe implementation."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import click
+
+from .options import (
+    _compression_option,
+    _dataset_metadata_options,
+    _max_cpus_option,
+    _max_memory_option,
+    _output_folder_option,
+    _output_prefix_option,
+    _project_accession_option,
+    _verbose_option,
+)
+from .postprocess import _finish_conversion
+
+
+@click.command("fragpipe")
+@click.option(
+    "--psm-file",
+    help="FragPipe psm.tsv file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--ion-file",
+    help="FragPipe combined_ion.tsv file (for feature conversion)",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--pg-file",
+    help="FragPipe combined_protein.tsv file (for PG conversion)",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--sdrf-file",
+    help="SDRF metadata file (for sample/run conversion)",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--experiment-annotation-file",
+    help=("FragPipe experiment_annotation.tsv mapping experiments to member raw files"),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@_output_folder_option
+@_output_prefix_option
+@_max_memory_option
+@_max_cpus_option
+@_project_accession_option
+@_compression_option
+@_verbose_option
+@_dataset_metadata_options
+def convert_fragpipe_cmd(**kwargs):
+    """Convert FragPipe output to QPX format.
+
+    Reads FragPipe result files and converts them into QPX Parquet format.
+    Supports psm.tsv, combined_ion.tsv, and combined_protein.tsv.
+
+    \b
+    Examples:
+        # Convert PSMs only
+        qpxc convert fragpipe \\
+            --psm-file psm.tsv \\
+            --output-folder ./qpx_output
+
+        # Convert features + protein groups
+        qpxc convert fragpipe \\
+            --ion-file combined_ion.tsv \\
+            --pg-file combined_protein.tsv \\
+            --sdrf-file metadata.sdrf.tsv \\
+            --experiment-annotation-file experiment_annotation.tsv \\
+            --output-folder ./qpx_output
+    """
+    psm_file = kwargs["psm_file"]
+    ion_file = kwargs["ion_file"]
+    pg_file = kwargs["pg_file"]
+    sdrf_file = kwargs["sdrf_file"]
+    experiment_annotation_file = kwargs["experiment_annotation_file"]
+    output_folder = kwargs["output_folder"]
+    output_prefix = kwargs["output_prefix"]
+    max_memory = kwargs["max_memory"]
+    max_cpus = kwargs["max_cpus"]
+    project_accession = kwargs["project_accession"]
+    compression = kwargs["compression"]
+    verbose = kwargs["verbose"]
+    metadata = kwargs["metadata"]
+
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if not any([psm_file, ion_file, pg_file]):
+        raise click.ClickException("No input files provided. Supply at least one of --psm-file, --ion-file, or --pg-file.")
+
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    from qpx.converters.fragpipe import FragPipeConverter
+
+    converter = FragPipeConverter(
+        output_directory=output_folder, max_memory=max_memory, max_cpus=max_cpus, compression=compression
+    )
+    converter.convert(
+        psm_file=psm_file,
+        ion_file=ion_file,
+        pg_file=pg_file,
+        sdrf_file=sdrf_file,
+        experiment_annotation_file=experiment_annotation_file,
+        output_prefix=output_prefix,
+        project_accession=project_accession,
+    )
+
+    prefix = output_prefix or "fragpipe"
+    _finish_conversion(output_folder, prefix, project_accession, metadata)
+
+    click.echo(f"FragPipe conversion complete. Output: {output_folder}")

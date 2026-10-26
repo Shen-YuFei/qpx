@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -27,6 +28,28 @@ def _validate_set_value(value: str, name: str) -> str:
     return value
 
 
+def _set_resources(conn: duckdb.DuckDBPyConnection, memory_limit: str | None, threads: int | None) -> None:
+    """Apply the given memory limit and thread count; ``None`` keeps DuckDB's default.
+
+    DuckDB defaults to 80% of RAM and one thread per CPU, both capped by a cgroup
+    limit such as a container's CPU or memory quota.
+    """
+    if memory_limit is not None:
+        conn.execute(
+            sql_build(
+                "SET memory_limit='$val'",
+                val=_validate_set_value(memory_limit, "memory_limit"),
+            )
+        )
+    if threads is None and hasattr(os, "sched_getaffinity"):
+        # DuckDB counts every CPU of the host and ignores the affinity mask that
+        # taskset or a SLURM/LSF cpuset sets, so it would oversubscribe those CPUs.
+        default = conn.execute("SELECT current_setting('threads')").fetchall()[0][0]
+        threads = min(default, len(os.sched_getaffinity(0)))
+    if threads is not None:
+        conn.execute(sql_build("SET threads=$val", val=str(int(threads))))
+
+
 class DuckDBEngine:
     """
     Manages a DuckDB connection with configurable resources.
@@ -37,19 +60,13 @@ class DuckDBEngine:
 
     def __init__(
         self,
-        memory_limit: str = "16GB",
-        threads: int = 4,
+        memory_limit: str | None = None,
+        threads: int | None = None,
         temp_directory: str | None = None,
         s3_config: dict | None = None,
     ):
         self._conn = duckdb.connect(":memory:")
-        self._conn.execute(
-            sql_build(
-                "SET memory_limit='$val'",
-                val=_validate_set_value(memory_limit, "memory_limit"),
-            )
-        )
-        self._conn.execute(sql_build("SET threads=$val", val=str(int(threads))))
+        _set_resources(self._conn, memory_limit, threads)
         if temp_directory:
             self._conn.execute(
                 sql_build(
@@ -159,6 +176,12 @@ class DuckDBEngine:
         view = validate_table(name)
         self._conn.execute(sql_build("CREATE OR REPLACE VIEW $view AS $query", view=view, query=sql))
 
+    def optional_columns(self, view: str, alias: str, names: tuple[str, ...]) -> str:
+        """Select list for optional columns of ``view``: ``alias.name``, or ``NULL AS name`` when the view lacks it."""
+        describe = sql_build("DESCRIBE $view", view=validate_table(view))
+        present = {row[0] for row in self._conn.execute(describe).fetchall()}
+        return ", ".join(f"{alias}.{name}" if name in present else f"NULL AS {name}" for name in names)
+
     def execute(self, sql: str, params=None):
         """Run ``sql`` through the DB-API cursor.
 
@@ -185,8 +208,8 @@ def create_engine(**kwargs) -> DuckDBEngine:
 
 
 def create_converter_connection(
-    memory_limit: str = "16GB",
-    threads: int = 4,
+    memory_limit: str | None = None,
+    threads: int | None = None,
     temp_directory: str | None = None,
 ) -> duckdb.DuckDBPyConnection:
     """Create a validated DuckDB in-memory connection for converter use.
@@ -195,13 +218,7 @@ def create_converter_connection(
     as DuckDBEngine to prevent injection via SET values.
     """
     conn = duckdb.connect(":memory:")
-    conn.execute(
-        sql_build(
-            "SET memory_limit='$val'",
-            val=_validate_set_value(memory_limit, "memory_limit"),
-        )
-    )
-    conn.execute(sql_build("SET threads=$val", val=str(int(threads))))
+    _set_resources(conn, memory_limit, threads)
     conn.execute("SET enable_progress_bar=true")
     conn.execute("SET preserve_insertion_order=false")
     if temp_directory:

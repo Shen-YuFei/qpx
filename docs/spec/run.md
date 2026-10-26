@@ -94,19 +94,21 @@ run_schema = pa.schema(
 
 ## Field Reference
 
+*Required* follows [Required, nullable and optional columns](data-model.md#required-nullable-and-optional-columns): an *optional* column may be left out of the file.
+
 | Field | Description | Type | Required |
 |---|---|---|---|
 | `run_accession` | Unique run identifier (= SDRF `assay name`) | string | yes |
 | `run_file_name` | Raw data file name (without extension) | string | yes |
-| `file_name` | Original file name with extension (e.g. `S1_Frontal_1.raw`) | string | no |
+| `file_name` | Original file name with extension (e.g. `S1_Frontal_1.raw`) | string | optional |
 | `samples` | List of sample-channel mappings with replicate info (FK to sample.parquet) | list[struct] | yes |
-| `fraction` | Fraction identifier | string | no |
-| `instrument` | Mass spectrometer name | string | no |
-| `enzymes` | Proteolytic enzyme name(s) | list[string] | no |
-| `dissociation_method` | Fragmentation method name (e.g. HCD, CID, ETD) | string | no |
-| `acquisition_method` | Data acquisition method name (e.g. DDA, DIA); from `comment[proteomics data acquisition method]` | string | no |
-| `additional_terms` | Other ontology-backed run terms (acquisition method, labeling, etc.) | list[ONTOLOGY_TERM] | no |
-| `modification_parameters` | Modifications configured in the database search | list[MODIFICATION] | no |
+| `fraction` | Fraction identifier | string | optional |
+| `instrument` | Mass spectrometer name | string | optional |
+| `enzymes` | Proteolytic enzyme name(s) | list[string] | optional |
+| `dissociation_method` | Fragmentation method name (e.g. HCD, CID, ETD) | string | optional |
+| `acquisition_method` | Data acquisition method name (e.g. DDA, DIA); from `comment[proteomics data acquisition method]` | string | optional |
+| `additional_terms` | Other ontology-backed run terms (acquisition method, labeling, etc.) | list[ONTOLOGY_TERM] | optional |
+| `modification_parameters` | Modifications configured in the database search | list[MODIFICATION] | optional |
 
 ### Samples list detail
 

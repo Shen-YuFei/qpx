@@ -368,62 +368,6 @@ class TestIntensity:
             with pytest.raises(ValueError, match="level must be"):
                 ds.intensity(level="invalid")
 
-    def test_legacy_channel_intensities_join_by_sample_accession(self, tmp_path):
-        """Legacy feature channel structs do not require a nonexistent
-        run.samples.channel. (The pg view is flattened since 1.1 and no longer
-        carries a channel-struct intensities list; legacy pg must be regenerated.)"""
-        import pyarrow.parquet as pq
-
-        legacy_intensity = pa.list_(
-            pa.struct(
-                [
-                    ("sample_accession", pa.string()),
-                    ("channel", pa.string()),
-                    ("intensity", pa.float32()),
-                ]
-            )
-        )
-        sample_channels = pa.list_(
-            pa.struct(
-                [
-                    ("sample_accession", pa.string()),
-                    ("label", pa.string()),
-                ]
-            )
-        )
-        intensity = [[{"sample_accession": "S1", "channel": "legacy", "intensity": 42.0}]]
-
-        pq.write_table(
-            pa.table(
-                {
-                    "sequence": ["PEPTIDE"],
-                    "run_file_name": ["run_01"],
-                    "is_decoy": [False],
-                    "intensities": pa.array(intensity, type=legacy_intensity),
-                }
-            ),
-            tmp_path / "legacy.feature.parquet",
-        )
-        pq.write_table(
-            pa.table(
-                {
-                    "run_file_name": ["run_01"],
-                    "samples": pa.array(
-                        [[{"sample_accession": "S1", "label": "LFQ"}]],
-                        type=sample_channels,
-                    ),
-                }
-            ),
-            tmp_path / "legacy.run.parquet",
-        )
-
-        with Dataset(tmp_path, file_prefix="legacy") as dataset:
-            peptide = dataset.intensity("peptide").to_df()
-
-        assert peptide[["sample_accession", "feature_id", "intensity"]].to_dict("records") == [
-            {"sample_accession": "S1", "feature_id": "PEPTIDE", "intensity": 42.0}
-        ]
-
 
 # ---------------------------------------------------------------------------
 # design_matrix tests
@@ -676,11 +620,11 @@ class TestRefresh:
     def test_refresh_clears_view_caches(self, dataset_dir):
         """Cached views are invalidated after refresh."""
         with Dataset(dataset_dir) as ds:
-            _ = ds.run_summary
-            assert hasattr(ds, "_run_summary")
+            first = ds.run_summary
+            assert ds.run_summary is first
 
             ds.refresh()
-            assert not hasattr(ds, "_run_summary")
+            assert ds.run_summary is not first
 
     def test_refresh_updates_available_structures(self, dataset_dir):
         """available_structures list updates after refresh."""

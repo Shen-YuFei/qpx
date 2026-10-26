@@ -150,7 +150,7 @@ The probabilities are marginals of one posterior over the peptide's interpretati
 In the PSM view the probabilities are given this one identification. In the feature view they are combined over the feature's identifications. The recommended rule is a mixture: the probability of a candidate is the average of its probabilities in the feature's PSMs, weighted by the confidence of each identification (1 − PEP where PEP is available, equal weights otherwise). A mixture of marginals is a marginal, so the sums within an alternative group stay at most 1; summing over PSMs does not. A producer that combines differently (best PSM, maximum) records its rule in [provenance](provenance.md), so the psm → feature → [site](site.md) chain can be reproduced. The site view combines the feature values at the protein level. A substitution that spans more than one residue cannot be a candidate at one position; it is a [sequence edit](sequence-edits.md).
 
 !!! note "Validation"
-    Under `qpxc validate` (strict), candidate probabilities are finite and in [0, 1], and those of one alternative group sum to at most 1. A candidate field of the wrong type is reported as a type mismatch and the probability checks are skipped.
+    Under `qpxc validate` (strict), candidate probabilities are finite and in [0, 1], and those of one alternative group sum to at most 1, with 0.01 allowed for rounded probabilities (MaxQuant reports three decimals). A candidate field of the wrong type is reported as a type mismatch and the probability checks are skipped.
 
 ### Substitution candidates
 

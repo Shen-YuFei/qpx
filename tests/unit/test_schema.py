@@ -151,6 +151,47 @@ def test_schema_validation():
     assert any("anchor_protein" in e for e in errors)
 
 
+def test_run_with_only_required_columns_is_valid():
+    """Run columns the spec does not require may be absent (bigbio/qpx#356)."""
+    arrow = RunSchema.get_arrow_schema()
+    keep = ["run_accession", "run_file_name", "samples"]
+    sample = {"sample_accession": "s1", "label": "LFQ", "biological_replicate": None, "technical_replicate": None}
+    table = pa.Table.from_pylist(
+        [{"run_accession": "r1", "run_file_name": "r1", "samples": [sample]}],
+        schema=pa.schema([arrow.field(name) for name in keep]),
+    )
+    for strict in (False, True):
+        assert not RunSchema.validate_full(table, strict=strict).issues
+
+
+def test_mz_and_psm_with_optional_columns_absent():
+    """Mz and PSM columns may be absent in both validation modes (bigbio/qpx#356)."""
+    cases = [
+        (MzSchema, {"run_file_name", "scan", "inverse_ion_mobility", "ion_injection_time", "precursors", "cv_params"}),
+        (
+            PsmSchema,
+            {
+                "mz_array",
+                "intensity_array",
+                "charge_array",
+                "ion_type_array",
+                "ion_mobility_array",
+                "ion_mobility",
+                "cross_links",
+            },
+        ),
+    ]
+    for schema_class, dropped in cases:
+        fields = [f for f in schema_class.get_arrow_schema() if f.name not in dropped]
+        arrays = {
+            f.name: (pa.nulls(1, type=f.type) if f.nullable else pa.array([_placeholder(f.type)], type=f.type)) for f in fields
+        }
+        table = pa.table(arrays, schema=pa.schema(fields))
+        for strict in (False, True):
+            issues = schema_class.validate_full(table, strict=strict).issues
+            assert not any(issue.check == "missing_column" for issue in issues)
+
+
 def test_all_schemas_have_valid_primary_keys():
     """Every schema has a _primary_key tuple whose fields exist in the schema."""
     for schema_inst in ALL_SCHEMAS:

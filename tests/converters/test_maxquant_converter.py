@@ -437,64 +437,6 @@ class TestMaxQuantFeatureConversion:
 
 
 # ---------------------------------------------------------------------------
-# fixed_mod_only filter tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestMaxQuantFixedModOnly:
-    """Validate that fixed_mod_only=True filters out variable-modification rows."""
-
-    @pytest.fixture(scope="class")
-    def fixed_mod_output(self, tmp_path_factory):
-        from qpx.converters.maxquant.converter import MaxQuantConverter
-
-        if not _EVIDENCE.exists():
-            pytest.skip(f"Test data not found: {EXAMPLES_DIR}")
-
-        output = tmp_path_factory.mktemp("maxquant_fixed_mod")
-        converter = MaxQuantConverter()
-        converter.convert(
-            output_folder=output,
-            evidence_file=_EVIDENCE,
-            sdrf_file=_SDRF if _SDRF.exists() else None,
-            output_prefix="fixed_mod_test",
-            fixed_mod_only=True,
-        )
-        return output
-
-    @pytest.fixture(scope="class")
-    def fixed_feature_table(self, fixed_mod_output):
-        path = fixed_mod_output / "fixed_mod_test.feature.parquet"
-        assert path.exists(), "fixed_mod feature.parquet was not produced"
-        return pq.read_table(str(path))
-
-    def test_fixed_mod_has_fewer_rows_than_unrestricted(self, feature_table, fixed_feature_table):
-        """Filtering to fixed mods only must reduce the feature count."""
-        if fixed_feature_table.num_rows >= feature_table.num_rows:
-            raise AssertionError(
-                f"fixed_mod_only produced {fixed_feature_table.num_rows} rows, "
-                f"expected fewer than unrestricted {feature_table.num_rows}"
-            )
-
-    def test_fixed_mod_contains_no_variable_modifications(self, fixed_feature_table):
-        """All features in fixed-mod output must have Unmodified or Carbamidomethyl (C) only.
-
-        Uses startswith("carbamidomethyl") to match ProForma-parsed names regardless
-        of whether the exact string is "Carbamidomethyl", "Carbamidomethyl (C)", etc.
-        """
-        mods_col = fixed_feature_table.column("modifications").to_pylist()
-        for mods in mods_col:
-            if mods is None:
-                continue
-            for mod in mods:
-                name = (mod.get("modification_name") or "").strip().lower()
-                if name:
-                    if not name.startswith("carbamidomethyl"):
-                        raise AssertionError(f"Variable modification found in fixed-mod output: {mod['modification_name']!r}")
-
-
-# ---------------------------------------------------------------------------
 # Ontology conversion tests
 # ---------------------------------------------------------------------------
 

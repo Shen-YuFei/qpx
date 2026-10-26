@@ -47,15 +47,15 @@ sample_schema = pa.schema(
 | `sample_accession` | Unique sample identifier (= SDRF `source name`) | string | yes |
 | `organism` | Species (e.g. `"Homo sapiens"`) | string | yes |
 | `organism_part` | Tissue or organ (e.g. `"Brain; Frontal cortex"`) | string | yes |
-| `disease` | Disease state (e.g. `"breast cancer"`) | string | no |
-| `cell_line` | Cell line name (e.g. `"HeLa"`) | string | no |
-| `cell_type` | Cell type (e.g. `"T cell"`) | string | no |
-| `sex` | Biological sex (e.g. `"female"`) | string | no |
-| `age` | Age of the specimen (e.g. `"45"`) | string | no |
-| `developmental_stage` | Developmental stage | string | no |
-| `ancestry` | Ancestry category | string | no |
-| `individual` | Individual/patient identifier | string | no |
-| `sample_description` | Free-text sample description | string | no |
+| `disease` | Disease state (e.g. `"breast cancer"`) | string | optional |
+| `cell_line` | Cell line name (e.g. `"HeLa"`) | string | optional |
+| `cell_type` | Cell type (e.g. `"T cell"`) | string | optional |
+| `sex` | Biological sex (e.g. `"female"`) | string | optional |
+| `age` | Age of the specimen (e.g. `"45"`) | string | optional |
+| `developmental_stage` | Developmental stage | string | optional |
+| `ancestry` | Ancestry category | string | optional |
+| `individual` | Individual/patient identifier | string | optional |
+| `sample_description` | Free-text sample description | string | optional |
 
 ### Extra columns (dataset-specific)
 

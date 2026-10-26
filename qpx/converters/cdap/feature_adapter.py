@@ -23,7 +23,6 @@ import pandas as pd
 from qpx.converters.base import resolve_columns
 from qpx.converters.cdap.base_adapter import CdapBaseAdapter
 from qpx.converters.mappings import get_field_mappings
-from qpx.converters.ptm import compute_precursor_mz
 from qpx.writers.feature import FeatureWriter
 
 _FEATURE_MAP = get_field_mappings("cdap", "feature")
@@ -107,80 +106,10 @@ class CdapFeatureAdapter(CdapBaseAdapter):
         so it returns row arrays for the aggregated PSMs rather than a single
         canonical value where multiple PSMs disagree.
         """
-        has_rt = "RTAtPrecursorHalfElution" in actual_cols
+        typed_cols = self._typed_select_columns(actual_cols, channel_cols)
         has_precursor_area = "PrecursorArea" in actual_cols
 
-        typed_cols: list[str] = [
-            '"PeptideSequence" AS peptide_raw',
-            'CAST("QueryCharge" AS INTEGER) AS charge',
-            '"FileName" AS file_name',
-            '"Protein" AS protein_cell',
-            '"ScanNum" AS scan_num',
-            'TRY_CAST("QueryPrecursorMz" AS DOUBLE) AS observed_mz',
-            'TRY_CAST("OriginalPrecursorMz" AS DOUBLE) AS original_mz',
-            'TRY_CAST("PrecursorError(ppm)" AS DOUBLE) AS ppm',
-            'TRY_CAST("Evalue" AS DOUBLE) AS evalue',
-            'TRY_CAST("MSGFScore" AS DOUBLE) AS msgf',
-            'TRY_CAST("DeNovoScore" AS DOUBLE) AS denovo',
-            'TRY_CAST("Qvalue" AS DOUBLE) AS qvalue',
-            'TRY_CAST("PepQvalue" AS DOUBLE) AS pep_qvalue',
-        ]
-        typed_cols.append('TRY_CAST("RTAtPrecursorHalfElution" AS DOUBLE) AS rt' if has_rt else "CAST(NULL AS DOUBLE) AS rt")
-        if has_precursor_area:
-            typed_cols.append('TRY_CAST("PrecursorArea" AS DOUBLE) AS precursor_area')
-        # Pre-extract reporter-ion intensities from "value/ppm" format in SQL.
-        for col in channel_cols:
-            qcol = self._quote_ident(col)
-            typed_cols.append(
-                f"TRY_CAST(split_part(CAST({qcol} AS VARCHAR), '/', 1) AS DOUBLE) AS {self._safe_channel_alias(col)}"
-            )
-
-        # Representative fields must all come from the SAME best PSM row --
-        # independent ``arg_min`` per column produced a "Frankenstein" record
-        # (scan/observed_mz/rt from different PSMs) on tied or NULL Evalue.
-        # Applying one total ORDER BY to every ``first()`` guarantees a single
-        # source row. Include every representative payload field so even PSMs
-        # tied on e-value/scan/mz/RT select the same row independently of input
-        # order.
-        best_order_fields = [
-            "evalue ASC NULLS LAST",
-            "scan_num ASC NULLS LAST",
-            "observed_mz ASC NULLS LAST",
-            "rt ASC NULLS LAST",
-            "original_mz ASC NULLS LAST",
-            "ppm ASC NULLS LAST",
-            "msgf ASC NULLS LAST",
-            "denovo ASC NULLS LAST",
-            "qvalue ASC NULLS LAST",
-            "pep_qvalue ASC NULLS LAST",
-            "protein_cell ASC NULLS LAST",
-        ]
-        if has_precursor_area:
-            best_order_fields.append("precursor_area ASC NULLS LAST")
-        best_order = ", ".join(best_order_fields)
-        agg_cols: list[str] = [
-            "peptide_raw",
-            "charge",
-            "file_name",
-            f"first(scan_num ORDER BY {best_order}) AS best_scan",
-            f"first(observed_mz ORDER BY {best_order}) AS best_observed_mz",
-            f"first(original_mz ORDER BY {best_order}) AS best_original_mz",
-            f"first(ppm ORDER BY {best_order}) AS best_ppm",
-            f"first(rt ORDER BY {best_order}) AS best_rt",
-            f"first(evalue ORDER BY {best_order}) AS best_evalue",
-            f"first(msgf ORDER BY {best_order}) AS best_msgf",
-            f"first(denovo ORDER BY {best_order}) AS best_denovo",
-            f"first(qvalue ORDER BY {best_order}) AS best_qvalue",
-            f"first(pep_qvalue ORDER BY {best_order}) AS best_pep_qvalue",
-            f"list(protein_cell ORDER BY {best_order}) AS protein_cells",
-            "count(*) AS psm_count",
-        ]
-        if has_precursor_area:
-            agg_cols.append(f"first(precursor_area ORDER BY {best_order}) AS best_precursor_area")
-        # SUM pre-extracted intensities directly in SQL.
-        for col in channel_cols:
-            alias = self._safe_channel_alias(col)
-            agg_cols.append(f"SUM({alias}) AS {alias}")
+        agg_cols = self._aggregation_columns(has_precursor_area, channel_cols)
 
         typed_block = ",\n                ".join(typed_cols)
         agg_block = ",\n            ".join(agg_cols)
@@ -256,7 +185,7 @@ class CdapFeatureAdapter(CdapBaseAdapter):
         # an unparseable token (e.g. a CHEMMOD unknown-mass tag), keep it NULL
         # rather than falling back to a measured precursor m/z, which would
         # silently corrupt the theoretical-mass semantics (bigbio/qpx#250).
-        calculated_mz = compute_precursor_mz(peptidoform, charge) if peptidoform and charge else None
+        calculated_mz = self._calculated_mz(peptidoform, charge)
 
         mass_error_ppm = self._optional_float(row.get("best_ppm"))
         rt = self._optional_float(row.get("best_rt"))
@@ -270,11 +199,7 @@ class CdapFeatureAdapter(CdapBaseAdapter):
         # Scores (delegated to sub-method).
         additional_scores = self._collect_feature_scores(row)
 
-        psm_count = self._int_or_zero(row.get("psm_count"))
-        cv_params = [
-            {"cv_name": "experiment_type", "cv_value": experiment_type},
-            {"cv_name": "psm_count", "cv_value": str(psm_count)},
-        ]
+        cv_params = self._feature_cv_params(row, experiment_type)
 
         mz_values = (calculated_mz, observed_mz, mass_error_ppm, additional_scores)
         rec = self._common_record_fields(identity, charge, is_decoy, mz_values, run_file_name)
@@ -369,3 +294,93 @@ class CdapFeatureAdapter(CdapBaseAdapter):
     def _collect_feature_scores(self, row: dict) -> list[dict]:
         """Extract best-PSM scores for the feature record."""
         return self._extract_scores_from_columns(row, self._FEATURE_SCORE_DEFS)
+
+    def _typed_select_columns(self, actual_cols: set[str], channel_cols: list[str]) -> list[str]:
+        """Build typed source expressions for aggregation."""
+        has_rt = "RTAtPrecursorHalfElution" in actual_cols
+        has_precursor_area = "PrecursorArea" in actual_cols
+
+        typed_cols: list[str] = [
+            '"PeptideSequence" AS peptide_raw',
+            'CAST("QueryCharge" AS INTEGER) AS charge',
+            '"FileName" AS file_name',
+            '"Protein" AS protein_cell',
+            '"ScanNum" AS scan_num',
+            'TRY_CAST("QueryPrecursorMz" AS DOUBLE) AS observed_mz',
+            'TRY_CAST("OriginalPrecursorMz" AS DOUBLE) AS original_mz',
+            'TRY_CAST("PrecursorError(ppm)" AS DOUBLE) AS ppm',
+            'TRY_CAST("Evalue" AS DOUBLE) AS evalue',
+            'TRY_CAST("MSGFScore" AS DOUBLE) AS msgf',
+            'TRY_CAST("DeNovoScore" AS DOUBLE) AS denovo',
+            'TRY_CAST("Qvalue" AS DOUBLE) AS qvalue',
+            'TRY_CAST("PepQvalue" AS DOUBLE) AS pep_qvalue',
+        ]
+        typed_cols.append('TRY_CAST("RTAtPrecursorHalfElution" AS DOUBLE) AS rt' if has_rt else "CAST(NULL AS DOUBLE) AS rt")
+        if has_precursor_area:
+            typed_cols.append('TRY_CAST("PrecursorArea" AS DOUBLE) AS precursor_area')
+        # Pre-extract reporter-ion intensities from "value/ppm" format in SQL.
+        for col in channel_cols:
+            qcol = self._quote_ident(col)
+            typed_cols.append(
+                f"TRY_CAST(split_part(CAST({qcol} AS VARCHAR), '/', 1) AS DOUBLE) AS {self._safe_channel_alias(col)}"
+            )
+        return typed_cols
+
+    def _aggregation_columns(self, has_precursor_area: bool, channel_cols: list[str]) -> list[str]:
+        """Build representative and summed feature columns."""
+        # Representative fields must all come from the SAME best PSM row --
+        # independent ``arg_min`` per column produced a "Frankenstein" record
+        # (scan/observed_mz/rt from different PSMs) on tied or NULL Evalue.
+        # Applying one total ORDER BY to every ``first()`` guarantees a single
+        # source row. Include every representative payload field so even PSMs
+        # tied on e-value/scan/mz/RT select the same row independently of input
+        # order.
+        best_order_fields = [
+            "evalue ASC NULLS LAST",
+            "scan_num ASC NULLS LAST",
+            "observed_mz ASC NULLS LAST",
+            "rt ASC NULLS LAST",
+            "original_mz ASC NULLS LAST",
+            "ppm ASC NULLS LAST",
+            "msgf ASC NULLS LAST",
+            "denovo ASC NULLS LAST",
+            "qvalue ASC NULLS LAST",
+            "pep_qvalue ASC NULLS LAST",
+            "protein_cell ASC NULLS LAST",
+        ]
+        if has_precursor_area:
+            best_order_fields.append("precursor_area ASC NULLS LAST")
+        best_order = ", ".join(best_order_fields)
+        agg_cols: list[str] = [
+            "peptide_raw",
+            "charge",
+            "file_name",
+            f"first(scan_num ORDER BY {best_order}) AS best_scan",
+            f"first(observed_mz ORDER BY {best_order}) AS best_observed_mz",
+            f"first(original_mz ORDER BY {best_order}) AS best_original_mz",
+            f"first(ppm ORDER BY {best_order}) AS best_ppm",
+            f"first(rt ORDER BY {best_order}) AS best_rt",
+            f"first(evalue ORDER BY {best_order}) AS best_evalue",
+            f"first(msgf ORDER BY {best_order}) AS best_msgf",
+            f"first(denovo ORDER BY {best_order}) AS best_denovo",
+            f"first(qvalue ORDER BY {best_order}) AS best_qvalue",
+            f"first(pep_qvalue ORDER BY {best_order}) AS best_pep_qvalue",
+            f"list(protein_cell ORDER BY {best_order}) AS protein_cells",
+            "count(*) AS psm_count",
+        ]
+        if has_precursor_area:
+            agg_cols.append(f"first(precursor_area ORDER BY {best_order}) AS best_precursor_area")
+        # SUM pre-extracted intensities directly in SQL.
+        for col in channel_cols:
+            alias = self._safe_channel_alias(col)
+            agg_cols.append(f"SUM({alias}) AS {alias}")
+        return agg_cols
+
+    def _feature_cv_params(self, row: dict, experiment_type: str) -> list[dict]:
+        """Build experiment and contributing PSM annotations."""
+        psm_count = self._int_or_zero(row.get("psm_count"))
+        cv_params = [
+            {"cv_name": "experiment_type", "cv_value": experiment_type},
+            {"cv_name": "psm_count", "cv_value": str(psm_count)},
+        ]
+        return cv_params

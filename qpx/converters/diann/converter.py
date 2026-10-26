@@ -12,6 +12,7 @@ from qpx.converters.diann.feature_adapter import DiannFeatureAdapter
 from qpx.converters.diann.pg_adapter import DiannPgAdapter
 from qpx.converters.mappings import get_field_mappings, get_tool_meta
 from qpx.converters.orchestrator import BaseOrchestrator
+from qpx.converters.sdrf import convert_sdrf_views
 from qpx.core.constants import FEATURE, MZ, ONTOLOGY, PG, RUN, SAMPLE
 from qpx.core.scores import field_ontology_entries, score_ontology_entries
 
@@ -34,8 +35,8 @@ class DiaNNConverter(BaseOrchestrator):
     ):
         self.report_path = str(report_path)
         self.sdrf_path = str(sdrf_path) if sdrf_path else None
-        self._memory = max_memory or "16GB"
-        self._threads = max_cpus or 4
+        self._memory = max_memory
+        self._threads = max_cpus
         self._compression = compression
         self._diann_version = self._parse_diann_version(diann_log)
         self._ontology_entries: list[dict] = []
@@ -182,25 +183,9 @@ class DiaNNConverter(BaseOrchestrator):
         if not self.sdrf_path:
             logger.warning("No SDRF path provided — skipping sample/run conversion")
             return
-        try:
-            from qpx.converters.sdrf import SdrfConverter
-
-            with SdrfConverter() as sdrf_conv:
-                sdrf_conv.convert(
-                    sdrf_path=self.sdrf_path,
-                    sample_output=str(output_folder / f"{prefix}.sample.parquet"),
-                    run_output=str(output_folder / f"{prefix}.run.parquet"),
-                )
-                self._ontology_entries.extend(sdrf_conv.run_ontology_entries())
+        if convert_sdrf_views(self.sdrf_path, output_folder, prefix, self._ontology_entries):
             self._written_views.extend([SAMPLE, RUN])
             logger.info("SDRF conversion complete (sample + run)")
-        except (ValueError, KeyError, OSError, TypeError) as exc:
-            logger.warning("SDRF conversion skipped (incomplete SDRF?): %s", exc)
-            for suffix in (".sample.parquet", ".run.parquet"):
-                corrupt = output_folder / f"{prefix}{suffix}"
-                if corrupt.exists():
-                    corrupt.unlink()
-                    logger.debug("Removed corrupt %s", corrupt)
 
     def write_ontology(self, output_folder: str | Path, prefix: str = "diann") -> None:
         """Write combined ontology.parquet with all accumulated entries."""

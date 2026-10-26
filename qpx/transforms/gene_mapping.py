@@ -31,8 +31,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Union
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
@@ -194,16 +196,31 @@ def _annotate_table(table: pa.Table, gene_map: dict[str, set[str]], names_type: 
 
     Existing ``gg_names`` stay where the FASTA resolves none.
     """
-    mapped = [
-        _resolve_gene_names(_normalize_protein_list(accessions), gene_map)
-        for accessions in table.column("pg_accessions").to_pylist()
-    ]
+    # Rows share few protein groups: key each group by the dictionary codes of its
+    # accessions, which no separator can occur in, resolve one row per distinct key
+    # and take the names back to every row.
+    groups = table.column("pg_accessions").combine_chunks()
+    # feature lists accession structs, pg bare accessions.
+    accessions = (
+        pc.call_function("struct_field", [groups.values], pc.StructFieldOptions("accession"))
+        if pa.types.is_struct(groups.type.value_type)
+        else groups.values
+    )
+    codes = pc.fill_null(accessions.dictionary_encode().indices, -1)
+    code_lists = type(groups).from_arrays(groups.offsets, codes, mask=groups.is_null())
+    keys = pc.call_function("binary_join", [pc.cast(code_lists, pa.list_(pa.string())), pa.scalar(",")])
+    encoded = pc.fill_null(keys, "").dictionary_encode()
+    representatives = np.unique(encoded.indices.to_numpy(), return_index=True)[1]
+    mapped = pa.array(
+        [_resolve_gene_names(_normalize_protein_list(group), gene_map) for group in groups.take(representatives).to_pylist()],
+        type=names_type,
+    ).take(encoded.indices)
     names = mapped
     if "gg_names" in table.column_names:
-        names = [new if new is not None else old for new, old in zip(mapped, table.column("gg_names").to_pylist(), strict=True)]
+        names = pc.call_function("if_else", [mapped.is_valid(), mapped, table.column("gg_names").cast(names_type)])
         table = table.drop_columns("gg_names")
-    table = table.append_column("gg_names", pa.array(names, type=names_type))
-    return table, sum(name is not None for name in mapped)
+    table = table.append_column("gg_names", names)
+    return table, table.num_rows - mapped.null_count
 
 
 class GeneMappingTransform:

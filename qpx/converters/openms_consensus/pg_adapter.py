@@ -348,6 +348,54 @@ def pg_units_and_labels(map_info, sdrf_path) -> tuple[set[tuple[str, ...]], list
     return units, labels
 
 
+def _group_sequence_counts(accs, m: _ProteinMaps) -> tuple[set, set, dict]:
+    """Count all and group-unique peptide sequences and features."""
+    group_accs = set(accs)
+    peptide_seqs: set[str] = set()
+    feats: set[tuple] = set()
+    for acc in accs:
+        peptide_seqs |= m.acc_to_pep.get(acc, set())
+        feats |= m.acc_to_feat.get(acc, set())
+    # total = every peptide/feature of the group; unique = those mapping only
+    # to proteins in this group (same policy as the intensity rollup).
+    n_pep_total = len(peptide_seqs)
+    n_feat_total = len(feats)
+    n_pep_unique = sum(1 for p in peptide_seqs if m.pep_to_accs.get(p, set()).issubset(group_accs))
+    n_feat_unique = sum(1 for ft in feats if m.feat_to_accs.get(ft, set()).issubset(group_accs))
+    return (
+        peptide_seqs,
+        group_accs,
+        {
+            "peptide_counts": {"unique_sequences": n_pep_unique, "total_sequences": n_pep_total},
+            "feature_counts": {"unique_features": n_feat_unique, "total_features": n_feat_total},
+        },
+    )
+
+
+def _pg_group_fields(accs, m, acc_decoy, acc_qvalue, acc_gene, properties) -> dict:
+    """Build protein identity, properties and confidence shared by all units."""
+    anchor = accs[0]
+    # Prefer the target_decoy meta; fall back to the accession prefix.
+    is_decoy = all(acc_decoy.get(a, _is_decoy_accession(a)) for a in accs)
+    global_qvalue, genes = _group_qvalue_and_genes(accs, acc_qvalue, acc_gene)
+    # Entry names from the ``db|ACC|NAME`` accessions, aligned with pg_accessions;
+    # null unless every member has one, so a partial list never misaligns.
+    member_names = [uniprot_entry_name(a) for a in accs]
+    pg_names = member_names if all(member_names) else None
+    return {
+        "pg_accessions": list(accs),
+        "pg_names": pg_names,
+        "anchor_protein": anchor,
+        **properties.get(anchor, {}),
+        "global_qvalue": global_qvalue,
+        "is_decoy": is_decoy,
+        "contaminant": any(_is_contaminant(a) for a in accs),
+        "gg_accessions": genes,
+        "gg_names": genes,
+        "peptides": [{"protein_name": a, "peptide_count": len(m.acc_to_pep.get(a, set()))} for a in accs],
+    }
+
+
 def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_path, top: int) -> list[dict]:
     """Build pg records from already-accumulated maps + peptide intensities.
 
@@ -356,33 +404,13 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
     """
     # One pg row per (protein group, unit, label): the isobaric channels, or "LFQ".
     units, labels = pg_units_and_labels(map_info, sdrf_path)
-
     acc_decoy, acc_qvalue, acc_gene, groups = _merge_protein_ids(cm)
     properties = _protein_properties(cm)
     quant_method = "unnormalized_unique_peptide_sum" if not top else f"unnormalized_unique_peptide_top{top}_sum"
-
     records: list[dict] = []
     for accs in groups:
-        anchor = accs[0]
-        group_accs = set(accs)
-        peptide_seqs: set[str] = set()
-        feats: set[tuple] = set()
-        for acc in accs:
-            peptide_seqs |= m.acc_to_pep.get(acc, set())
-            feats |= m.acc_to_feat.get(acc, set())
-        # total = every peptide/feature of the group; unique = those mapping only
-        # to proteins in this group (same policy as the intensity rollup).
-        n_pep_total = len(peptide_seqs)
-        n_feat_total = len(feats)
-        n_pep_unique = sum(1 for p in peptide_seqs if m.pep_to_accs.get(p, set()).issubset(group_accs))
-        n_feat_unique = sum(1 for ft in feats if m.feat_to_accs.get(ft, set()).issubset(group_accs))
-        # Prefer the target_decoy meta; fall back to the accession prefix.
-        is_decoy = all(acc_decoy.get(a, _is_decoy_accession(a)) for a in accs)
-        global_qvalue, genes = _group_qvalue_and_genes(accs, acc_qvalue, acc_gene)
-        # Entry names from the ``db|ACC|NAME`` accessions, aligned with pg_accessions;
-        # null unless every member has one, so a partial list never misaligns.
-        member_names = [uniprot_entry_name(a) for a in accs]
-        pg_names = member_names if all(member_names) else None
+        peptide_seqs, group_accs, counts = _group_sequence_counts(accs, m)
+        group_fields = _pg_group_fields(accs, m, acc_decoy, acc_qvalue, acc_gene, properties)
         # Only the quantification units where this group was identified or
         # quantified — not every unit. A group with no attributable run gets no row.
         group_runs: set[str] = set()
@@ -401,23 +429,13 @@ def build_pg_records(cm, map_info, m: _ProteinMaps, pep_intensity: dict, sdrf_pa
                 cv_params = [{"cv_name": "quantification_method", "cv_value": quant_method}] if intensity is not None else None
                 records.append(
                     {
-                        "pg_accessions": list(accs),
-                        "pg_names": pg_names,
-                        "anchor_protein": anchor,
-                        **properties.get(anchor, {}),
+                        **group_fields,
                         "grouped_runs": list(unit),
                         "label": label,
                         # interim unnormalized total; null when the group has no
                         # unique-peptide signal in this unit+label (see cv_params).
                         "intensity": intensity,
-                        "global_qvalue": global_qvalue,
-                        "is_decoy": is_decoy,
-                        "contaminant": any(_is_contaminant(a) for a in accs),
-                        "gg_accessions": genes,
-                        "gg_names": genes,
-                        "peptide_counts": {"unique_sequences": n_pep_unique, "total_sequences": n_pep_total},
-                        "feature_counts": {"unique_features": n_feat_unique, "total_features": n_feat_total},
-                        "peptides": [{"protein_name": a, "peptide_count": len(m.acc_to_pep.get(a, set()))} for a in accs],
+                        **counts,
                         "cv_params": cv_params,
                     }
                 )

@@ -6,8 +6,8 @@ import pyarrow.parquet as pq
 import pytest
 from defusedxml.ElementTree import fromstring, tostring
 
-from qpx.converters.openms_consensus import converter
-from qpx.converters.openms_consensus.converter import _stream_feature_psm
+from qpx.converters.openms_consensus import conversion, converter
+from qpx.converters.openms_consensus.conversion import _stream_feature_psm
 from qpx.dataset import Dataset
 from tests.converters.test_openms_consensus import _TMT_CONSENSUSXML
 
@@ -109,7 +109,7 @@ def test_failed_conversion_preserves_existing_psm(existing_psm, no_psm_xml, stre
     if streaming:
         monkeypatch.setattr(converter, "_convert_streaming", fail)
     else:
-        monkeypatch.setattr(converter.OpenMSConsensusConverter, "_convert_in_memory", fail)
+        monkeypatch.setattr(converter, "_convert_in_memory", fail)
     with pytest.raises(RuntimeError, match="conversion failed"):
         converter.OpenMSConsensusConverter().convert(
             str(no_psm_xml), str(existing_psm.parent), output_prefix="rerun", structures=("psm",), streaming=streaming
@@ -156,7 +156,7 @@ def test_nonempty_psm_is_registered_after_flush(tmp_path, streaming, monkeypatch
         kwargs["batch"] = 1
         return _stream_feature_psm(*args, **kwargs)
 
-    monkeypatch.setattr(converter, "_stream_feature_psm", flush_every_record)
+    monkeypatch.setattr(conversion, "_stream_feature_psm", flush_every_record)
     source = tmp_path / "input.consensusXML"
     source.write_text(_TMT_CONSENSUSXML, encoding="utf-8")
     out = tmp_path / "out"

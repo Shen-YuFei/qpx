@@ -291,6 +291,20 @@ def test_writer_preserves_scan_order_but_canonicalizes_grouped_runs(tmp_path):
     assert pg_ids[0] == pg_ids[1]
 
 
+def test_write_table_keeps_a_provided_int32_id(tmp_path):
+    """A provided id column of a narrower integer type is kept and written as int64."""
+    path = tmp_path / "t.psm.parquet"
+    rec = make_psm_record()
+    rec["psm_id"] = 123456789
+    with PsmWriter(path) as writer:
+        table = writer.align_table_to_schema(pa.Table.from_pylist([rec]))
+        index = table.schema.get_field_index("psm_id")
+        writer.write_table(table.set_column(index, "psm_id", table.column(index).cast(pa.int32())))
+    out = pq.read_table(path).column("psm_id")
+    assert out.type == pa.int64()
+    assert out.to_pylist() == [123456789]
+
+
 def test_override_applies_on_write_table_path(tmp_path):
     """override_provided_ids must also take effect on the write_table/dataframe path."""
     import pyarrow.parquet as pq

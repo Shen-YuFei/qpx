@@ -21,6 +21,7 @@ except ImportError:
 from qpx._version import __version__
 from qpx.converters.mzidentml.pg_adapter import MzIdentMLPgAdapter
 from qpx.converters.mzidentml.psm_adapter import MzIdentMLPsmAdapter
+from qpx.converters.mzidentml.psm_records import _build_psm_records
 from qpx.converters.orchestrator import BaseOrchestrator
 from qpx.core.scores import field_ontology_entries, score_ontology_entries
 from qpx.writers.pepmap import PepMapWriter
@@ -72,7 +73,7 @@ class MzIdentMLConverter(BaseOrchestrator):
         adapter = MzIdentMLPsmAdapter()
         try:
             parsed = adapter._parse_mzidentml(str(mzid_path))
-            records = adapter._build_psm_records(parsed)
+            records = _build_psm_records(parsed)
         finally:
             adapter.close()
 
@@ -88,29 +89,7 @@ class MzIdentMLConverter(BaseOrchestrator):
         adapter._track_scores(records)
         discovered_scores = adapter.get_discovered_scores()
 
-        # 4. Write PSM parquet
-        psm_path = output_folder / f"{output_prefix}.psm.parquet"
-        with PsmWriter(psm_path, creator="mzidentml", compression=self._compression) as writer:
-            writer.write_batch(records)
-        logger.info("Wrote %d PSMs to %s", len(records), psm_path)
-
-        # 5. Write pg (protein groups) parquet
-        pg_path = output_folder / f"{output_prefix}.pg.parquet"
-        with MzIdentMLPgAdapter(compression=self._compression) as pg_adapter:
-            pg_adapter.convert(mzid_path=mzid_path, output_path=pg_path, creator="mzidentml")
-
-        # 6. Write pepmap parquet
-        pepmap_path = output_folder / f"{output_prefix}.pepmap.parquet"
-        pepmap_records = self._build_pepmap(
-            records,
-            parsed["peptide_evidence"],
-            parsed["peptides"],
-            parsed["db_sequences"],
-        )
-        if pepmap_records:
-            with PepMapWriter(pepmap_path, creator="mzidentml", compression=self._compression) as writer:
-                writer.write_batch(pepmap_records)
-            logger.info("Wrote %d pepmap entries to %s", len(pepmap_records), pepmap_path)
+        self._write_core_views(records, parsed, mzid_path, output_folder, output_prefix)
 
         # 7. Write provenance parquet
         provenance_records = self._build_provenance(mzid_path)
@@ -137,6 +116,32 @@ class MzIdentMLConverter(BaseOrchestrator):
         )
 
         return output_folder
+
+    def _write_core_views(self, records, parsed, mzid_path, output_folder, output_prefix) -> None:
+        """Write the PSM, protein-group and peptide-map views."""
+        # 4. Write PSM parquet
+        psm_path = output_folder / f"{output_prefix}.psm.parquet"
+        with PsmWriter(psm_path, creator="mzidentml", compression=self._compression) as writer:
+            writer.write_batch(records)
+        logger.info("Wrote %d PSMs to %s", len(records), psm_path)
+
+        # 5. Write pg (protein groups) parquet
+        pg_path = output_folder / f"{output_prefix}.pg.parquet"
+        with MzIdentMLPgAdapter(compression=self._compression) as pg_adapter:
+            pg_adapter.convert(mzid_path=mzid_path, output_path=pg_path, creator="mzidentml")
+
+        # 6. Write pepmap parquet
+        pepmap_path = output_folder / f"{output_prefix}.pepmap.parquet"
+        pepmap_records = self._build_pepmap(
+            records,
+            parsed["peptide_evidence"],
+            parsed["peptides"],
+            parsed["db_sequences"],
+        )
+        if pepmap_records:
+            with PepMapWriter(pepmap_path, creator="mzidentml", compression=self._compression) as writer:
+                writer.write_batch(pepmap_records)
+            logger.info("Wrote %d pepmap entries to %s", len(pepmap_records), pepmap_path)
 
     # ------------------------------------------------------------------
     # Spectra attachment
@@ -206,18 +211,7 @@ class MzIdentMLConverter(BaseOrchestrator):
         data for per-protein positional info (start, end, pre, post).
         """
         # Step 1: Build (sequence, protein) → position lookup from PeptideEvidence
-        position_lookup: dict[tuple[str, str], dict] = {}
-        for pe in pep_evidence.values():
-            pep_data = peptides.get(pe.get("peptide_ref", ""), {})
-            seq = pep_data.get("sequence", "")
-            acc = db_sequences.get(pe.get("db_ref", ""), "")
-            if seq and acc and (seq, acc) not in position_lookup:
-                position_lookup[(seq, acc)] = {
-                    "start": pe.get("start"),
-                    "end": pe.get("end"),
-                    "pre": pe.get("pre"),
-                    "post": pe.get("post"),
-                }
+        position_lookup = MzIdentMLConverter._peptide_positions(pep_evidence, peptides, db_sequences)
 
         # Step 2: Group PSM records by peptidoform
         pepform_data: dict[str, dict] = {}
@@ -259,9 +253,56 @@ class MzIdentMLConverter(BaseOrchestrator):
 
         return pepmap_records
 
+    @staticmethod
+    def _peptide_positions(pep_evidence, peptides, db_sequences) -> dict:
+        """Index the first observed position for each sequence and protein."""
+        position_lookup: dict[tuple[str, str], dict] = {}
+        for pe in pep_evidence.values():
+            pep_data = peptides.get(pe.get("peptide_ref", ""), {})
+            seq = pep_data.get("sequence", "")
+            acc = db_sequences.get(pe.get("db_ref", ""), "")
+            if seq and acc and (seq, acc) not in position_lookup:
+                position_lookup[(seq, acc)] = {
+                    "start": pe.get("start"),
+                    "end": pe.get("end"),
+                    "pre": pe.get("pre"),
+                    "post": pe.get("post"),
+                }
+
+        return position_lookup
+
     # ------------------------------------------------------------------
     # Provenance extraction
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _protocol_parameters(sip, ns: str) -> list[dict]:
+        """Collect search enzyme and fixed/variable modification parameters."""
+        params: list[dict] = []
+
+        # Enzyme(s)
+        for enzyme in sip.iter(f"{{{ns}}}Enzyme"):
+            enzyme_name_el = enzyme.find(f"{{{ns}}}EnzymeName")
+            if enzyme_name_el is not None:
+                cv = enzyme_name_el.find(f"{{{ns}}}cvParam")
+                name = cv.get("name", "") if cv is not None else ""
+            else:
+                name = enzyme.get("name", "")
+            if name:
+                params.append({"key": "enzyme", "value": name})
+
+        # Modifications (fixed and variable)
+        for mod in sip.iter(f"{{{ns}}}SearchModification"):
+            fixed = mod.get("fixedMod", "false").lower() == "true"
+            residues = mod.get("residues", "").strip()
+            cv = mod.find(f"{{{ns}}}cvParam")
+            mod_name = cv.get("name", "") if cv is not None else ""
+            if mod_name:
+                label = "fixed_mod" if fixed else "variable_mod"
+                value = f"{mod_name} ({residues})" if residues else mod_name
+                params.append({"key": label, "value": value})
+
+        return params
 
     @staticmethod
     def _build_provenance(mzid_path: str | Path) -> list[dict]:
@@ -284,29 +325,7 @@ class MzIdentMLConverter(BaseOrchestrator):
         params_by_sip: dict[str, list[dict]] = {}
         for sip in root.iter(f"{{{ns}}}SpectrumIdentificationProtocol"):
             sip_id = sip.get("id", "")
-            params: list[dict] = []
-
-            # Enzyme(s)
-            for enzyme in sip.iter(f"{{{ns}}}Enzyme"):
-                enzyme_name_el = enzyme.find(f"{{{ns}}}EnzymeName")
-                if enzyme_name_el is not None:
-                    cv = enzyme_name_el.find(f"{{{ns}}}cvParam")
-                    name = cv.get("name", "") if cv is not None else ""
-                else:
-                    name = enzyme.get("name", "")
-                if name:
-                    params.append({"key": "enzyme", "value": name})
-
-            # Modifications (fixed and variable)
-            for mod in sip.iter(f"{{{ns}}}SearchModification"):
-                fixed = mod.get("fixedMod", "false").lower() == "true"
-                residues = mod.get("residues", "").strip()
-                cv = mod.find(f"{{{ns}}}cvParam")
-                mod_name = cv.get("name", "") if cv is not None else ""
-                if mod_name:
-                    label = "fixed_mod" if fixed else "variable_mod"
-                    value = f"{mod_name} ({residues})" if residues else mod_name
-                    params.append({"key": label, "value": value})
+            params = MzIdentMLConverter._protocol_parameters(sip, ns)
 
             if params:
                 params_by_sip[sip_id] = params

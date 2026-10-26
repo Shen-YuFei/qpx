@@ -316,7 +316,7 @@ class TestIndexFallback:
         bigbio/qpx#249 (the old scan-first lookup attached the SCANS-colliding
         spectrum's peaks instead).
         """
-        from qpx.converters.mzidentml.psm_adapter import MzIdentMLPsmAdapter
+        from qpx.converters.mzidentml.psm_records import _build_psm_records
 
         # Position 0 is a decoy whose SCANS collides with the target index (1);
         # position 1 is the CORRECT spectrum for ``index=1``.
@@ -353,8 +353,7 @@ class TestIndexFallback:
             ],
         }
 
-        with MzIdentMLPsmAdapter() as adapter:
-            records = adapter._build_psm_records(parsed)
+        records = _build_psm_records(parsed)
         assert records[0]["_spectrum_id_scheme"] == "index"
 
         result = MzIdentMLConverter._attach_spectra(records, str(mgf))

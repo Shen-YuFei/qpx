@@ -341,9 +341,64 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
         MaxQuant PG rows contain intensities for ALL runs in one row, so
         we expand them into one QPX PG record per run.
         """
-        records: list[dict] = []
-        r = self._resolved  # shorthand for resolved column mappings
+        common_fields, peptide_count_total, peptide_count_unique = self._pg_common_fields(row)
 
+        # Build shared record skeleton (fields independent of run/channel).
+        # ``grouped_runs`` is the experiment expanded to its member run files, so
+        # the intensity reported for this experiment attributes to every raw file
+        # it aggregates (MaxQuant already summed across fractions per experiment,
+        # so the tool-reported value is kept as-is).
+        def _make_rec(grouped_runs: list, intensities: list, additional_intensities: list) -> dict:
+            return {
+                **common_fields,
+                "grouped_runs": grouped_runs,
+                "intensities": intensities,
+                "additional_intensities": additional_intensities or None,
+                "peptide_counts": {
+                    "unique_sequences": peptide_count_unique,
+                    "total_sequences": peptide_count_total,
+                },
+                "feature_counts": {
+                    "unique_features": peptide_count_unique,
+                    "total_features": peptide_count_total,
+                },
+            }
+
+        # ── TMT/iTRAQ: one record per experiment, channels as intensities list ──
+        reporter_cols = intensity_cols.get("reporter", [])
+        if reporter_cols:
+            return self._tmt_records(row, reporter_cols, tmt_channels, _make_rec)
+        return self._lfq_records(row, intensity_cols, _make_rec)
+
+    def _pg_gene_names(self, row: dict) -> list[str] | None:
+        """Resolve gene symbols from columns or FASTA headers."""
+        r = self._resolved
+        gg_raw = row.get(r.get("gg_accessions", "Gene names"))
+        gg_accessions = str(gg_raw).split(";") if pd.notna(gg_raw) and gg_raw else None
+        # Fallback: try Fasta headers for gene names
+        if not gg_accessions:
+            fasta_col = r.get("fasta_headers", "Fasta headers")
+            fasta_raw = row.get(fasta_col)
+            if pd.notna(fasta_raw) and fasta_raw:
+                gg_accessions = self._extract_gene_names(str(fasta_raw))
+        return gg_accessions
+
+    def _pg_anchor(self, row: dict, pg_accessions: list[str]) -> str:
+        """Resolve the representative protein for a group."""
+        r = self._resolved
+        # Anchor protein (first in Majority protein IDs, or first PG accession)
+        majority_raw = row.get(r.get("anchor_protein", "Majority protein IDs"))
+        if pd.notna(majority_raw) and majority_raw:
+            anchor_protein = self._norm_uniprot_id(str(majority_raw).split(";", maxsplit=1)[0])
+        elif pg_accessions:
+            anchor_protein = pg_accessions[0]
+        else:
+            anchor_protein = ""
+        return anchor_protein
+
+    def _pg_identity_fields(self, row: dict) -> tuple:
+        """Resolve protein membership, names, genes, and representative."""
+        r = self._resolved
         # Protein group identity
         pg_acc_cell = row.get(r.get("pg_accessions", "Protein IDs"))
         pg_acc_raw = str(pg_acc_cell) if pd.notna(pg_acc_cell) and pg_acc_cell is not None else ""
@@ -355,23 +410,15 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
         if not pg_names and pg_accessions:
             pg_names = list(pg_accessions)
 
-        gg_raw = row.get(r.get("gg_accessions", "Gene names"))
-        gg_accessions = str(gg_raw).split(";") if pd.notna(gg_raw) and gg_raw else None
-        # Fallback: try Fasta headers for gene names
-        if not gg_accessions:
-            fasta_col = r.get("fasta_headers", "Fasta headers")
-            fasta_raw = row.get(fasta_col)
-            if pd.notna(fasta_raw) and fasta_raw:
-                gg_accessions = self._extract_gene_names(str(fasta_raw))
+        gg_accessions = self._pg_gene_names(row)
 
-        # Anchor protein (first in Majority protein IDs, or first PG accession)
-        majority_raw = row.get(r.get("anchor_protein", "Majority protein IDs"))
-        if pd.notna(majority_raw) and majority_raw:
-            anchor_protein = self._norm_uniprot_id(str(majority_raw).split(";", maxsplit=1)[0])
-        elif pg_accessions:
-            anchor_protein = pg_accessions[0]
-        else:
-            anchor_protein = ""
+        anchor_protein = self._pg_anchor(row, pg_accessions)
+        return pg_accessions, pg_names, gg_accessions, anchor_protein
+
+    def _pg_common_fields(self, row: dict) -> tuple:
+        """Build protein-group fields shared across runs and channels."""
+        r = self._resolved
+        pg_accessions, pg_names, gg_accessions, anchor_protein = self._pg_identity_fields(row)
 
         # Quality metrics
         global_qvalue = safe_float(row.get(r.get("global_qvalue", "Q-value")))
@@ -399,116 +446,112 @@ class MaxQuantPgAdapter(MaxQuantBaseAdapter):
 
         # Peptides per protein
         peptides = [{"protein_name": acc, "peptide_count": peptide_count_total} for acc in pg_accessions]
-
-        # Build shared record skeleton (fields independent of run/channel).
-        # ``grouped_runs`` is the experiment expanded to its member run files, so
-        # the intensity reported for this experiment attributes to every raw file
-        # it aggregates (MaxQuant already summed across fractions per experiment,
-        # so the tool-reported value is kept as-is).
-        def _make_rec(grouped_runs: list, intensities: list, additional_intensities: list) -> dict:
-            return {
+        return (
+            {
                 "pg_accessions": pg_accessions,
                 "pg_names": pg_names,
                 "gg_accessions": gg_accessions,
                 "gg_names": gg_accessions,
                 "gg_qvalue": None,
                 "anchor_protein": anchor_protein,
-                "grouped_runs": grouped_runs,
                 "global_qvalue": global_qvalue,
                 "pg_qvalue": global_qvalue,
-                "intensities": intensities,
-                "additional_intensities": additional_intensities or None,
                 "is_decoy": is_decoy,
                 "contaminant": contaminant_val,
                 "peptides": peptides,
-                "peptide_counts": {
-                    "unique_sequences": peptide_count_unique,
-                    "total_sequences": peptide_count_total,
-                },
-                "feature_counts": {
-                    "unique_features": peptide_count_unique,
-                    "total_features": peptide_count_total,
-                },
                 "sequence_coverage": seq_coverage,
                 "molecular_weight": mol_weight,
                 "additional_scores": additional_scores or None,
                 "cv_params": None,
-            }
+            },
+            peptide_count_total,
+            peptide_count_unique,
+        )
 
-        # ── TMT/iTRAQ: one record per experiment, channels as intensities list ──
-        reporter_cols = intensity_cols.get("reporter", [])
-        if reporter_cols:
-            # Detect ri_offset from column names (0 vs 1 indexed)
-            ri_offset = 0 if any(re.match(r"Reporter intensity 0 ", c) for c in reporter_cols) else 1
-            # Group by experiment name
-            experiments: dict[str, dict[int, str]] = {}  # exp -> {col_idx: col_name}
-            for col in reporter_cols:
-                m = re.match(r"Reporter intensity (\d+) (.+)", col)
-                if m:
-                    ch_num = int(m.group(1))
-                    exp = m.group(2)
-                    experiments.setdefault(exp, {})[ch_num] = col
-            for exp, ch_cols in experiments.items():
-                intensities: list[dict] = []
-                additional_intensities: list[dict] = []
-                identified = (safe_float(row.get(f"MS/MS count {exp}")) or 0) > 0
-                channels = tmt_channels or []
-                dropped_channels: list[str] = []
-                for seq_idx, channel_name in enumerate(channels):
-                    col_idx = TMT_LABEL_TO_MQ_COL.get(str(channel_name).strip().upper())
-                    if col_idx is None:
-                        col_idx = seq_idx
-                    mq_col_num = col_idx + ri_offset
-                    col_name = ch_cols.get(mq_col_num)
-                    if not col_name:
-                        dropped_channels.append(str(channel_name))
-                        continue
-                    val = safe_float(row.get(col_name)) or 0.0
-                    # A plex-level identification covers only the channels the SDRF assigns there.
-                    if val > 0 or (identified and self._has_sample(exp, channel_name)):
-                        intensities.append({"label": channel_name, "intensity": val if val > 0 else None})
-                        corr_col = col_name.replace("Reporter intensity", "Reporter intensity corrected")
-                        corr_val = safe_float(row.get(corr_col))
-                        # Beside a missing reporter intensity, a zero is MaxQuant's sentinel.
-                        if corr_val is not None and (val > 0 or corr_val != 0):
-                            additional_intensities.append(
-                                {
-                                    "label": channel_name,
-                                    "intensities": [
-                                        {"intensity_name": "corrected_reporter_intensity", "intensity_value": float(corr_val)}
-                                    ],
-                                }
-                            )
-                self._warn_dropped_tmt_channels(exp, dropped_channels)
-                if intensities:
-                    records.append(_make_rec(self._runs_for(exp), intensities, additional_intensities))
-        else:
-            # ── LFQ: one record per run using "Intensity <run>" columns ──
-            for intensity_col in intensity_cols.get("intensity", []):
-                run_name = intensity_col.removeprefix("Intensity ")
-                intensity_val = safe_float(row.get(intensity_col)) or 0.0
-                if intensity_val <= 0:
-                    if (safe_float(row.get(f"MS/MS count {run_name}")) or 0) <= 0:
-                        continue
-                    # Global counts cannot establish identification in this unit.
-                    intensity_val = None
-                lfq_val = safe_float(row.get(f"LFQ intensity {run_name}"))
-                ibaq_val = safe_float(row.get(f"iBAQ {run_name}"))
-                if intensity_val is None:
-                    # Beside a missing intensity, zero LFQ and iBAQ are MaxQuant's sentinels.
-                    lfq_val, ibaq_val = lfq_val or None, ibaq_val or None
-                extra_vals = []
-                if lfq_val is not None:
-                    extra_vals.append({"intensity_name": "lfq", "intensity_value": float(lfq_val)})
-                if ibaq_val is not None:
-                    extra_vals.append({"intensity_name": "ibaq", "intensity_value": float(ibaq_val)})
-                add_int = [{"label": "LFQ", "intensities": extra_vals}] if extra_vals else []
-                records.append(
-                    _make_rec(
-                        self._runs_for(run_name),
-                        [{"label": "LFQ", "intensity": intensity_val}],
-                        add_int,
+    def _reporter_quantities(self, row, exp, ch_cols, tmt_channels, ri_offset) -> tuple:
+        """Collect one plex's primary and corrected reporter quantities."""
+        intensities: list[dict] = []
+        additional_intensities: list[dict] = []
+        identified = (safe_float(row.get(f"MS/MS count {exp}")) or 0) > 0
+        channels = tmt_channels or []
+        dropped_channels: list[str] = []
+        for seq_idx, channel_name in enumerate(channels):
+            col_idx = TMT_LABEL_TO_MQ_COL.get(str(channel_name).strip().upper())
+            if col_idx is None:
+                col_idx = seq_idx
+            mq_col_num = col_idx + ri_offset
+            col_name = ch_cols.get(mq_col_num)
+            if not col_name:
+                dropped_channels.append(str(channel_name))
+                continue
+            val = safe_float(row.get(col_name)) or 0.0
+            # A plex-level identification covers only the channels the SDRF assigns there.
+            if val > 0 or (identified and self._has_sample(exp, channel_name)):
+                intensities.append({"label": channel_name, "intensity": val if val > 0 else None})
+                corr_col = col_name.replace("Reporter intensity", "Reporter intensity corrected")
+                corr_val = safe_float(row.get(corr_col))
+                # Beside a missing reporter intensity, a zero is MaxQuant's sentinel.
+                if corr_val is not None and (val > 0 or corr_val != 0):
+                    additional_intensities.append(
+                        {
+                            "label": channel_name,
+                            "intensities": [
+                                {"intensity_name": "corrected_reporter_intensity", "intensity_value": float(corr_val)}
+                            ],
+                        }
                     )
-                )
+        return intensities, additional_intensities, dropped_channels
 
+    def _tmt_records(self, row, reporter_cols, tmt_channels, make_rec) -> list[dict]:
+        """Expand a protein group over reporter experiments."""
+        records: list[dict] = []
+        # Detect ri_offset from column names (0 vs 1 indexed)
+        ri_offset = 0 if any(re.match(r"Reporter intensity 0 ", c) for c in reporter_cols) else 1
+        # Group by experiment name
+        experiments: dict[str, dict[int, str]] = {}  # exp -> {col_idx: col_name}
+        for col in reporter_cols:
+            m = re.match(r"Reporter intensity (\d+) (.+)", col)
+            if m:
+                ch_num = int(m.group(1))
+                exp = m.group(2)
+                experiments.setdefault(exp, {})[ch_num] = col
+        for exp, ch_cols in experiments.items():
+            intensities, additional_intensities, dropped_channels = self._reporter_quantities(
+                row, exp, ch_cols, tmt_channels, ri_offset
+            )
+            self._warn_dropped_tmt_channels(exp, dropped_channels)
+            if intensities:
+                records.append(make_rec(self._runs_for(exp), intensities, additional_intensities))
+        return records
+
+    def _lfq_records(self, row, intensity_cols, make_rec) -> list[dict]:
+        """Expand a protein group over LFQ experiments."""
+        records: list[dict] = []
+        # ── LFQ: one record per run using "Intensity <run>" columns ──
+        for intensity_col in intensity_cols.get("intensity", []):
+            run_name = intensity_col.removeprefix("Intensity ")
+            intensity_val = safe_float(row.get(intensity_col)) or 0.0
+            if intensity_val <= 0:
+                if (safe_float(row.get(f"MS/MS count {run_name}")) or 0) <= 0:
+                    continue
+                # Global counts cannot establish identification in this unit.
+                intensity_val = None
+            lfq_val = safe_float(row.get(f"LFQ intensity {run_name}"))
+            ibaq_val = safe_float(row.get(f"iBAQ {run_name}"))
+            if intensity_val is None:
+                # Beside a missing intensity, zero LFQ and iBAQ are MaxQuant's sentinels.
+                lfq_val, ibaq_val = lfq_val or None, ibaq_val or None
+            extra_vals = []
+            if lfq_val is not None:
+                extra_vals.append({"intensity_name": "lfq", "intensity_value": float(lfq_val)})
+            if ibaq_val is not None:
+                extra_vals.append({"intensity_name": "ibaq", "intensity_value": float(ibaq_val)})
+            add_int = [{"label": "LFQ", "intensities": extra_vals}] if extra_vals else []
+            records.append(
+                make_rec(
+                    self._runs_for(run_name),
+                    [{"label": "LFQ", "intensity": intensity_val}],
+                    add_int,
+                )
+            )
         return records

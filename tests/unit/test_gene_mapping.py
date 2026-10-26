@@ -1,12 +1,14 @@
 """Regression tests for identity-preserving gene annotation writes."""
 
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from qpx import Dataset
 from qpx.transforms.gene_mapping import (
     GeneMappingTransform,
+    _annotate_table,
     _parse_fasta_header,
     _parse_gene_names_from_fasta,
 )
@@ -291,6 +293,21 @@ def test_annotate_dataframe_overwrites_existing_genes_the_fasta_does_resolve(tmp
     annotated = GeneMappingTransform(fasta).annotate_dataframe(df)
 
     assert annotated["gg_names"].tolist() == [["NEWGENE"]]
+
+
+def test_annotate_table_merges_existing_large_string_genes():
+    """Existing gg_names stored as large strings (as polars writes them) are kept where the FASTA resolves none."""
+    table = pa.table(
+        {
+            "pg_accessions": pa.array([["P12345"], ["Q99999"]], type=pa.list_(pa.string())),
+            "gg_names": pa.array([["STALE"], ["KEPT"]], type=pa.list_(pa.large_string())),
+        }
+    )
+
+    annotated, mapped = _annotate_table(table, {"P12345": {"NEWGENE"}}, pa.list_(pa.string()))
+
+    assert annotated.column("gg_names").to_pylist() == [["NEWGENE"], ["KEPT"]]
+    assert mapped == 1
 
 
 def test_annotate_dataframe_reports_zero_share_for_a_fasta_without_genes(tmp_path):

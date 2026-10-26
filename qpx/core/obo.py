@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 # Default OBO source URL
 PSI_MS_OBO_URL = "https://raw.githubusercontent.com/HUPO-PSI/psi-ms-CV/master/psi-ms.obo"
 
+_SCORE_ORDERS = {CV_HIGHER_BETTER: True, CV_LOWER_BETTER: False}
+
 # Arrow schema for ontology Parquet files
 TERMS_SCHEMA = pa.schema(
     [
@@ -95,6 +97,43 @@ def extract_obo_version(text: str) -> str:
     return "unknown"
 
 
+def _parse_obo_fields(block: str) -> tuple:
+    """Read the fields of one OBO term, stopping at the next section."""
+    accession = None
+    name = None
+    definition = ""
+    is_a_parents: list[str] = []
+    higher_better: Optional[bool] = None
+    synonyms: list[str] = []
+    is_obsolete = False
+
+    for line in block.split("\n"):
+        line = line.strip()
+        if line.startswith("["):
+            break  # hit next section type (e.g. [Typedef])
+        if line.startswith("id: "):
+            accession = line[4:].strip()
+        elif line.startswith("name: "):
+            name = line[6:].strip()
+        elif line.startswith("def: "):
+            m = re.match(r'^def:\s*"(.+?)"\s*\[', line)
+            if m:
+                definition = m.group(1)
+        elif line.startswith("is_a: "):
+            parent_id = line[6:].split("!")[0].strip()
+            is_a_parents.append(parent_id)
+        elif line.startswith("relationship: has_order "):
+            order_acc = line.split("has_order ")[1].split("!")[0].strip()
+            higher_better = _SCORE_ORDERS.get(order_acc, higher_better)
+        elif line.startswith("synonym: "):
+            m = re.match(r'^synonym:\s*"(.+?)"', line)
+            if m:
+                synonyms.append(m.group(1))
+        elif line.startswith("is_obsolete: true"):
+            is_obsolete = True
+    return accession, name, definition, is_a_parents, higher_better, synonyms, is_obsolete
+
+
 def parse_obo(text: str, source: str = "MS") -> list[CVTerm]:
     """Parse an OBO-format string into a list of ``CVTerm`` objects.
 
@@ -105,41 +144,7 @@ def parse_obo(text: str, source: str = "MS") -> list[CVTerm]:
     blocks = text.split("\n[Term]\n")
 
     for block in blocks[1:]:  # skip preamble before first [Term]
-        accession = None
-        name = None
-        definition = ""
-        is_a_parents: list[str] = []
-        higher_better: Optional[bool] = None
-        synonyms: list[str] = []
-        is_obsolete = False
-
-        for line in block.split("\n"):
-            line = line.strip()
-            if line.startswith("["):
-                break  # hit next section type (e.g. [Typedef])
-            if line.startswith("id: "):
-                accession = line[4:].strip()
-            elif line.startswith("name: "):
-                name = line[6:].strip()
-            elif line.startswith("def: "):
-                m = re.match(r'^def:\s*"(.+?)"\s*\[', line)
-                if m:
-                    definition = m.group(1)
-            elif line.startswith("is_a: "):
-                parent_id = line[6:].split("!")[0].strip()
-                is_a_parents.append(parent_id)
-            elif line.startswith("relationship: has_order "):
-                order_acc = line.split("has_order ")[1].split("!")[0].strip()
-                if order_acc == CV_HIGHER_BETTER:
-                    higher_better = True
-                elif order_acc == CV_LOWER_BETTER:
-                    higher_better = False
-            elif line.startswith("synonym: "):
-                m = re.match(r'^synonym:\s*"(.+?)"', line)
-                if m:
-                    synonyms.append(m.group(1))
-            elif line.startswith("is_obsolete: true"):
-                is_obsolete = True
+        accession, name, definition, is_a_parents, higher_better, synonyms, is_obsolete = _parse_obo_fields(block)
 
         if accession and name:
             is_score = bool(set(is_a_parents) & SCORE_PARENT_IDS)

@@ -220,6 +220,17 @@ def experiment_type_from_labels(sdrf_labels: Optional[set[str]]) -> str:
     return "LFQ"
 
 
+def _channel_indices(channel_indices: Optional[Iterable]) -> set[int]:
+    """Integer channel ordinals in ``channel_indices``; values that are not numbers are skipped."""
+    indices: set[int] = set()
+    for value in () if channel_indices is None else channel_indices:
+        try:
+            indices.add(int(float(value)))
+        except (TypeError, ValueError):
+            continue
+    return indices
+
+
 def resolve_channel_labels(
     experiment_type: str,
     sdrf_labels: Optional[set[str]] = None,
@@ -255,12 +266,7 @@ def resolve_channel_labels(
     # 2. Fallback: infer plex from the channel indices present in the data.
     # NB: channel_indices may be a numpy array (df[col].values), so test for
     # None explicitly — `channel_indices or ()` raises on array truthiness.
-    indices: set[int] = set()
-    for value in () if channel_indices is None else channel_indices:
-        try:
-            indices.add(int(float(value)))
-        except (TypeError, ValueError):
-            continue
+    indices = _channel_indices(channel_indices)
     if not indices:
         return {}
     max_index = max(indices)
@@ -278,6 +284,22 @@ def resolve_channel_labels(
 # quantification unit (see the OpenMS experimental design). ``fraction`` and
 # ``sample_name`` are captured alongside for provenance.
 _MAP_DESIGN_PARAMS = ("fraction_group", "fraction", "sample_name")
+
+
+def _maplist_start(element, current_id, current):
+    """Read one map's attributes and experimental-design UserParams."""
+    tag = element.tag.rsplit("}", 1)[-1]
+    if tag == "map":
+        current_id = int(element.attrib["id"])
+        current = {
+            "label": element.attrib.get("label", "").strip(),
+            "name": element.attrib.get("name", "").strip(),
+        }
+    elif tag == "UserParam" and current is not None:
+        param_name = element.attrib.get("name", "")
+        if param_name in _MAP_DESIGN_PARAMS:
+            current.update({param_name: element.attrib.get("value", "")})
+    return current_id, current
 
 
 def parse_consensusxml_maplist(consensusxml_path: str) -> dict[int, dict[str, str]]:
@@ -301,24 +323,16 @@ def parse_consensusxml_maplist(consensusxml_path: str) -> dict[int, dict[str, st
         current: Optional[dict[str, str]] = None
         for event, element in iterparse(consensusxml_path, events=("start", "end")):
             tag = element.tag.rsplit("}", 1)[-1]
-            if event == "start" and tag == "mapList":
+            if (event, tag) == ("start", "mapList"):
                 in_map_list = True
-            elif in_map_list and event == "start" and tag == "map":
-                current_id = int(element.attrib["id"])
-                current = {
-                    "label": element.attrib.get("label", "").strip(),
-                    "name": element.attrib.get("name", "").strip(),
-                }
-            elif in_map_list and event == "start" and tag == "UserParam" and current is not None:
-                param_name = element.attrib.get("name", "")
-                if param_name in _MAP_DESIGN_PARAMS:
-                    current.update({param_name: element.attrib.get("value", "")})
-            elif in_map_list and event == "end" and tag == "map":
+            elif in_map_list and event == "start":
+                current_id, current = _maplist_start(element, current_id, current)
+            elif in_map_list and (event, tag) == ("end", "map"):
                 if current_id is not None and current is not None:
                     maps[current_id] = current
                 current_id = None
                 current = None
-            elif event == "end" and tag == "mapList":
+            elif (event, tag) == ("end", "mapList"):
                 break
             if event == "end":
                 element.clear()
