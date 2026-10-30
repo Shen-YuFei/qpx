@@ -203,7 +203,7 @@ ordered lists such as `scan` retain their order.
 
     # Define file-level metadata
     file_metadata = {
-        "qpx_version": "1.1",
+        "qpx_version": "1.2",
         "software_provider": "QuantMS 1.3.0",
         "project_accession": "PXD012345",
         "file_type": "psm_file",

@@ -31,7 +31,7 @@ All serialized QPX views (PSM, Feature, PG, MZ, and the other Parquet and AnnDat
 import pyarrow.parquet as pq
 
 # Writing a file with version metadata
-metadata = {"qpx_version": "1.1"}
+metadata = {"qpx_version": "1.2"}
 ```
 
 !!! tip "Reading the version from a file"
@@ -46,12 +46,19 @@ metadata = {"qpx_version": "1.1"}
 
 ## Current Version
 
-The current QPX specification version is **1.1**.
+The current QPX specification version is **1.2**.
 
 This version defines all core serialized views (PSM, Feature, PG, MZ), the derived [API views](views.md) (Peptide, Protein) computed on demand from them, expression views (Absolute, Differential), and metadata views (SDRF, Project).
 
 ### Changelog
 
+- **1.2** (backward-compatible): adds the [site](site.md) and
+  [proteoform](proteoform.md) views, the optional `modification_candidates` column
+  of the PSM and Feature views ([Modifications](modifications.md)) and the optional
+  `sequence_edits` column of the pepmap view ([Sequence Edits](sequence-edits.md)).
+  Run, MZ and PSM files may leave out the columns the specification does not
+  require, and `mz.ion_injection_time` may be null. Nothing is removed or retyped,
+  so 1.1 files are valid 1.2 files.
 - **1.1.2** (on-disk spec version stays `1.1`): two related fixes to identity
   handling.
     - **PG identity now keys on full group membership** (backward-incompatible for
@@ -130,7 +137,9 @@ The `software_provider` field is a free-text string in the Parquet metadata. The
 | 1.1 | 1.1 | Yes | Exact match |
 | 1.1 | 1.0 | No\* | 1.0 core files lack the mandatory identity-ID columns, and 1.0 PG uses scalar `run_file_name`; re-convert the dataset. |
 | 1.0 | 1.1 | No | 1.1 adds mandatory identity-ID columns and replaces PG `run_file_name` with `grouped_runs`; a strict 1.0 reader cannot read it. |
-| 2.0 | 1.0/1.1 | Maybe | Major version change; check migration guide |
+| 1.2 | 1.1 | Yes | 1.2 only adds views and optional columns |
+| 1.1 | 1.2 | Partly | A 1.1 reader ignores the new views and optional columns, but 1.1 validation reports run, MZ and PSM files that leave out columns 1.1 requires. |
+| 2.0 | 1.0/1.1/1.2 | Maybe | Major version change; check migration guide |
 | 1.x | 2.0 | No | Reader cannot handle a newer major version |
 
 \* The 1.x line carries backward-incompatible changes during pre-2.0 stabilisation (see the Rules above), so even within `1.x` a reader must check `qpx_version` and the changelog — it is not safe to assume minor updates are compatible.
